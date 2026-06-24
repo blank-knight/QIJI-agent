@@ -1,0 +1,558 @@
+/**
+ * 奇计GEO平台 CLI 入口
+ * 
+ * 统一入口，每次调用独立启动浏览器、执行操作、返回 JSON、关闭浏览器。
+ * 被 Hermes Skill (qiji-geo) 调用。
+ * 
+ * 用法:
+ *   node geo-cli.js login
+ *   node geo-cli.js rights
+ *   node geo-cli.js diagnose --brand 华为 --keywords 手机,Mate70 [--submit] [--suggestion]
+ *   node geo-cli.js report
+ *   node geo-cli.js keywords
+ *   node geo-cli.js fuken --url <链接> [--submit]
+ *   node geo-cli.js articles
+ *   node geo-cli.js test
+ */
+
+const { chromium } = require('playwright');
+const path = require('path');
+
+// ========== 配置 ==========
+
+const CONFIG = {
+  url: 'https://geo.heikexia.cc',
+  username: process.env.GEO_USERNAME || '4000761588',
+  password: process.env.GEO_PASSWORD || '4000761588',
+  headless: true,
+  timeout: 30000,
+};
+
+// ========== 参数解析 ==========
+
+function parseArgs() {
+  const args = process.argv.slice(2);
+  const action = args[0] || 'help';
+  const params = {};
+  for (let i = 1; i < args.length; i++) {
+    if (args[i].startsWith('--')) {
+      const key = args[i].substring(2);
+      if (i + 1 < args.length && !args[i + 1].startsWith('--')) {
+        params[key] = args[i + 1];
+        i++;
+      } else {
+        params[key] = true;
+      }
+    }
+  }
+  return { action, params };
+}
+
+// ========== 输出 ==========
+
+function output(success, data, message = '') {
+  const result = { success, action: process.argv[2], message, data, timestamp: new Date().toISOString() };
+  console.log(JSON.stringify(result, null, 2));
+}
+
+// ========== 浏览器管理 ==========
+
+async function createBrowser() {
+  const browser = await chromium.launch({ headless: CONFIG.headless });
+  const context = await browser.newContext({
+    viewport: { width: 1280, height: 800 },
+    locale: 'zh-CN',
+  });
+  const page = await context.newPage();
+  return { browser, page };
+}
+
+// ========== 核心操作 ==========
+
+async function login(page) {
+  await page.goto(`${CONFIG.url}/user/dashboard`, {
+    waitUntil: 'networkidle',
+    timeout: CONFIG.timeout,
+  });
+  await page.waitForTimeout(2000);
+
+  // 已登录
+  if (!page.url().includes('/login') && !page.url().includes('/index/login')) {
+    return true;
+  }
+
+  // 执行登录
+  await page.getByPlaceholder(/账号|手机/).first().fill(CONFIG.username);
+  await page.getByPlaceholder(/密码/).first().fill(CONFIG.password);
+  await page.getByRole('button', { name: /登.*录/i }).click();
+  await page.waitForTimeout(5000);
+
+  return !page.url().includes('/login');
+}
+
+function getFrame(page) {
+  return page.frames().find(f => f.url().includes('addtabs=1'));
+}
+
+async function goHome(page) {
+  await page.locator('aside a:has-text("首页")').first().click().catch(() => {});
+  await page.waitForTimeout(2000);
+}
+
+async function clickMenu(page, parentText, childText) {
+  if (childText) {
+    const parent = page.locator(`aside a:has-text("${parentText}")`).first();
+    const child = page.locator(`aside a:has-text("${childText}")`).first();
+    const visible = await child.isVisible().catch(() => false);
+    if (!visible) {
+      await parent.click().catch(() => {});
+      await page.waitForTimeout(1000);
+    }
+    await child.click({ timeout: 5000 }).catch(() => {});
+  } else {
+    await page.locator(`aside a:has-text("${parentText}")`).first().click().catch(() => {});
+  }
+  await page.waitForTimeout(3000);
+}
+
+// ========== 1. 账号权益 ==========
+
+async function getRights(page) {
+  await goHome(page);
+  await clickMenu(page, '账号权益');
+  const frame = getFrame(page);
+  if (!frame) return { error: 'iframe未加载' };
+
+  const text = await frame.locator('body').innerText().catch(() => '');
+  const rights = {};
+  const patterns = [
+    ['已收录数', /已收录\s*(\d+)/],
+    ['账号有效期', /有效期\s*(\d{4}-\d{2}-\d{2})/],
+    ['剩余点数', /剩余点数\s*(-?\d+)/],
+    ['剩余余额', /剩余余额\s*(\d+\.?\d*)/],
+    ['主关键词额度', /主关键词\s*(\d+\/\d+)/],
+    ['写作问题额度', /写作问题\s*(\d+\/\d+)/],
+    ['AI写作数量', /AI写作数量\s*(\d+\/\d+)/],
+    ['文章发布额度', /文章发布\s*(\d+\/\d+)/],
+  ];
+  for (const [key, regex] of patterns) {
+    const m = text.match(regex);
+    if (m) rights[key] = m[1];
+  }
+  return rights;
+}
+
+// ========== 2. AI诊断 ==========
+
+async function diagnose(page, params) {
+  await goHome(page);
+  await clickMenu(page, 'AI可见度诊断');
+  const frame = getFrame(page);
+  if (!frame) return { error: 'iframe未加载' };
+
+  const brand = params.brand;
+  const keywords = (params.keywords || '').split(',').map(k => k.trim()).filter(Boolean);
+  const platforms = (params.platforms || '').split(',').map(p => p.trim()).filter(Boolean);
+
+  // 1. 填写品牌
+  await frame.evaluate((b) => {
+    const input = document.querySelector('.key > input');
+    if (input) {
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+      setter.call(input, b);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  }, brand);
+
+  // 2. 选择AI模型
+  await frame.evaluate((ps) => {
+    document.querySelectorAll('.zhenduan-border').forEach(item => {
+      if (ps.length === 0 || ps.includes(item.id)) {
+        if (!item.classList.contains('select-border-bar')) {
+          item.classList.add('select-border-bar');
+        }
+      }
+    });
+  }, platforms);
+
+  // 3. 优化建议
+  if (params.suggestion) {
+    await frame.evaluate(() => {
+      document.querySelectorAll('.zhenduan-border').forEach(item => {
+        if (item.getAttribute('data-id') === '1') item.click();
+      });
+    });
+  }
+
+  // 4. 填写行业关键词
+  for (const kw of keywords) {
+    const input = frame.locator('.brand > input');
+    await input.fill(kw);
+    await input.press('Enter');
+    await page.waitForTimeout(500);
+  }
+
+  // 5. 验证表单
+  const state = await frame.evaluate(() => ({
+    brand: document.querySelector('.key > input')?.value,
+    aiCount: document.querySelectorAll('.select-border-bar').length,
+    keywords: Array.from(document.querySelectorAll('.brand > span')).map(s => s.textContent.trim()),
+  }));
+
+  if (!params.submit) {
+    return { submitted: false, formState: state, cost: params.suggestion ? '16元(未提交)' : '13元(未提交)' };
+  }
+
+  // 6. 提交（autoConfirm + 点击提交按钮 + 捕获响应）
+  await frame.evaluate(() => { window.confirm = () => true; });
+
+  return new Promise((resolve) => {
+    let resolved = false;
+    page.on('response', async (resp) => {
+      if (resp.url().includes('analyze/add') && resp.request().method() === 'POST') {
+        const body = await resp.text().catch(() => '');
+        try {
+          const data = JSON.parse(body);
+          if (!resolved) { resolved = true; resolve({ submitted: true, response: data, formState: state }); }
+        } catch {
+          if (!resolved) { resolved = true; resolve({ submitted: true, response: { code: -1, msg: body.substring(0, 200) }, formState: state }); }
+        }
+      }
+    });
+
+    frame.evaluate(() => document.querySelector('.query-button')?.click()).catch(() => {});
+
+    setTimeout(() => {
+      if (!resolved) { resolved = true; resolve({ submitted: false, error: '提交超时(30s)', formState: state }); }
+    }, 30000);
+  });
+}
+
+// ========== 3. 诊断报告 ==========
+
+async function getReports(page) {
+  await goHome(page);
+  await clickMenu(page, '诊断报告');
+  const frame = getFrame(page);
+  if (!frame) return { error: 'iframe未加载' };
+
+  // Bootstrap Table 解析：去掉空列和序号列
+  let rows = await frame.evaluate(() => {
+    const trs = document.querySelectorAll('table tbody tr, .fixed-table-body tbody tr');
+    return Array.from(trs).map(tr => {
+      let tds = Array.from(tr.querySelectorAll('td'));
+      tds = tds.map(td => td.textContent.trim());
+      if (tds.length > 0 && /^\d+$/.test(tds[0])) {
+        tds = tds.slice(1);
+      }
+      if (tds.length >= 3) {
+        return {
+          brand: tds[0],
+          keywords: tds[1],
+          status: tds[2] || '',
+          time: tds[3] || '',
+        };
+      }
+      return null;
+    }).filter(r => r && r.brand && !/^\d+$/.test(r.brand));
+  });
+
+  // table 解析失败，回退到 innerText
+  if (rows.length === 0) {
+    const text = await frame.locator('body').innerText().catch(() => '');
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+    rows = [];
+    for (const line of lines) {
+      const parts = line.split('\t').map(p => p.trim()).filter(Boolean);
+      if (parts.length >= 3 && /^\d+$/.test(parts[0]) && !parts[0].includes('第')) {
+        rows.push({
+          id: parts[0],
+          brand: parts[1],
+          keywords: parts[2],
+          status: parts[3] || '',
+          time: parts[4] || '',
+        });
+      }
+    }
+  }
+
+  return rows;
+}
+
+// ========== 4. 关键词列表 ==========
+
+async function getKeywords(page) {
+  await goHome(page);
+  await clickMenu(page, 'AI素材源力', '关键词');
+  const frame = getFrame(page);
+  if (!frame) return { error: 'iframe未加载' };
+
+  // Bootstrap Table 解析：去掉空列和序号列
+  let rows = await frame.evaluate(() => {
+    const trs = document.querySelectorAll('table tbody tr, .fixed-table-body tbody tr');
+    return Array.from(trs).map(tr => {
+      let tds = Array.from(tr.querySelectorAll('td'));
+      // 去掉空列（checkbox等）
+      tds = tds.map(td => td.textContent.trim());
+      // 如果第一列是纯数字序号，去掉
+      if (tds.length > 0 && /^\d+$/.test(tds[0])) {
+        tds = tds.slice(1);
+      }
+      if (tds.length >= 2) {
+        return { keyword: tds[0], questionCount: tds[1] };
+      }
+      return null;
+    }).filter(r => r && r.keyword && !/^\d+$/.test(r.keyword));
+  });
+
+  // 回退 innerText
+  if (rows.length === 0) {
+    const text = await frame.locator('body').innerText().catch(() => '');
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+    rows = [];
+    for (const line of lines) {
+      const parts = line.split('\t').map(p => p.trim()).filter(Boolean);
+      if (parts.length >= 3 && /^\d+$/.test(parts[0])) {
+        rows.push({ keyword: parts[1], questionCount: parts[2] });
+      }
+    }
+  }
+
+  return rows;
+}
+
+// ========== 5. 爆文复刻 ==========
+
+async function createFuken(page, params) {
+  await goHome(page);
+  await clickMenu(page, 'AI流量复刻', '全网爆文复刻');
+  const mainFrame = getFrame(page);
+  if (!mainFrame) return { error: 'iframe未加载' };
+
+  await mainFrame.locator('a.btn-add').click().catch(() => {});
+  await page.waitForTimeout(3000);
+
+  const dialogFrame = page.frames().find(f => f.url().includes('/user/weixin_baowen/add'));
+  if (!dialogFrame) return { error: '弹窗iframe未加载' };
+
+  await dialogFrame.locator('input[name="row[weixin_url]"]').fill(params.url);
+  await dialogFrame.locator('select[name="row[image_type_id]"]').selectOption({ index: 1 }).catch(() => {});
+  await dialogFrame.locator('select[name="row[user_zhiling_id]"]').selectOption({ index: 1 }).catch(() => {});
+
+  if (!params.submit) {
+    return { submitted: false, url: params.url, message: '已填写表单，未提交' };
+  }
+
+  await mainFrame.locator('button:has-text("归类文章")').click().catch(() => {});
+
+  return new Promise((resolve) => {
+    let resolved = false;
+    page.on('response', async (resp) => {
+      if (resp.url().includes('weixin_baowen/add') && resp.request().method() === 'POST') {
+        const body = await resp.text().catch(() => '');
+        try {
+          const data = JSON.parse(body);
+          if (!resolved) { resolved = true; resolve({ submitted: true, response: data }); }
+        } catch {
+          if (!resolved) { resolved = true; resolve({ submitted: true, response: { code: -1, msg: body } }); }
+        }
+      }
+    });
+
+    setTimeout(() => {
+      if (!resolved) { resolved = true; resolve({ submitted: false, error: '提交超时' }); }
+    }, 15000);
+  });
+}
+
+// ========== 6. 文章列表 ==========
+
+async function getArticles(page) {
+  await goHome(page);
+  await clickMenu(page, 'AI文章写作', '文章列表');
+  const frame = getFrame(page);
+  if (!frame) return { error: 'iframe未加载' };
+
+  let rows = await frame.evaluate(() => {
+    const trs = document.querySelectorAll('table tbody tr, .fixed-table-body tbody tr');
+    return Array.from(trs).map(tr => {
+      let tds = Array.from(tr.querySelectorAll('td'));
+      tds = tds.map(td => td.textContent.trim());
+      if (tds.length > 0 && /^\d+$/.test(tds[0])) {
+        tds = tds.slice(1);
+      }
+      if (tds.length >= 2) {
+        return { title: tds[0], status: tds[1] || '', time: tds[2] || '' };
+      }
+      return null;
+    }).filter(r => r && r.title && !/^\d+$/.test(r.title));
+  });
+
+  if (rows.length === 0) {
+    const text = await frame.locator('body').innerText().catch(() => '');
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+    rows = [];
+    for (const line of lines) {
+      const parts = line.split('\t').map(p => p.trim()).filter(Boolean);
+      if (parts.length >= 3 && /^\d+$/.test(parts[0])) {
+        rows.push({ id: parts[0], title: parts[1], status: parts[2], time: parts[3] });
+      }
+    }
+  }
+
+  return rows;
+}
+
+// ========== 7. 全功能测试 ==========
+
+async function runTests(page) {
+  const tests = [
+    { menu: 'AI可见度诊断' },
+    { menu: '诊断报告' },
+    { parent: 'AI素材源力', menu: '关键词' },
+    { parent: 'AI素材源力', menu: '写作标题' },
+    { parent: 'AI素材源力', menu: '企业画像图库' },
+    { parent: 'AI素材源力', menu: '企业知识库' },
+    { parent: 'AI文章写作', menu: '写作指令' },
+    { parent: 'AI文章写作', menu: '文章分类' },
+    { parent: 'AI文章写作', menu: 'AI写作任务' },
+    { parent: 'AI文章写作', menu: '文章列表' },
+    { parent: 'AI流量复刻', menu: '全网爆文复刻' },
+    { parent: 'AI流量复刻', menu: '批量爆文复刻' },
+    { menu: 'AI数据中心' },
+    { menu: '消耗明细' },
+    { menu: '账号权益' },
+  ];
+
+  const results = [];
+  for (const t of tests) {
+    const label = t.parent ? `${t.parent} → ${t.menu}` : t.menu;
+    try {
+      await goHome(page);
+      await clickMenu(page, t.parent || t.menu, t.parent ? t.menu : null);
+      const frame = getFrame(page);
+      if (frame) {
+        const content = await frame.locator('body').innerText().catch(() => '');
+        results.push({ page: label, status: 'ok', preview: content.substring(0, 80) });
+      } else {
+        results.push({ page: label, status: 'fail', preview: 'iframe未加载' });
+      }
+    } catch (err) {
+      results.push({ page: label, status: 'fail', preview: err.message.substring(0, 80) });
+    }
+  }
+  return results;
+}
+
+// ========== 主入口 ==========
+
+(async () => {
+  const { action, params } = parseArgs();
+
+  if (action === 'help' || action === '--help') {
+    console.log(JSON.stringify({
+      usage: 'node geo-cli.js <action> [options]',
+      actions: ['login', 'rights', 'diagnose', 'report', 'keywords', 'fuken', 'articles', 'test'],
+      examples: [
+        'node geo-cli.js login',
+        'node geo-cli.js rights',
+        'node geo-cli.js diagnose --brand 华为 --keywords 手机,Mate70',
+        'node geo-cli.js diagnose --brand 华为 --keywords 手机 --submit',
+        'node geo-cli.js report',
+        'node geo-cli.js keywords',
+        'node geo-cli.js fuken --url https://mp.weixin.qq.com/xxx',
+      ],
+    }, null, 2));
+    process.exit(0);
+  }
+
+  const validActions = ['login', 'rights', 'diagnose', 'report', 'keywords', 'fuken', 'articles', 'test'];
+  if (!validActions.includes(action)) {
+    output(false, null, `未知操作: ${action}。可用: ${validActions.join(', ')}`);
+    process.exit(1);
+  }
+
+  const { browser, page } = await createBrowser();
+
+  try {
+    // 所有操作都需要先登录
+    const loggedIn = await login(page);
+    if (!loggedIn) {
+      output(false, null, '登录失败，请检查 GEO_USERNAME/GEO_PASSWORD');
+      process.exit(1);
+    }
+
+    let data;
+    let message = '';
+
+    switch (action) {
+      case 'login':
+        data = { url: page.url() };
+        message = '登录成功';
+        break;
+
+      case 'rights':
+        data = await getRights(page);
+        message = Object.keys(data).length > 0 ? '权益查询成功' : '未匹配到权益数据';
+        break;
+
+      case 'diagnose':
+        if (!params.brand) {
+          output(false, null, 'diagnose 需要 --brand 参数');
+          process.exit(1);
+        }
+        if (!params.keywords) {
+          output(false, null, 'diagnose 需要 --keywords 参数');
+          process.exit(1);
+        }
+        data = await diagnose(page, params);
+        message = data.submitted === false
+          ? `表单已填写（未提交）。费用: ${data.cost}。加 --submit 提交。`
+          : '诊断任务已提交';
+        break;
+
+      case 'report':
+        data = await getReports(page);
+        message = Array.isArray(data) && data.length > 0
+          ? `找到 ${data.length} 条诊断报告`
+          : '暂无诊断报告';
+        break;
+
+      case 'keywords':
+        data = await getKeywords(page);
+        message = Array.isArray(data) && data.length > 0
+          ? `找到 ${data.length} 个关键词`
+          : '暂无关键词';
+        break;
+
+      case 'fuken':
+        if (!params.url) {
+          output(false, null, 'fuken 需要 --url 参数');
+          process.exit(1);
+        }
+        data = await createFuken(page, params);
+        message = data.submitted ? '爆文复刻已提交' : '表单已填写（未提交）。加 --submit 提交。';
+        break;
+
+      case 'articles':
+        data = await getArticles(page);
+        message = Array.isArray(data) && data.length > 0
+          ? `找到 ${data.length} 篇文章`
+          : '暂无文章';
+        break;
+
+      case 'test':
+        data = await runTests(page);
+        const passed = data.filter(r => r.status === 'ok').length;
+        message = `${passed}/${data.length} 个页面加载成功`;
+        break;
+    }
+
+    output(true, data, message);
+  } catch (error) {
+    output(false, { error: error.message, stack: error.stack }, '执行出错');
+    process.exit(1);
+  } finally {
+    await browser.close();
+  }
+})();

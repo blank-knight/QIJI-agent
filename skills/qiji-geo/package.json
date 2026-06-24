@@ -1,0 +1,8 @@
+{
+  "name": "qiji-geo-skill",
+  "version": "1.0.0",
+  "description": "奇计GEO平台自动化 Hermes Skill",
+  "dependencies": {
+    "playwright": "^1.61.0"
+  }
+}
