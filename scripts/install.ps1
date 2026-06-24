@@ -1,5 +1,5 @@
 # ============================================================================
-# 奇计 Installer for Windows
+# Hermes Agent Installer for Windows
 # ============================================================================
 # Installation script for Windows (PowerShell).
 # Uses uv for fast Python provisioning and package management.
@@ -56,7 +56,15 @@ param(
     #   * The canonical CLI one-liner (irm | iex) omits the flag too;
     #     terminal users don't need a desktop binary built for them, and
     #     `hermes desktop` already builds on demand.
-    [switch]$IncludeDesktop
+    [switch]$IncludeDesktop,
+
+    # --- Offline / vendor directory (white-label builds) ---
+    # When set, install.ps1 checks this directory for pre-downloaded
+    # prerequisites (uv.exe, PortableGit, node, ripgrep, ffmpeg, repo
+    # source, Python wheels, node_modules) and copies them into place
+    # before each stage, avoiding all network downloads. Enables true
+    # offline installation for customers with poor/no connectivity.
+    [string]$VendorDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -89,48 +97,148 @@ try {
 }
 
 # ============================================================================
-# 8.3 short-path normalization
+# Offline vendor pre-staging (white-label builds)
 # ============================================================================
-# When the Windows user-profile folder name contains a space (e.g.
-# "First Last"), Windows generates an 8.3 short alias for it (e.g. FIRST~1.LAS)
-# and may expose %TEMP%/%TMP% in that short form:
-#   C:\Users\FIRST~1.LAS\AppData\Local\Temp
-# PowerShell's FileSystem provider mishandles the "~1.ext" component when such a
-# path is handed to a provider cmdlet like `Tee-Object -FilePath` /
-# `Out-File -FilePath`, throwing:
-#   "An object at the specified path C:\Users\FIRST~1.LAS does not exist."
-# Every Node/Electron build+install stage streams its log to %TEMP% via
-# Tee-Object, so they all abort with that error, while the Python/uv stages --
-# which never write a side log to %TEMP% through a provider cmdlet -- complete
-# fine. Expanding %TEMP%/%TMP% back to their long form once, up front, lets
-# every downstream cmdlet (and child process) see a path the provider can
-# resolve. (GH: Windows desktop installer fails at Node/Electron stages.)
+# When -VendorDir is set, copy pre-downloaded resources into their managed
+# locations BEFORE any stage runs.  Each Install-* function already checks
+# for files at these paths and skips downloads when found.  This function
+# is idempotent: if the target already exists, the copy is skipped.
+function Stage-VendorFiles {
+    if (-not $VendorDir -or -not (Test-Path $VendorDir)) { return }
 
-function ConvertTo-LongPath {
-    param([string]$Path)
-    if ([string]::IsNullOrWhiteSpace($Path)) { return $Path }
-    # Only 8.3 short names carry a tilde+digit ("~1"); skip the COM round-trip
-    # for ordinary long paths.
-    if ($Path -notmatch '~\d') { return $Path }
-    try {
-        $fso = New-Object -ComObject Scripting.FileSystemObject
-        if ($fso.FolderExists($Path)) { return $fso.GetFolder($Path).Path }
-        if ($fso.FileExists($Path))   { return $fso.GetFile($Path).Path }
-    } catch {
-        # COM unavailable / locked-down host: fall back to the original path.
+    # 1. uv.exe -> $HermesHome\bin\uv.exe
+    $vendorUv = Join-Path $VendorDir "bin\uv.exe"
+    $managedUv = Join-Path $HermesHome "bin\uv.exe"
+    if ((Test-Path $vendorUv) -and -not (Test-Path $managedUv)) {
+        New-Item -ItemType Directory -Force -Path (Split-Path $managedUv) | Out-Null
+        Copy-Item $vendorUv $managedUv -Force
+        Write-Host "[vendor] Staged uv.exe" -ForegroundColor Cyan
     }
-    return $Path
-}
 
-foreach ($tmpVar in @('TEMP', 'TMP')) {
-    $current = [Environment]::GetEnvironmentVariable($tmpVar)
-    if ($current) {
-        $expanded = ConvertTo-LongPath $current
-        if ($expanded -and $expanded -ne $current) {
-            Set-Item -Path "Env:$tmpVar" -Value $expanded
+    # 2. PortableGit -> $HermesHome\git\
+    $vendorGit = Join-Path $VendorDir "git"
+    $managedGit = Join-Path $HermesHome "git"
+    if ((Test-Path $vendorGit) -and -not (Test-Path (Join-Path $managedGit "bin\bash.exe"))) {
+        Copy-Item $vendorGit $managedGit -Recurse -Force
+        Write-Host "[vendor] Staged PortableGit" -ForegroundColor Cyan
+    }
+
+    # 3. Node.js -> $HermesHome\node\
+    $vendorNode = Join-Path $VendorDir "node"
+    $managedNode = Join-Path $HermesHome "node"
+    if ((Test-Path $vendorNode) -and -not (Test-Path (Join-Path $managedNode "node.exe"))) {
+        Copy-Item $vendorNode $managedNode -Recurse -Force
+        Write-Host "[vendor] Staged Node.js" -ForegroundColor Cyan
+    }
+
+    # 4. ripgrep + ffmpeg -> $HermesHome\tools\
+    $vendorTools = Join-Path $VendorDir "tools"
+    if (Test-Path $vendorTools) {
+        $managedTools = Join-Path $HermesHome "tools"
+        New-Item -ItemType Directory -Force -Path $managedTools | Out-Null
+        foreach ($exe in @("rg.exe", "ffmpeg.exe")) {
+            $src = Join-Path $vendorTools $exe
+            $dst = Join-Path $managedTools $exe
+            if ((Test-Path $src) -and -not (Test-Path $dst)) {
+                Copy-Item $src $dst -Force
+                Write-Host "[vendor] Staged $exe" -ForegroundColor Cyan
+            }
+        }
+        # Add to session PATH so Get-Command finds them
+        $env:Path = "$managedTools;$env:Path"
+    }
+
+    # 5. Repository source -> $InstallDir
+    $vendorRepo = Join-Path $VendorDir "hermes-agent"
+    if ((Test-Path $vendorRepo) -and -not (Test-Path (Join-Path $InstallDir "cli.py"))) {
+        New-Item -ItemType Directory -Force -Path (Split-Path $InstallDir) | Out-Null
+        Copy-Item $vendorRepo $InstallDir -Recurse -Force
+        # Initialize git so future updates work, AND create a commit so
+        # Install-Repository's rev-parse --verify HEAD check passes
+        # (otherwise it moves the vendor dir aside and re-clones from GitHub).
+        Push-Location $InstallDir
+        try {
+            git -c windows.appendAtomically=false init 2>$null
+            git -c windows.appendAtomically=false config windows.appendAtomically false 2>$null
+            git -c windows.appendAtomically=false config core.autocrlf false 2>$null
+            git -c windows.appendAtomically=false config user.name "Qiji Installer" 2>$null
+            git -c windows.appendAtomically=false config user.email "installer@local" 2>$null
+            git remote add origin "https://github.com/blank-knight/QIJI-agent.git" 2>$null
+            git -c windows.appendAtomically=false add -A 2>$null
+            git -c windows.appendAtomically=false commit -m "vendor snapshot" 2>$null
+        } catch {}
+        Pop-Location
+        Write-Host "[vendor] Staged hermes-agent repository" -ForegroundColor Cyan
+    }
+
+    # 6. Python interpreter + site-packages (offline venv creation)
+    # Instead of downloading wheels via uv sync, we copy a pre-built Python
+    # and the full site-packages directly. This avoids all PyPI network access.
+    $vendorPython = Join-Path $VendorDir "python"
+    $vendorSitePackages = Join-Path $VendorDir "site-packages"
+    $vendorVenvScripts = Join-Path $VendorDir "venv-scripts"
+    $managedVenv = Join-Path $InstallDir "venv"
+
+    if ((Test-Path $vendorPython) -and (Test-Path $vendorSitePackages) -and -not (Test-Path (Join-Path $managedVenv "Scripts\python.exe"))) {
+        # a) Copy Python interpreter into the managed uv python store
+        $pythonStore = Join-Path $env:APPDATA "uv\python\cpython-3.11-windows-x86_64-none"
+        if (-not (Test-Path $pythonStore)) {
+            New-Item -ItemType Directory -Force -Path (Split-Path $pythonStore) | Out-Null
+            Copy-Item $vendorPython $pythonStore -Recurse -Force
+            Write-Host "[vendor] Staged Python 3.11.15 interpreter" -ForegroundColor Cyan
+        }
+
+        # b) Create venv directory structure
+        New-Item -ItemType Directory -Force -Path "$managedVenv\Scripts" | Out-Null
+        New-Item -ItemType Directory -Force -Path "$managedVenv\Lib" | Out-Null
+
+        # c) Copy site-packages
+        if (-not (Test-Path "$managedVenv\Lib\site-packages")) {
+            Copy-Item $vendorSitePackages "$managedVenv\Lib\site-packages" -Recurse -Force
+        }
+
+        # d) Copy venv Scripts (has hermes.exe entry points + activation)
+        if (Test-Path $vendorVenvScripts) {
+            Copy-Item "$vendorVenvScripts\*" "$managedVenv\Scripts\" -Recurse -Force
+        }
+
+        # e) Write pyvenv.cfg (points to the staged Python)
+        $pyvenvCfg = @"
+home = $pythonStore
+implementation = CPython
+uv = 0.11.23
+version_info = 3.11.15
+include-system-site-packages = false
+"@
+        [System.IO.File]::WriteAllText("$managedVenv\pyvenv.cfg", $pyvenvCfg)
+
+        Write-Host "[vendor] Staged pre-built venv (Python + site-packages)" -ForegroundColor Cyan
+    }
+
+    # 7. node_modules -> $InstallDir\node_modules (skip npm install)
+    # NOTE: We can't name it "node_modules" in vendor/ because electron-builder
+    # silently strips any directory named node_modules from extraResources.
+    # We store it as "nm" and restore it to the correct name here.
+    $vendorNM = Join-Path $VendorDir "nm"
+    $managedNM = Join-Path $InstallDir "node_modules"
+    if ((Test-Path $vendorNM) -and -not (Test-Path $managedNM)) {
+        Copy-Item $vendorNM $managedNM -Recurse -Force
+        Write-Host "[vendor] Staged node_modules" -ForegroundColor Cyan
+    }
+
+    # 8. Playwright Chromium -> cache (skip npx playwright install)
+    $vendorChromium = Join-Path $VendorDir "chromium"
+    if (Test-Path $vendorChromium) {
+        $pwCache = Join-Path $env:LOCALAPPDATA "ms-playwright"
+        if (-not (Test-Path $pwCache) -or (Get-ChildItem $pwCache -Directory -ErrorAction SilentlyContinue).Count -eq 0) {
+            Copy-Item $vendorChromium $pwCache -Recurse -Force
+            Write-Host "[vendor] Staged Playwright Chromium" -ForegroundColor Cyan
         }
     }
 }
+
+# Run vendor pre-staging (safe to call in every stage process; idempotent)
+Stage-VendorFiles
 
 # ============================================================================
 # Configuration
@@ -202,7 +310,7 @@ function Get-WindowsArch {
 function Write-Banner {
     Write-Host ""
     Write-Host "+---------------------------------------------------------+" -ForegroundColor Magenta
-    Write-Host "|             * 奇计 Installer                              |" -ForegroundColor Magenta
+    Write-Host "|             * Hermes Agent Installer                    |" -ForegroundColor Magenta
     Write-Host "+---------------------------------------------------------+" -ForegroundColor Magenta
     Write-Host "|  An open source AI agent by Nous Research.              |" -ForegroundColor Magenta
     Write-Host "+---------------------------------------------------------+" -ForegroundColor Magenta
@@ -284,17 +392,18 @@ function Resolve-NpmCmd {
 }
 
 function Find-SystemBrowser {
-    # Honor ONLY an explicit, user-set AGENT_BROWSER_EXECUTABLE_PATH override.
-    #
-    # We no longer scan well-known install locations for a system browser.
-    # Auto-detection silently bound the install to an arbitrary binary instead
-    # of the bundled Playwright Chromium, which made the browser tool behave
-    # differently across hosts (and, on Linux, picked up a sandboxed Snap
-    # Chromium that hangs every browser_navigate). Every install now uses the
-    # bundled Chromium unless the user explicitly points elsewhere.
-    $override = $env:AGENT_BROWSER_EXECUTABLE_PATH
-    if ([string]::IsNullOrWhiteSpace($override)) { return $null }
-    if (Test-Path $override) { return $override }
+    $candidates = @(
+        "${env:ProgramFiles}\Google\Chrome\Application\chrome.exe",
+        "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
+        "${env:LOCALAPPDATA}\Google\Chrome\Application\chrome.exe",
+        "${env:ProgramFiles}\Microsoft\Edge\Application\msedge.exe",
+        "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
+        "${env:ProgramFiles}\Chromium\Application\chrome.exe",
+        "${env:LOCALAPPDATA}\Chromium\Application\chrome.exe"
+    )
+    foreach ($p in $candidates) {
+        if (Test-Path $p) { return $p }
+    }
     return $null
 }
 
@@ -345,7 +454,7 @@ function Install-AgentBrowser {
         $sysBrowser = Find-SystemBrowser
         if ($sysBrowser) {
             Write-BrowserEnv -BrowserPath $sysBrowser
-            Write-Info "Explicit browser override set -- skipping bundled Chromium download"
+            Write-Info "System browser detected -- skipping Chromium download"
         } else {
             $abExe = Join-Path $prefixDir "agent-browser.cmd"
             if (Test-Path $abExe) {
@@ -1188,6 +1297,16 @@ function Install-SystemPackages {
 function Install-Repository {
     Write-Info "Installing to $InstallDir..."
 
+    # Vendor bypass: if Stage-VendorFiles already copied the repo source
+    # (cli.py exists), skip the git clone entirely. The files are already there.
+    # Git setup (init + commit) will be handled by the runtime updater when needed.
+    # We must return BEFORE the existing-dir git-validity check, which would
+    # otherwise move the vendor dir aside and re-clone over the network.
+    if (Test-Path (Join-Path $InstallDir "cli.py")) {
+        Write-Success "Repository ready (vendor-staged, offline)"
+        return
+    }
+
     $didUpdate = $false
 
     if (Test-Path $InstallDir) {
@@ -1418,13 +1537,13 @@ function Install-Repository {
                 # for.  GitHub supports archive URLs for commits, tags, and
                 # branches; we honour Commit > Tag > Branch.
                 if ($Commit) {
-                    $zipUrl = "https://github.com/blank-knight/QIJI-agent/archive/$Commit.zip"
+                    $zipUrl = "https://github.com/NousResearch/hermes-agent/archive/$Commit.zip"
                     $zipLabel = $Commit
                 } elseif ($Tag) {
-                    $zipUrl = "https://github.com/blank-knight/QIJI-agent/archive/refs/tags/$Tag.zip"
+                    $zipUrl = "https://github.com/NousResearch/hermes-agent/archive/refs/tags/$Tag.zip"
                     $zipLabel = $Tag
                 } else {
-                    $zipUrl = "https://github.com/blank-knight/QIJI-agent/archive/refs/heads/$Branch.zip"
+                    $zipUrl = "https://github.com/NousResearch/hermes-agent/archive/refs/heads/$Branch.zip"
                     $zipLabel = $Branch
                 }
                 $zipPath = "$env:TEMP\hermes-agent-$zipLabel.zip"
@@ -1513,7 +1632,25 @@ function Install-Venv {
         Write-Info "Skipping virtual environment (-NoVenv)"
         return
     }
-    
+
+    # Offline/vendor mode: if the venv was pre-staged by Stage-VendorFiles
+    # (Python interpreter + site-packages already copied into venv\), skip
+    # uv venv creation entirely.
+    # Check for python.exe (not hermes_cli) because editable installs don't
+    # create a hermes_cli directory in site-packages.
+    $vendorVenvMarker = Join-Path $InstallDir "venv\Scripts\python.exe"
+    if (Test-Path $vendorVenvMarker) {
+        Write-Info "Venv pre-staged (offline mode), skipping venv creation"
+
+        # Still pin UV_PYTHON so subsequent uv commands target this venv
+        $venvPythonExe = Join-Path $InstallDir "venv\Scripts\python.exe"
+        if (Test-Path $venvPythonExe) {
+            $env:UV_PYTHON = $venvPythonExe
+        }
+        Write-Success "Virtual environment ready (pre-staged, offline mode)"
+        return
+    }
+
     Write-Info "Creating virtual environment with Python $PythonVersion..."
     
     Push-Location $InstallDir
@@ -1565,6 +1702,36 @@ function Install-Venv {
 }
 
 function Install-Dependencies {
+    # Offline/vendor mode: if dependencies were pre-staged by Stage-VendorFiles
+    # (venv\Scripts\python.exe exists = full venv was copied), skip uv sync.
+    # Then reinstall just hermes-agent from local source (fixes editable install
+    # path that broke during cross-platform copy).
+    $vendorDepsMarker = Join-Path $InstallDir "venv\Scripts\python.exe"
+    if (Test-Path $vendorDepsMarker) {
+        Write-Info "Dependencies pre-staged (offline mode), fixing hermes_cli install..."
+
+        # Pin UV_PYTHON + VIRTUAL_ENV for subsequent stages
+        $env:UV_PYTHON = $vendorDepsMarker
+        $env:VIRTUAL_ENV = "$InstallDir\venv"
+
+        # Reinstall hermes-agent from local source (non-editable, no deps).
+        # The vendor venv's editable .pth points to the WSL build path which
+        # doesn't exist on the target machine. This fixes it in ~2 seconds
+        # without any network access (--no-deps + --no-build-isolation).
+        $uvExe = Join-Path $HermesHome "bin\uv.exe"
+        if (Test-Path $uvExe) {
+            Push-Location $InstallDir
+            try {
+                & $uvExe pip install --no-deps --no-build-isolation . 2>&1 | ForEach-Object { Write-Host $_ }
+            } catch {}
+            Pop-Location
+        }
+
+        $script:InstalledTier = "pre-staged (offline/vendor)"
+        Write-Success "Dependencies ready (pre-staged, offline mode)"
+        return
+    }
+
     Write-Info "Installing dependencies..."
     
     Push-Location $InstallDir
@@ -1930,6 +2097,26 @@ function Copy-ConfigTemplates {
             Copy-Item $examplePath $configPath
             Write-Success "Created $configPath from template"
         }
+        # Inject default Chinese language for Qiji (display.language: zh)
+        $addLang = $true
+        if (Test-Path $configPath) {
+            $configContent = Get-Content $configPath -Raw -ErrorAction SilentlyContinue
+            if ($configContent -match '(?m)^\s*display\s*:') {
+                # display section already exists — check for language key
+                if ($configContent -match '(?m)^\s*language\s*:') {
+                    $addLang = $false  # already has language
+                }
+            }
+        }
+        if ($addLang -and (Test-Path $configPath)) {
+            $langBlock = @"
+
+display:
+  language: zh
+"@
+            Add-Content -Path $configPath -Value $langBlock -Encoding UTF8
+            Write-Info "Set default language to Chinese (zh)"
+        }
     } else {
         Write-Info "$configPath already exists, keeping it"
     }
@@ -2103,9 +2290,16 @@ function Install-NodeDeps {
 
     # Browser tools
     if (Test-Path "$InstallDir\package.json") {
+        # Vendor mode: if node_modules already staged by Stage-VendorFiles,
+        # skip npm install entirely (saves 1-3 min of npm network fetch).
+        if (Test-Path "$InstallDir\node_modules") {
+            Write-Success "Browser tools dependencies found (pre-staged, skipping npm install)"
+            $browserNpmOk = $true
+        } else {
         Write-Info "Installing Node.js dependencies (browser tools)..."
         $browserLog = "$env:TEMP\hermes-npm-browser-$(Get-Random).log"
         $browserNpmOk = _Run-NpmInstall "Browser tools" $InstallDir $browserLog $npmExe
+        }
 
         # Install Playwright Chromium (mirrors scripts/install.sh behaviour for
         # Linux).  Without this, tools/browser_tool.py::check_browser_requirements
@@ -2114,6 +2308,12 @@ function Install-NodeDeps {
         # System Chrome at "C:\Program Files\Google\Chrome\..." is NOT used by
         # agent-browser -- it expects a Playwright-managed Chromium.
         if ($browserNpmOk) {
+            # Check if Chromium is already staged (offline/vendor mode)
+            $pwCacheDir = Join-Path $env:LOCALAPPDATA "ms-playwright"
+            $pwExisting = Get-ChildItem $pwCacheDir -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "chromium-*" }
+            if ($pwExisting) {
+                Write-Success "Playwright Chromium found (pre-staged, skipping download)"
+            } else {
             Write-Info "Installing browser engine (Playwright Chromium)..."
             # npx lives next to npm in the same bin dir.  Prefer .cmd to dodge
             # the same execution-policy gotcha that affects npm.ps1 (see above).
@@ -2201,6 +2401,7 @@ function Install-NodeDeps {
                     Pop-Location
                 }
             }
+            } # end else (Chromium not pre-staged)
         }
     }
 

@@ -100,6 +100,21 @@ function installedAgentInstallScript(hermesHome) {
   }
 }
 
+// Bundled installer: packaged apps ship install.ps1/install.sh in
+// process.resourcesPath (via electron-builder extraResources). This lets
+// white-label builds (e.g. 奇计) skip the GitHub download entirely — the
+// bootstrap runner finds the script locally and runs it with -Branch main.
+function resolveBundledInstallScript() {
+  if (!process.resourcesPath) return null
+  const candidate = path.join(process.resourcesPath, installScriptName())
+  try {
+    fs.accessSync(candidate, fs.constants.R_OK)
+    return candidate
+  } catch {
+    return null
+  }
+}
+
 function cachedScriptPath(hermesHome, commit) {
   return path.join(bootstrapCacheDir(hermesHome), `install-${commit}.${process.platform === 'win32' ? 'ps1' : 'sh'}`)
 }
@@ -187,6 +202,15 @@ async function resolveInstallScript({ installStamp, sourceRepoRoot, hermesHome, 
   if (localScript) {
     emit({ type: 'log', line: `[bootstrap] using local ${installScriptName()} at ${localScript}` })
     return { path: localScript, source: 'local', kind: installScriptKind() }
+  }
+
+  // 1.5. Bundled installer: packaged apps ship install.ps1/install.sh in
+  //      resources/ (via extraResources). White-label builds use this to
+  //      skip the GitHub download entirely.
+  const bundledScript = resolveBundledInstallScript()
+  if (bundledScript) {
+    emit({ type: 'log', line: `[bootstrap] using bundled ${installScriptName()} at ${bundledScript}` })
+    return { path: bundledScript, source: 'bundled', kind: installScriptKind() }
   }
 
   // 2. Packaged path: download from GitHub at the pinned commit (1B's stamp).
@@ -518,7 +542,7 @@ function parseStageResult(stdout) {
   return null
 }
 
-async function runStage({ scriptPath, installerKind, stage, emit, hermesHome, activeRoot, abortSignal, installStamp }) {
+async function runStage({ scriptPath, installerKind, stage, emit, hermesHome, activeRoot, abortSignal, installStamp, vendorDir }) {
   const startedAt = Date.now()
   emit({ type: 'stage', name: stage.name, state: 'running' })
 
@@ -531,7 +555,8 @@ async function runStage({ scriptPath, installerKind, stage, emit, hermesHome, ac
         '--json',
         ...buildPosixPinArgs({ installStamp, activeRoot, hermesHome })
       ]
-    : ['-Stage', stage.name, '-NonInteractive', '-Json', ...buildPinArgs(installStamp)]
+  const vendorArgs = (!isPosix && vendorDir) ? ['-VendorDir', vendorDir] : []
+    : ['-Stage', stage.name, '-NonInteractive', '-Json', ...vendorArgs, ...buildPinArgs(installStamp)]
   const result = await (isPosix ? spawnBash : spawnPowerShell)(scriptPath, args, {
     emit,
     stageName: stage.name,
@@ -609,6 +634,7 @@ async function runBootstrap(opts) {
     logRoot,
     onEvent,
     abortSignal,
+    vendorDir,
     writeMarker // callback to write the bootstrap-complete marker; main.cjs provides
   } = opts
 
@@ -690,7 +716,8 @@ async function runBootstrap(opts) {
         hermesHome,
         activeRoot,
         abortSignal,
-        installStamp
+        installStamp,
+        vendorDir
       })
       if (ev.state === 'failed') {
         emit({ type: 'failed', stage: stage.name, error: ev.error || 'stage failed' })

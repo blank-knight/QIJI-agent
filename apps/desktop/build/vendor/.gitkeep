@@ -1,0 +1,13 @@
+# This directory holds offline vendor resources for white-label builds.
+# Contents (added during release packaging, NOT committed to git):
+# - bin/uv.exe          (uv package manager)
+# - git/                (PortableGit for Windows)
+# - node/               (Node.js runtime)
+# - tools/rg.exe        (ripgrep)
+# - tools/ffmpeg.exe    (ffmpeg)
+# - hermes-agent/       (repo source snapshot)
+# - python/             (Python 3.11 interpreter)
+# - site-packages/      (Python dependencies)
+# - venv-scripts/       (venv Scripts directory)
+# - nm/                 (node_modules, renamed to avoid electron-builder stripping)
+# - chromium/           (Playwright Chromium browser)

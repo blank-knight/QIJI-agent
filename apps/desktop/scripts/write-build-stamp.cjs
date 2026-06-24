@@ -78,6 +78,20 @@ function fromLocalGit() {
 }
 
 function main() {
+  // White-label builds: if an existing install-stamp.json has source="white-label",
+  // preserve it as-is. This lets white-label builds (e.g. 奇计) ship with
+  // commit="" and branch="main" so the bundled install.ps1 + vendor directory
+  // handle everything offline.
+  try {
+    if (fs.existsSync(OUT_FILE)) {
+      const existing = JSON.parse(fs.readFileSync(OUT_FILE, "utf8"))
+      if (existing && existing.source === "white-label") {
+        console.log("[write-build-stamp] preserving existing white-label stamp (commit=\"\", branch=\"" + (existing.branch || "main") + "\")")
+        return
+      }
+    }
+  } catch { void 0 }
+
   const stamp = fromCI() || fromLocalGit()
   if (!stamp || !stamp.commit) {
     console.error(

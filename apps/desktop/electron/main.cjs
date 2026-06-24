@@ -2755,6 +2755,14 @@ async function ensureRuntime(backend) {
 
     bootstrapAbortController = new AbortController()
 
+    // Resolve vendor directory for offline installation (white-label builds).
+    // Bundled in resources/vendor/ via electron-builder extraResources.
+    let vendorDir = null
+    try {
+      const candidateVendor = path.join(process.resourcesPath || '', 'vendor')
+      if (directoryExists(candidateVendor)) vendorDir = candidateVendor
+    } catch { void 0 }
+
     const bootstrapResult = await runBootstrap({
       installStamp: backend.installStamp,
       activeRoot: backend.activeRoot,
@@ -2762,6 +2770,7 @@ async function ensureRuntime(backend) {
       hermesHome: HERMES_HOME,
       logRoot: path.join(HERMES_HOME, 'logs'),
       abortSignal: bootstrapAbortController.signal,
+      vendorDir,
       onEvent: ev => {
         // Tee every bootstrap event to (a) the desktop log for forensics
         // and (b) the renderer for live progress UI. Either may be absent;
