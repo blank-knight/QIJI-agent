@@ -40,9 +40,9 @@ export const CONTROL_TEXT = 'text-xs'
 export const PROVIDER_GROUPS: ProviderPrefix[] = [
   {
     prefix: 'NOUS_',
-    name: 'Nous Portal',
-    description: 'Hosted Hermes & Nous-trained models',
-    docsUrl: 'https://portal.nousresearch.com',
+    name: '奇计云',
+    description: '奇计托管的 AI 模型服务',
+    docsUrl: 'https://geo.heikexia.cc',
     priority: 0
   },
   {

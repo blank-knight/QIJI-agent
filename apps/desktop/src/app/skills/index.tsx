@@ -21,6 +21,7 @@ import { ComputerUsePanel } from '../settings/computer-use-panel'
 import { asText, includesQuery, prettyName, toolNames, toolsetDisplayLabel } from '../settings/helpers'
 import { ToolsetConfigPanel } from '../settings/toolset-config-panel'
 import type { SetStatusbarItemGroup } from '../shell/statusbar-controls'
+import { translateSkillField, translateToolsetField, translateCategory } from './translations'
 
 const SKILLS_MODES = ['skills', 'toolsets'] as const
 type SkillsMode = (typeof SKILLS_MODES)[number]
@@ -74,7 +75,8 @@ interface SkillsViewProps extends React.ComponentProps<'section'> {
 }
 
 export function SkillsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...props }: SkillsViewProps) {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
+  const isZh = locale === 'zh' || locale === 'zh-hant'
   const [mode, setMode] = useRouteEnumParam('tab', SKILLS_MODES, 'skills')
 
   const [query, setQuery] = useState('')
@@ -204,7 +206,7 @@ export function SkillsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...p
                 key={category.key}
                 onClick={() => setActiveCategory(activeCategory === category.key ? null : category.key)}
               >
-                {prettyName(category.key)} <TextTabMeta>{category.count}</TextTabMeta>
+                {isZh ? translateCategory(category.key) : prettyName(category.key)} <TextTabMeta>{category.count}</TextTabMeta>
               </TextTab>
             ))}
           </>
@@ -251,7 +253,7 @@ export function SkillsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...p
                 <div className="space-y-1.5" key={category}>
                   {activeCategory === null && (
                     <div className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                      {prettyName(category)}
+                      {isZh ? translateCategory(category) : prettyName(category)}
                     </div>
                   )}
                   <div>
@@ -261,9 +263,13 @@ export function SkillsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...p
                         key={skill.name}
                       >
                         <div className="min-w-0">
-                          <div className="truncate text-sm font-medium">{skill.name}</div>
+                          <div className="truncate text-sm font-medium">
+                            {isZh ? translateSkillField(skill.name, 'name', skill.name) : skill.name}
+                          </div>
                           <p className="mt-0.5 text-xs text-muted-foreground">
-                            {asText(skill.description) || t.skills.noDescription}
+                            {isZh
+                              ? translateSkillField(skill.name, 'description', asText(skill.description) || t.skills.noDescription)
+                              : (asText(skill.description) || t.skills.noDescription)}
                           </p>
                         </div>
                         <Switch

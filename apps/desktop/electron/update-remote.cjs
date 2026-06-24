@@ -12,8 +12,9 @@
  * testable without booting Electron (main.cjs requires('electron') at load).
  */
 
-const OFFICIAL_REPO_HTTPS_URL = 'https://github.com/NousResearch/hermes-agent.git'
-const OFFICIAL_REPO_CANONICAL = 'github.com/nousresearch/hermes-agent'
+// Qiji white-label: point update checks at our fork, not upstream Hermes.
+const OFFICIAL_REPO_HTTPS_URL = 'https://github.com/blank-knight/QIJI-agent.git'
+const OFFICIAL_REPO_CANONICAL = 'github.com/blank-knight/qiji-agent'
 
 // Normalize common GitHub remote URL forms to `host/owner/repo` (lowercased,
 // no trailing slash, no .git suffix) so SSH and HTTPS forms of the same repo
