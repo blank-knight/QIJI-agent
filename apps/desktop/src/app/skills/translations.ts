@@ -157,6 +157,10 @@ export const SKILL_ZH: Record<string, { name: string; description: string }> = {
 
   // openclaw-imports
   'memos-memory-guide': { name: 'MemOS 记忆系统', description: '使用 MemOS 本地记忆系统搜索和使用用户的历史对话。' },
+
+  // 奇计预装技能
+  'qiji-geo': { name: 'GEO 平台自动化', description: '用自然语言操作奇计GEO平台：AI可见度诊断、报告查看、关键词管理、爆文复刻。' },
+  'qiji-knowledge-base': { name: '奇计知识库', description: '自动收集品牌资料、产品信息、行业知识。越用越聪明，为GEO诊断和AI写作提供素材。' },
 }
 
 // ──────────────────────────────────────────────
