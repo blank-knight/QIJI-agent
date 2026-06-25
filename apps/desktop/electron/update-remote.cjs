@@ -12,9 +12,9 @@
  * testable without booting Electron (main.cjs requires('electron') at load).
  */
 
-// Qiji white-label: point update checks at our fork, not upstream Hermes.
-const OFFICIAL_REPO_HTTPS_URL = 'https://github.com/blank-knight/QIJI-agent.git'
-const OFFICIAL_REPO_CANONICAL = 'github.com/blank-knight/qiji-agent'
+// Qiji white-label: point update checks at our Gitee mirror (fast for CN users).
+const OFFICIAL_REPO_HTTPS_URL = 'https://gitee.com/wintao-storm/QIJI-agent.git'
+const OFFICIAL_REPO_CANONICAL = 'gitee.com/wintao-storm/qiji-agent'
 
 // Normalize common GitHub remote URL forms to `host/owner/repo` (lowercased,
 // no trailing slash, no .git suffix) so SSH and HTTPS forms of the same repo
@@ -22,10 +22,16 @@ const OFFICIAL_REPO_CANONICAL = 'github.com/blank-knight/qiji-agent'
 function canonicalGitHubRemote(url) {
   if (!url) return ''
   let value = String(url).trim()
+  // GitHub SSH forms
   if (value.startsWith('git@github.com:')) {
     value = `github.com/${value.slice('git@github.com:'.length)}`
   } else if (value.startsWith('ssh://git@github.com/')) {
     value = `github.com/${value.slice('ssh://git@github.com/'.length)}`
+  // Gitee SSH form
+  } else if (value.startsWith('git@gitee.com:')) {
+    value = `gitee.com/${value.slice('git@gitee.com:'.length)}`
+  } else if (value.startsWith('ssh://git@gitee.com/')) {
+    value = `gitee.com/${value.slice('ssh://git@gitee.com/'.length)}`
   } else {
     try {
       const parsed = new URL(value)

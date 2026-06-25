@@ -122,6 +122,11 @@ function Stage-VendorFiles {
         Copy-Item $vendorGit $managedGit -Recurse -Force
         Write-Host "[vendor] Staged PortableGit" -ForegroundColor Cyan
     }
+    # Prepend managed git to PATH so git commands work in vendor repo init below.
+    $gitBinPath = Join-Path $managedGit "bin"
+    if ((Test-Path $gitBinPath) -and ($env:Path -notlike "*$gitBinPath*")) {
+        $env:Path = "$gitBinPath;$env:Path"
+    }
 
     # 3. Node.js -> $HermesHome\node\
     $vendorNode = Join-Path $VendorDir "node"
@@ -163,7 +168,7 @@ function Stage-VendorFiles {
             git -c windows.appendAtomically=false config core.autocrlf false 2>$null
             git -c windows.appendAtomically=false config user.name "Qiji Installer" 2>$null
             git -c windows.appendAtomically=false config user.email "installer@local" 2>$null
-            git remote add origin "https://github.com/blank-knight/QIJI-agent.git" 2>$null
+            git remote add origin "https://gitee.com/wintao-storm/QIJI-agent.git" 2>$null
             git -c windows.appendAtomically=false add -A 2>$null
             git -c windows.appendAtomically=false commit -m "vendor snapshot" 2>$null
         } catch {}
@@ -244,8 +249,8 @@ Stage-VendorFiles
 # Configuration
 # ============================================================================
 
-$RepoUrlSsh = "git@github.com:blank-knight/QIJI-agent.git"
-$RepoUrlHttps = "https://github.com/blank-knight/QIJI-agent.git"
+$RepoUrlSsh = "git@gitee.com:wintao-storm/QIJI-agent.git"
+$RepoUrlHttps = "https://gitee.com/wintao-storm/QIJI-agent.git"
 $PythonVersion = "3.11"
 $NodeVersion = "22"
 
@@ -1534,16 +1539,16 @@ function Install-Repository {
             Write-Warn "Git clone failed -- downloading ZIP archive instead..."
             try {
                 # Pick the ZIP URL for the most-specific ref the caller asked
-                # for.  GitHub supports archive URLs for commits, tags, and
-                # branches; we honour Commit > Tag > Branch.
+                # for.  Gitee supports archive URLs for branches; we honour
+                # Commit > Tag > Branch (Gitee uses branch archives as primary).
                 if ($Commit) {
-                    $zipUrl = "https://github.com/NousResearch/hermes-agent/archive/$Commit.zip"
+                    $zipUrl = "https://gitee.com/wintao-storm/QIJI-agent/repository/archive/$Commit.zip"
                     $zipLabel = $Commit
                 } elseif ($Tag) {
-                    $zipUrl = "https://github.com/NousResearch/hermes-agent/archive/refs/tags/$Tag.zip"
+                    $zipUrl = "https://gitee.com/wintao-storm/QIJI-agent/repository/archive/$Tag.zip"
                     $zipLabel = $Tag
                 } else {
-                    $zipUrl = "https://github.com/NousResearch/hermes-agent/archive/refs/heads/$Branch.zip"
+                    $zipUrl = "https://gitee.com/wintao-storm/QIJI-agent/repository/archive/$Branch.zip"
                     $zipLabel = $Branch
                 }
                 $zipPath = "$env:TEMP\hermes-agent-$zipLabel.zip"
