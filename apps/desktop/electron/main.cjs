@@ -1609,6 +1609,22 @@ async function resolveHealedBranch(updateRoot, branch) {
 async function checkUpdates() {
   const updateRoot = resolveUpdateRoot()
   let { branch } = readDesktopUpdateConfig()
+
+  // Guard: test if git.exe actually works. Security software (360, Huorong,
+  // Defender) can inject DLLs that crash git.exe with
+  // STATUS_ENTRYPOINT_NOT_FOUND (0xC0000139, exit code -1073741511).
+  // If broken, fall back to HTTP API (Gitee REST) so the user still sees
+  // "update available" instead of a silent failure.
+  //
+  // This probe runs BEFORE the .git existence check because install.ps1's
+  // vendor init (git init) also silently fails when git.exe is broken, leaving
+  // no .git directory at all.  We still want the HTTP fallback to run.
+  const probe = await runGit(['--version'], { cwd: updateRoot })
+  if (probe.code !== 0) {
+    rememberLog(`[updates] git.exe unavailable (exit ${probe.code}), using HTTP API fallback`)
+    return checkUpdatesViaHttp(updateRoot, branch, OFFICIAL_REPO_HTTPS_URL)
+  }
+
   const gitDir = path.join(updateRoot, '.git')
   if (!directoryExists(gitDir)) {
     return {
@@ -1618,17 +1634,6 @@ async function checkUpdates() {
       hermesRoot: updateRoot,
       branch
     }
-  }
-
-  // Guard: test if git.exe actually works. Security software (360, Huorong,
-  // Defender) can inject DLLs that crash git.exe with
-  // STATUS_ENTRYPOINT_NOT_FOUND (0xC0000139, exit code -1073741511).
-  // If broken, fall back to HTTP API (Gitee REST) so the user still sees
-  // "update available" instead of a silent failure.
-  const probe = await runGit(['--version'], { cwd: updateRoot })
-  if (probe.code !== 0) {
-    rememberLog(`[updates] git.exe unavailable (exit ${probe.code}), using HTTP API fallback`)
-    return checkUpdatesViaHttp(updateRoot, branch, OFFICIAL_REPO_HTTPS_URL)
   }
 
   branch = await resolveHealedBranch(updateRoot, branch)

@@ -230,6 +230,29 @@ async function fetchCommitExists(apiBase, sha) {
   }
 }
 
+// ─── Bootstrap marker SHA (when .git is missing) ───────────────────────────
+
+/**
+ * Read the pinnedCommit SHA from the .hermes-bootstrap-complete marker.
+ *
+ * When git.exe is broken AND install.ps1's git init also failed, there is no
+ * .git directory at all.  The bootstrap marker may still carry a pinnedCommit
+ * SHA that tells us what the install was based on.
+ *
+ * @returns {string} 40-char SHA or ''
+ */
+function readShaFromBootstrapMarker(updateRoot) {
+  const markerPath = path.join(updateRoot, '.hermes-bootstrap-complete')
+  try {
+    const marker = JSON.parse(fs.readFileSync(markerPath, 'utf8'))
+    const sha = marker?.pinnedCommit
+    if (typeof sha === 'string' && /^[0-9a-f]{40}$/i.test(sha)) return sha
+  } catch {
+    // no marker or unreadable
+  }
+  return ''
+}
+
 // ─── Orchestrator ──────────────────────────────────────────────────────────
 
 /**
@@ -254,7 +277,13 @@ async function checkUpdatesViaHttp(updateRoot, branch, remoteUrl) {
     }
   }
 
-  const localSha = readLocalHeadSha(updateRoot)
+  // Try .git plumbing first, then fall back to bootstrap marker.
+  // When git.exe is broken, install.ps1's git init also failed, leaving
+  // no .git at all.  The bootstrap marker may still have a pinnedCommit.
+  let localSha = readLocalHeadSha(updateRoot)
+  if (!localSha) {
+    localSha = readShaFromBootstrapMarker(updateRoot)
+  }
   const currentBranch = readLocalBranch(updateRoot)
 
   let remoteHead, recentCommits
@@ -286,6 +315,26 @@ async function checkUpdatesViaHttp(updateRoot, branch, remoteUrl) {
         hermesRoot: updateRoot,
         fetchedAt: Date.now(),
         method: 'http-fallback'
+      }
+    }
+
+    // No local SHA at all (.git missing AND no bootstrap marker).  We can't
+    // know if the install is behind, so report behind:0 to avoid falsely
+    // showing "30 updates available".  The button stays enabled.
+    if (!localSha) {
+      return {
+        supported: true,
+        branch,
+        currentBranch,
+        behind: 0,
+        currentSha: '(unknown)',
+        targetSha: remoteHead.sha,
+        commits: [],
+        dirty: false,
+        hermesRoot: updateRoot,
+        fetchedAt: Date.now(),
+        method: 'http-fallback',
+        note: 'no-local-sha'
       }
     }
 
@@ -368,6 +417,7 @@ async function checkUpdatesViaHttp(updateRoot, branch, remoteUrl) {
 module.exports = {
   readLocalHeadSha,
   readLocalBranch,
+  readShaFromBootstrapMarker,
   parseRepoUrl,
   fetchRecentCommits,
   fetchCommitExists,
