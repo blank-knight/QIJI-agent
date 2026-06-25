@@ -56,6 +56,7 @@ const {
 const { gitRootForIpc } = require('./git-root.cjs')
 const { worktreesForIpc } = require('./git-worktrees.cjs')
 const { OFFICIAL_REPO_HTTPS_URL, isOfficialSshRemote } = require('./update-remote.cjs')
+const { readLocalHeadSha, checkUpdatesViaHttp } = require('./update-http-fallback.cjs')
 const { runRebuildWithRetry } = require('./update-rebuild.cjs')
 const {
   buildPosixCleanupScript,
@@ -1617,6 +1618,17 @@ async function checkUpdates() {
       hermesRoot: updateRoot,
       branch
     }
+  }
+
+  // Guard: test if git.exe actually works. Security software (360, Huorong,
+  // Defender) can inject DLLs that crash git.exe with
+  // STATUS_ENTRYPOINT_NOT_FOUND (0xC0000139, exit code -1073741511).
+  // If broken, fall back to HTTP API (Gitee REST) so the user still sees
+  // "update available" instead of a silent failure.
+  const probe = await runGit(['--version'], { cwd: updateRoot })
+  if (probe.code !== 0) {
+    rememberLog(`[updates] git.exe unavailable (exit ${probe.code}), using HTTP API fallback`)
+    return checkUpdatesViaHttp(updateRoot, branch, OFFICIAL_REPO_HTTPS_URL)
   }
 
   branch = await resolveHealedBranch(updateRoot, branch)
