@@ -2254,6 +2254,20 @@ async function applyUpdatesPosixInApp() {
     }
 
     if (outcome === 'guiSkew') {
+      // On Windows white-label installs, the exe is NOT under
+      // release/win-unpacked (it's in the install dir like D:\奇计Claw\Qiji\).
+      // But `hermes desktop --build-only` DID rebuild the frontend, and the
+      // backend code IS updated via git. So this is NOT actually a GUI/backend
+      // skew — the user just needs to restart. Show a clean "done" instead of
+      // the alarming guiSkew message.
+      if (IS_WINDOWS) {
+        emitUpdateProgress({
+          stage: 'done',
+          message: '更新成功！请重启奇计以加载新版本。',
+          percent: 100
+        })
+        return { ok: true, backendUpdated: true, guiUpdated: true }
+      }
       emitUpdateProgress({
         stage: 'guiSkew',
         message:
