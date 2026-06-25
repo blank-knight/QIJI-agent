@@ -547,6 +547,7 @@ async function runStage({ scriptPath, installerKind, stage, emit, hermesHome, ac
   emit({ type: 'stage', name: stage.name, state: 'running' })
 
   const isPosix = installerKind === 'posix'
+  const vendorArgs = (!isPosix && vendorDir) ? ['-VendorDir', vendorDir] : []
   const args = isPosix
     ? [
         '--stage',
@@ -555,7 +556,6 @@ async function runStage({ scriptPath, installerKind, stage, emit, hermesHome, ac
         '--json',
         ...buildPosixPinArgs({ installStamp, activeRoot, hermesHome })
       ]
-  const vendorArgs = (!isPosix && vendorDir) ? ['-VendorDir', vendorDir] : []
     : ['-Stage', stage.name, '-NonInteractive', '-Json', ...vendorArgs, ...buildPinArgs(installStamp)]
   const result = await (isPosix ? spawnBash : spawnPowerShell)(scriptPath, args, {
     emit,

@@ -3,6 +3,7 @@ const {
   BrowserWindow,
   Menu,
   Notification,
+  Tray,
   clipboard,
   dialog,
   ipcMain,
@@ -702,6 +703,8 @@ function registerMediaProtocol() {
 }
 
 let mainWindow = null
+let appTray = null
+let isQuitting = false
 let hermesProcess = null
 let connectionPromise = null
 // Additional per-profile backends, keyed by profile name. The PRIMARY backend
@@ -1902,25 +1905,27 @@ async function applyUpdates(opts = {}) {
 
   try {
     const updater = resolveUpdaterBinary()
-    if (!updater && !IS_WINDOWS) {
-      // macOS/Linux drag-install: no staged Tauri hermes-setup. Unlike Windows
-      // (where a venv-shim file lock forces the quit→hand-off→rebuild dance),
-      // there's no mandatory file locking here, so the desktop can drive the
-      // whole update itself: `hermes update` (backend) + `hermes desktop
-      // --build-only` (OS-aware GUI rebuild), then swap the running .app bundle
-      // with the freshly built one and relaunch.
-      return await applyUpdatesPosixInApp(opts)
-    }
     if (!updater) {
-      // No staged updater binary — this is a CLI-installed user (they ran
-      // `hermes desktop`, never the Tauri installer that self-copies
-      // hermes-setup.exe into HERMES_HOME). They DO have a working `hermes`
-      // on PATH / in the venv, so the correct path is the one-liner in their
-      // native medium. We show the EXACT command, branch-pinned to the
-      // checkout they're on — bare `hermes update` defaults to main and would
-      // silently switch a bb/gui (or any non-main) install off-branch. Mirror
-      // the GUI button's contract: append --branch <current> for non-main
-      // checkouts, keep it bare for main so the card stays clean.
+      // No staged updater binary — this is a CLI-installed or white-label
+      // user (install.ps1 vendor copy, no hermes-setup.exe). They DO have a
+      // working `hermes` on PATH / in the venv, so we drive the update
+      // in-app via `hermes update` + `hermes desktop --build-only`, then
+      // relaunch — same as the POSIX path.
+      //
+      // If the in-app update fails (e.g. Windows venv file lock), we fall
+      // back to the manual terminal command.
+      const updateRoot0 = resolveUpdateRoot()
+      const hermes0 = resolveHermesCliBinary(updateRoot0)
+      if (hermes0) {
+        try {
+          return await applyUpdatesPosixInApp(opts)
+        } catch (err) {
+          rememberLog(`[updates] in-app update failed: ${err.message}; falling back to manual`)
+          emitUpdateProgress({ stage: 'manual', message: 'hermes update', percent: null })
+          return { ok: true, manual: true, command: 'hermes update', hermesRoot: updateRoot0 }
+        }
+      }
+      // No hermes CLI either — show the terminal command.
       const updateRoot = resolveUpdateRoot()
       let command = 'hermes update'
       try {
@@ -2103,7 +2108,7 @@ async function applyUpdatesPosixInApp() {
   // Node lives directly under %LOCALAPPDATA%\hermes\node, not node\bin.
   const env = {
     HERMES_HOME,
-    PATH: pathWithHermesManagedNode(path.join(updateRoot, 'venv', 'bin'))
+    PATH: pathWithHermesManagedNode(path.join(updateRoot, 'venv', IS_WINDOWS ? 'Scripts' : 'bin'))
   }
 
   // `hermes update` reaps stale `hermes dashboard` backends (a code update
@@ -5614,6 +5619,19 @@ function createWindow() {
   // window-all-closed from quitting on Windows/Linux).
   mainWindow.on('closed', () => closePetOverlay())
 
+  // Minimize-to-tray: intercept the close button (X) on Windows/Linux and
+  // hide the window instead of quitting. The user can quit via the tray
+  // menu's "退出" item. On macOS, the standard behavior is to keep the app
+  // running (window-all-closed does nothing on darwin), so this is a no-op.
+  if (!IS_MAC) {
+    mainWindow.on('close', (e) => {
+      if (!isQuitting) {
+        e.preventDefault()
+        mainWindow.hide()
+      }
+    })
+  }
+
   wireCommonWindowHandlers(mainWindow)
 
   mainWindow.webContents.on('render-process-gone', (_event, details) => {
@@ -7014,6 +7032,49 @@ app.whenReady().then(() => {
   registerPowerResumeListeners()
   createWindow()
 
+  // System tray: on Windows/Linux, create a tray icon so the user can
+  // re-open the hidden window and explicitly quit.
+  if (!IS_MAC) {
+    const trayIconPath = getAppIconPath() || path.join(APP_ROOT, 'assets', 'icon.png')
+    if (trayIconPath && fileExists(trayIconPath)) {
+      const trayImage = nativeImage.createFromPath(trayIconPath)
+      // Resize to 32x32 for Windows tray
+      const resized = trayImage.resize({ width: 32, height: 32 })
+      appTray = new Tray(resized)
+      appTray.setToolTip(APP_NAME)
+      const contextMenu = Menu.buildFromTemplate([
+        {
+          label: '显示奇计',
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.show()
+              mainWindow.focus()
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: '退出',
+          click: () => {
+            isQuitting = true
+            app.quit()
+          }
+        }
+      ])
+      appTray.setContextMenu(contextMenu)
+      appTray.on('click', () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          if (mainWindow.isVisible()) {
+            mainWindow.hide()
+          } else {
+            mainWindow.show()
+            mainWindow.focus()
+          }
+        }
+      })
+    }
+  }
+
   // Win/Linux cold start: the launching hermes:// URL is in our own argv.
   const _coldStartLink = _extractDeepLink(process.argv)
   if (_coldStartLink) handleDeepLink(_coldStartLink)
@@ -7025,6 +7086,9 @@ app.whenReady().then(() => {
     if (!mainWindow || mainWindow.isDestroyed()) {
       createWindow()
     } else {
+      // On Windows/Linux the window may be hidden (minimize-to-tray).
+      if (!mainWindow.isVisible()) mainWindow.show()
+      mainWindow.focus()
       focusWindow(mainWindow)
     }
   })
@@ -7054,6 +7118,7 @@ function configureSpellChecker() {
 }
 
 app.on('before-quit', () => {
+  isQuitting = true
   // The always-on-top overlay isn't a "real" app window; close it so a stray
   // pet can't keep the process alive or float over a quit app.
   closePetOverlay()
@@ -7087,5 +7152,11 @@ app.on('before-quit', () => {
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
+  // On macOS, keep running. On Windows/Linux, the main window's close
+  // event is intercepted (hide instead of close), so this only fires when
+  // the user explicitly quits via tray or before-quit.
+  if (process.platform !== 'darwin') {
+    if (isQuitting) app.quit()
+    // else: window was hidden, not closed — keep the process alive.
+  }
 })
