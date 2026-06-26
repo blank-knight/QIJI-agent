@@ -576,11 +576,11 @@ export function startUpdatePoller(): void {
     }
   })
 
-  window.addEventListener('focus', onFocus)
+  // No focus-based polling — daily interval is sufficient.
   backgroundTimer = setInterval(() => {
     void checkUpdates()
     void checkBackendUpdates()
-  }, 30 * 60 * 1000)
+  }, 24 * 60 * 60 * 1000)
 }
 
 export function stopUpdatePoller(): void {
@@ -592,19 +592,5 @@ export function stopUpdatePoller(): void {
   connectionUnsub?.()
   connectionUnsub = null
   lastConnectionMode = undefined
-  window.removeEventListener('focus', onFocus)
   pollerStarted = false
-}
-
-function onFocus() {
-  const now = Date.now()
-
-  if (now - lastFocusAt < 5 * 60 * 1000) {
-    return
-  }
-
-  lastFocusAt = now
-  void checkUpdates()
-  void checkBackendUpdates()
-  void refreshDesktopVersion()
 }
