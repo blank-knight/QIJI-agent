@@ -95,8 +95,23 @@ async function login(page) {
   return !page.url().includes('/login');
 }
 
-function getFrame(page) {
-  return page.frames().find(f => f.url().includes('addtabs=1'));
+async function getFrame(page, retries = 15) {
+  for (let i = 0; i < retries; i++) {
+    // Find the content iframe (addtabs=1 in URL)
+    const frame = page.frames().find(f => f.url().includes('addtabs=1'));
+    if (frame) {
+      // Wait for frame content to load
+      try { await frame.waitForLoadState('domcontentloaded', { timeout: 3000 }); } catch {}
+      // Verify frame has actual content (not empty)
+      try {
+        const bodyLen = await frame.evaluate(() => document.body?.innerText?.length || 0);
+        if (bodyLen > 0) return frame;
+      } catch {}
+    }
+    try { await page.waitForTimeout(500); } catch {}
+  }
+  // Last attempt: return whatever frame we found, even if content seems empty
+  return page.frames().find(f => f.url().includes('addtabs=1')) || null;
 }
 
 async function goHome(page) {
@@ -125,7 +140,7 @@ async function clickMenu(page, parentText, childText) {
 async function getRights(page) {
   await goHome(page);
   await clickMenu(page, '账号权益');
-  const frame = getFrame(page);
+  const frame = await getFrame(page);
   if (!frame) return { error: 'iframe未加载' };
 
   const text = await frame.locator('body').innerText().catch(() => '');
@@ -152,7 +167,7 @@ async function getRights(page) {
 async function diagnose(page, params) {
   await goHome(page);
   await clickMenu(page, 'AI可见度诊断');
-  const frame = getFrame(page);
+  const frame = await getFrame(page);
   if (!frame) return { error: 'iframe未加载' };
 
   const brand = params.brand;
@@ -238,7 +253,7 @@ async function diagnose(page, params) {
 async function getReports(page) {
   await goHome(page);
   await clickMenu(page, '诊断报告');
-  const frame = getFrame(page);
+  const frame = await getFrame(page);
   if (!frame) return { error: 'iframe未加载' };
 
   // Bootstrap Table 解析：去掉空列和序号列
@@ -289,7 +304,7 @@ async function getReports(page) {
 async function getKeywords(page) {
   await goHome(page);
   await clickMenu(page, 'AI素材源力', '关键词');
-  const frame = getFrame(page);
+  const frame = await getFrame(page);
   if (!frame) return { error: 'iframe未加载' };
 
   // Bootstrap Table 解析：去掉空列和序号列
@@ -331,7 +346,7 @@ async function getKeywords(page) {
 async function createFuken(page, params) {
   await goHome(page);
   await clickMenu(page, 'AI流量复刻', '全网爆文复刻');
-  const mainFrame = getFrame(page);
+  const mainFrame = await getFrame(page);
   if (!mainFrame) return { error: 'iframe未加载' };
 
   await mainFrame.locator('a.btn-add').click().catch(() => {});
@@ -375,7 +390,7 @@ async function createFuken(page, params) {
 async function getArticles(page) {
   await goHome(page);
   await clickMenu(page, 'AI文章写作', '文章列表');
-  const frame = getFrame(page);
+  const frame = await getFrame(page);
   if (!frame) return { error: 'iframe未加载' };
 
   let rows = await frame.evaluate(() => {
@@ -435,7 +450,7 @@ async function runTests(page) {
     try {
       await goHome(page);
       await clickMenu(page, t.parent || t.menu, t.parent ? t.menu : null);
-      const frame = getFrame(page);
+      const frame = await getFrame(page);
       if (frame) {
         const content = await frame.locator('body').innerText().catch(() => '');
         results.push({ page: label, status: 'ok', preview: content.substring(0, 80) });
