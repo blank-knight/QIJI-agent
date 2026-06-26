@@ -7019,6 +7019,9 @@ if (!_gotSingleInstanceLock) {
     const url = _extractDeepLink(argv)
     if (url) handleDeepLink(url)
     else if (mainWindow) {
+      // On Windows/Linux the window may be hidden (minimize-to-tray).
+      // restore() alone doesn't un-hide it — explicitly show first.
+      if (!mainWindow.isVisible()) mainWindow.show()
       if (mainWindow.isMinimized()) mainWindow.restore()
       mainWindow.focus()
     }
