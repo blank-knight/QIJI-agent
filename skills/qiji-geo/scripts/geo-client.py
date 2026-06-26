@@ -276,8 +276,13 @@ def cmd_logs(task_id=None):
         print("❌ 客户端未运行")
         return False
 
-    url = f"{FLASK_BASE}/api/logs/{task_id}"
-    code, data = http_get(url, timeout=10)
+    # AI push uses /api/ai_logs/, regular push uses /api/logs/
+    # Try both
+    for log_path in [f"/api/ai_logs/{task_id}", f"/api/logs/{task_id}"]:
+        url = f"{FLASK_BASE}{log_path}"
+        code, data = http_get(url, timeout=10)
+        if code == 200:
+            break
     
     if code == 200:
         if isinstance(data, dict):
