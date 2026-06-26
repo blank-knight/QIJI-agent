@@ -121,13 +121,11 @@ def http_post(url, body=None, timeout=10):
 
 
 def check_flask():
-    """检查 Flask 是否在运行"""
-    # 试几个已知的端点
-    for endpoint in ["/api/stop", "/api/push"]:
-        code, _ = http_post(f"{FLASK_BASE}{endpoint}", timeout=3)
-        if code in (200, 500):  # 500 说明路由存在但 body 不对
-            return True
-    return False
+    """检查 Flask 是否在运行（用 GET 探测，不触发任何副作用）"""
+    # ⚠️ 不要用 POST /api/stop 探测——会杀掉正在运行的任务！
+    code, _ = http_get(f"{FLASK_BASE}/api/ai_logs/ping", timeout=3)
+    # 404 也说明 Flask 在线（路由不存在但服务器响应了）
+    return code in (200, 404, 500)
 
 
 # ============================================================
