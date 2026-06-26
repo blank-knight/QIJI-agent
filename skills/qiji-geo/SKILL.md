@@ -222,26 +222,10 @@ export GEO_USERNAME="4000761588"  # 默认
 ## 已知限制（2026-06-27）
 
 1. **articles 列偏移**：Bootstrap Table 的分类列(category)和标题列(title)顺序可能与预期不符，且数据重复（页面有两个 tbody）。需 dump 实际 DOM 确认列顺序后修。
-2. **rights iframe 偶发未加载**：rights 命令偶发返回 `{error: "iframe未加载"}`——菜单点击后 iframe 选择器 `addtabs=1` 未及时出现。需检查 `references/platform-selectors.md` 选择器是否过时，或增加重试逻辑。
+2. **rights iframe 偶发未加载**：已修复。`getFrame()` 改为 async + 重试（15次，500ms间隔），等待 iframe 出现且内容非空后才返回。
 3. **report 解析**：无实际诊断数据可测，空列表返回正确但表格解析逻辑未经实数据验证。
 4. **表格分页**：Bootstrap Table 默认只返回第一页（通常10条），翻页未处理。
 5. **udid/uid 无法自动提取**：Chromium localStorage 存在 LevelDB 中，SSTable block 压缩会把 JSON 值打碎（实测 `savedLoginData` 被截断为 `{"username":"4000761588","password":` + 二进制碎片）。**不要浪费时间手动解析 LevelDB**——直接问用户要授权码。
-6. **Bootstrap Table 解析重复段落**：下方有两段 Bootstrap Table 解析说明（简版+详细版），内容重叠。后续整合为一段。
-
-## Bootstrap Table 解析模式（核心技巧）
-
-奇计平台所有表格用 Bootstrap Table，不是原生 `<table>`。直接按 `tds[0]=id, tds[1]=col1` 映射会错位，因为第一列通常是复选框或序号。
-
-正确模式（已在 geo-cli.js 中使用）：
-```javascript
-let tds = Array.from(tr.querySelectorAll('td')).map(td => td.textContent.trim());
-// 去掉序号列
-if (tds.length > 0 && /^\d+$/.test(tds[0])) tds = tds.slice(1);
-// 过滤掉无效行
-.filter(r => r && r.fieldName && !/^\d+$/.test(r.fieldName));
-```
-
-回退策略：innerText + tab 分隔解析（当 DOM 解析返回空时）。
 
 ## Bootstrap Table 解析策略
 
