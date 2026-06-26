@@ -304,7 +304,19 @@ def cmd_ai_push():
         print("❌ 客户端未运行")
         return False
 
-    body = {"udid": GEO_UDID, "uid": GEO_UID}
+    # Parameters must match the client's Vue component exactly
+    # Source: app.fd1c1ddf.js → startAiPushTask({uid,udid,model_type,my_headless,...})
+    body = {
+        "uid": GEO_UID,
+        "udid": GEO_UDID,
+        "model_type": "",           # AI model ID (empty = default/all)
+        "my_headless": False,       # False = show browser window
+        "publish_interval": 5,
+        "google_path": "",
+        "api_url": "",
+        "agent_ip_url": "",
+        "agent_ip_username": "",
+    }
     code, data = http_post(f"{FLASK_BASE}/api/ai_push", body, timeout=30)
     
     if code == 200 and isinstance(data, dict):
