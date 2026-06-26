@@ -2263,9 +2263,19 @@ async function applyUpdatesPosixInApp() {
       if (IS_WINDOWS) {
         emitUpdateProgress({
           stage: 'done',
-          message: '更新成功！请重启奇计以加载新版本。',
+          message: '更新成功！正在重启奇计…',
           percent: 100
         })
+        // Auto-relaunch: the Electron main process is still alive, but the
+        // backend was killed by `hermes update` and the renderer lost its
+        // WebSocket. Rather than leaving the user on a dead UI, relaunch
+        // the entire app after a short delay so the progress message shows.
+        rememberLog('[updates] update done on Windows, scheduling app relaunch')
+        setTimeout(() => {
+          rememberLog('[updates] relaunching Electron app after update')
+          app.relaunch()
+          app.exit(0)
+        }, 2000)
         return { ok: true, backendUpdated: true, guiUpdated: true }
       }
       emitUpdateProgress({

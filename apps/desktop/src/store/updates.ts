@@ -525,7 +525,8 @@ function ingestProgress(payload: DesktopUpdateProgress): void {
     payload.stage === 'error' ||
     payload.stage === 'restart' ||
     payload.stage === 'manual' ||
-    payload.stage === 'guiSkew'
+    payload.stage === 'guiSkew' ||
+    payload.stage === 'done'
 
   $updateApply.set({
     applying: !terminal,
