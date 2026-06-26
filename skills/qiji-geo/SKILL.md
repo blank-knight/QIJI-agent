@@ -1,7 +1,7 @@
 ---
 name: qiji-geo
-description: "奇计GEO平台自动化。用自然语言操作 geo.heikexia.cc：AI可见度诊断、诊断报告、关键词管理、爆文复刻、文章列表、账号权益查询。当用户提到奇计、GEO诊断、AI可见度、品牌诊断、geo.heikexia 时加载。"
-version: 1.0.0
+description: "奇计GEO平台自动化（网页端 + 桌面客户端）。网页端操作 geo.heikexia.cc：AI可见度诊断、诊断报告、关键词管理、爆文复刻、文章列表、账号权益查询。桌面客户端（auth helper.exe）操作16个社媒平台分发 + 8个AI认证。当用户提到奇计、GEO诊断、AI可见度、品牌诊断、geo.heikexia、auth helper、社媒分发 时加载。"
+version: 1.2.0
 ---
 
 # 奇计GEO平台自动化 Skill
@@ -30,12 +30,24 @@ version: 1.0.0
 
 ## 凭证配置
 
+### 网页端（geo.heikexia.cc）
+
 在 `~/.hermes/.env` 中设置（或使用默认测试账号）：
 
 ```
 GEO_USERNAME=4000761588
 GEO_PASSWORD=4000761588
 ```
+
+### 桌面客户端（auth helper）
+
+```bash
+export GEO_UDID="授权码"      # 必需，从客户端登录界面获取
+export GEO_UID="用户ID"       # 远程 API 登录后返回
+export GEO_USERNAME="4000761588"  # 默认
+```
+
+⚠️ udid 无法自动提取（LevelDB block 压缩问题，见已知限制 #5），需用户手动提供。
 
 ## 可用命令
 
@@ -132,12 +144,89 @@ node scripts/geo-cli.js test
 - 删除/提交操作会弹 confirm 弹窗，脚本内已自动确认
 - 每个操作独立启动浏览器，执行完关闭（无状态保持）
 
-## 已知限制（2026-06-18）
+## 桌面客户端（Auth Helper）
+
+除网页端外，GEO 还有桌面客户端 `D:\GEO cli\auth helper\auth helper.exe`，用于社媒分发和 AI 认证。
+
+### 控制方式选择
+
+| 方式 | 可行性 | 说明 |
+|------|--------|------|
+| PowerShell 代理 → Flask API | ✅ 推荐 | 100% 可靠，见 `scripts/geo-client.py` |
+| WSL 直连 Flask | ❌ 被防火墙拦截 | localhost forwarding 被 360/火绒拦截 |
+| Playwright CDP | ❌ 被安全软件拦截 | HTTP 端点超时，见下方 |
+| Playwright Electron launch | ❌ firstWindow 超时 | 同上 |
+
+### 客户端控制命令（geo-client.py）
+
+```bash
+# 检查客户端状态
+python3 scripts/geo-client.py status
+
+# 启动客户端
+python3 scripts/geo-client.py start
+
+# 社媒发布
+python3 scripts/geo-client.py push       # 启动
+python3 scripts/geo-client.py stop       # 停止
+python3 scripts/geo-client.py logs <id>  # 查看日志
+
+# AI 发布
+python3 scripts/geo-client.py ai-push    # 启动
+python3 scripts/geo-client.py ai-stop    # 停止
+
+# 账号管理（需 GEO_UDID 环境变量）
+python3 scripts/geo-client.py accounts   # 社媒账号列表
+python3 scripts/geo-client.py platforms  # 支持的平台
+```
+
+环境变量配置：
+```bash
+export GEO_UDID="授权码"      # 必需
+export GEO_UID="用户ID"       # 可选
+export GEO_USERNAME="4000761588"  # 默认
+```
+
+### 双 API 架构（关键）
+
+客户端有**两套后端**：
+1. **本地 Flask (127.0.0.1:5000)** — 浏览器自动化（发布、认证）。WSL 必须通过 PowerShell 代理访问。
+2. **远程服务器 (8.138.58.181)** — 管理类 API（账号列表、平台列表、登录验证）。WSL 可直接访问。
+
+### CDP 被安全软件拦截（已知坑）
+
+360/火绒/Defender 会拦截 Electron 的 CDP HTTP 端点：
+- `--remote-debugging-port=9222` 能开端口，TCP 握手成功
+- 但 HTTP `/json/version` 请求全部超时——安全软件在 HTTP 层面掐断响应
+- WebSocket 能连上（日志显示 `<ws connected>`），但 Playwright 的 `firstWindow()` 和 `app.windows()` 超时
+- **结论：这台机器上无法通过 CDP 控制 Electron 客户端，必须走 PowerShell 代理 + Flask API**
+
+### 客户端能力（16 个社媒平台 + 8 个 AI 认证）
+
+- **社媒分发**: B站、百家号、CSDN、抖音、简书、快手、企鹅号、搜狐号、视频号、头条号、微博、微信公众号、网易号、小红书、什么值得买、知乎
+- **AI 认证**: deepseek、豆包、kimi、nami、通义千问、文心一言、元宝、智谱
+- 客户端自带 playwright-core 做浏览器自动化
+
+### 客户端 API 文档
+
+完整的 Flask API 端点表（实测验证）、远程服务器端点表、push 请求体格式，见 `references/auth-helper-client.md`。
+
+### 与知识库 Skill 联动
+
+用户通过 `knowledge-base-articles` skill 创建品牌资料卡（模板：`knowledge-vault/_Templates/brand-card.md`），GEO skill 从知识库读取品牌数据用于：
+- AI 可见度诊断的品牌名和关键词
+- 爆文复刻的内容参考
+- 文章生成的基础素材
+- 社媒分发时的账号信息
+
+## 已知限制（2026-06-27）
 
 1. **articles 列偏移**：Bootstrap Table 的分类列(category)和标题列(title)顺序可能与预期不符，且数据重复（页面有两个 tbody）。需 dump 实际 DOM 确认列顺序后修。
-2. **rights 部分字段未匹配**：已收录数/有效期/点数/余额 ✅，但主关键词额度/写作问题额度/AI写作数量/文章发布额度 ❌（正则未命中实际页面文字）。
+2. **rights iframe 偶发未加载**：rights 命令偶发返回 `{error: "iframe未加载"}`——菜单点击后 iframe 选择器 `addtabs=1` 未及时出现。需检查 `references/platform-selectors.md` 选择器是否过时，或增加重试逻辑。
 3. **report 解析**：无实际诊断数据可测，空列表返回正确但表格解析逻辑未经实数据验证。
 4. **表格分页**：Bootstrap Table 默认只返回第一页（通常10条），翻页未处理。
+5. **udid/uid 无法自动提取**：Chromium localStorage 存在 LevelDB 中，SSTable block 压缩会把 JSON 值打碎（实测 `savedLoginData` 被截断为 `{"username":"4000761588","password":` + 二进制碎片）。**不要浪费时间手动解析 LevelDB**——直接问用户要授权码。
+6. **Bootstrap Table 解析重复段落**：下方有两段 Bootstrap Table 解析说明（简版+详细版），内容重叠。后续整合为一段。
 
 ## Bootstrap Table 解析模式（核心技巧）
 
@@ -154,12 +243,54 @@ if (tds.length > 0 && /^\d+$/.test(tds[0])) tds = tds.slice(1);
 
 回退策略：innerText + tab 分隔解析（当 DOM 解析返回空时）。
 
+## Bootstrap Table 解析策略
+
+奇计平台用 Bootstrap Table（不是原生 `<table>`），表格数据解析有两种策略，**必须先试 A 再回退 B**：
+
+### 策略 A：DOM 解析（优先）
+
+```javascript
+let rows = await frame.evaluate(() => {
+  const trs = document.querySelectorAll('table tbody tr, .fixed-table-body tbody tr');
+  return Array.from(trs).map(tr => {
+    let tds = Array.from(tr.querySelectorAll('td')).map(td => td.textContent.trim());
+    // 关键：Bootstrap Table 第一列是序号或checkbox，需要去掉
+    if (tds.length > 0 && /^\d+$/.test(tds[0])) tds = tds.slice(1);
+    return { col1: tds[0], col2: tds[1] };
+  }).filter(r => r.col1 && !/^\d+$/.test(r.col1));  // 过滤掉序号行
+});
+```
+
+### 策略 B：innerText 回退（A 失败时）
+
+```javascript
+const text = await frame.locator('body').innerText();
+for (const line of text.split('\n')) {
+  const parts = line.split('\t').map(p => p.trim()).filter(Boolean);
+  if (parts.length >= 3 && /^\d+$/.test(parts[0])) {
+    rows.push({ col1: parts[1], col2: parts[2] });  // 跳过 parts[0]（序号）
+  }
+}
+```
+
+### 常见坑
+
+1. **列偏移**：Bootstrap Table 默认有 checkbox/序号列，直接 `tds[0]` 拿到的是序号不是数据。必须先检测并去掉序号列。
+2. **重复数据**：`table` 和 `.fixed-table-body` 可能匹配到同一个 tbody，导致数据翻倍。用 `filter(r => r.keyword)` 去重。
+3. **诊断报告页**：该页面的表格结构可能跟其他页面不同，innerText 回退法可能也返回空。需要实际有数据时再验证。
+
 ## 故障排查
 
 | 问题 | 解决 |
 |------|------|
 | 登录失败 | 检查 GEO_USERNAME/GEO_PASSWORD 环境变量 |
-| iframe 未加载 | 增加 `--timeout` 参数 |
-| Playwright 未安装 | `cd ~/.hermes/skills/qiji-geo && npm install && npx playwright install chromium` |
+| `page.waitForTimeout: Target page...has been closed` | 页面导航时 waitForTimeout 崩溃。goHome/clickMenu 内已加 try-catch 兜底，若新代码也遇到，同样用 `try { await page.waitForTimeout(N); } catch {}` 包裹 |
+| iframe 未加载 | 增加 `--timeout` 参数；rights 偶发"iframe未加载"是菜单选择器变动，检查 `references/platform-selectors.md` |
+| Playwright 未安装 | `cd ~/.hermes/skills/qiji-geo && npm install` |
 | 网络超时 | 确认能访问 geo.heikexia.cc，可能需要代理 |
+| 表格解析全 undefined | Bootstrap Table 序号列偏移，见上方策略 A |
+| 关键词列对调 | 第一列是序号不是关键词，用 `tds.slice(1)` 跳过 |
 | 表格解析错位 | 第一列可能是序号或checkbox，用 `/^\d+$/` 检测并 slice |
+| Flask API 全 404 | 端点可能走远程服务器(8.138.58.181)而非本地 Flask。POST `{}` 测：500=路由存在(bad body)，404=路由不存在。详见 `references/auth-helper-client.md` |
+| udid/uid 获取 | ⚠️ **不要尝试从 Chromium LevelDB 提取**——SSTable block 压缩会打碎 JSON 值，提取不可靠。直接问用户要授权码，或读 `localStorage` via app UI |
+| WSL 连不上 Flask:5000 | localhost forwarding 被安全软件拦截。必须用 PowerShell 代理（`geo-client.py` 已内置 `_ps_request()`） |

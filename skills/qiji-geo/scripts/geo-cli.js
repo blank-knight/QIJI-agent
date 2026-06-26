@@ -85,7 +85,12 @@ async function login(page) {
   await page.getByPlaceholder(/账号|手机/).first().fill(CONFIG.username);
   await page.getByPlaceholder(/密码/).first().fill(CONFIG.password);
   await page.getByRole('button', { name: /登.*录/i }).click();
-  await page.waitForTimeout(5000);
+  // 等待登录完成（页面跳转可能关闭当前 page，用 try-catch 兜底）
+  try {
+    await page.waitForURL('**/user/dashboard*', { timeout: 10000 });
+  } catch {
+    try { await page.waitForTimeout(3000); } catch {}
+  }
 
   return !page.url().includes('/login');
 }
@@ -96,7 +101,7 @@ function getFrame(page) {
 
 async function goHome(page) {
   await page.locator('aside a:has-text("首页")').first().click().catch(() => {});
-  await page.waitForTimeout(2000);
+  try { await page.waitForTimeout(2000); } catch {}
 }
 
 async function clickMenu(page, parentText, childText) {
@@ -106,13 +111,13 @@ async function clickMenu(page, parentText, childText) {
     const visible = await child.isVisible().catch(() => false);
     if (!visible) {
       await parent.click().catch(() => {});
-      await page.waitForTimeout(1000);
+      try { await page.waitForTimeout(1000); } catch {}
     }
     await child.click({ timeout: 5000 }).catch(() => {});
   } else {
     await page.locator(`aside a:has-text("${parentText}")`).first().click().catch(() => {});
   }
-  await page.waitForTimeout(3000);
+  try { await page.waitForTimeout(3000); } catch {}
 }
 
 // ========== 1. 账号权益 ==========
