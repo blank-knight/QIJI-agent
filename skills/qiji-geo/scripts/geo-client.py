@@ -48,6 +48,49 @@ CLIENT_DIR = r"D:\GEO cli\auth helper"
 GEO_UDID = os.environ.get("GEO_UDID", "")
 GEO_UID = os.environ.get("GEO_UID", "")
 GEO_USERNAME = os.environ.get("GEO_USERNAME", "4000761588")
+GEO_PASSWORD = os.environ.get("GEO_PASSWORD", "4000761588")
+
+# 运行时缓存：从远程 API 获取的完整配置
+_runtime_config = {}
+
+
+def _resolve_credentials():
+    """自动获取 uid 和完整运行参数（api_url 等）。
+
+    流程：
+    1. 用 username+password+udid 调 POST /api/zhushou/login → 拿到 uid
+    2. 用 uid+udid 调 POST /api/zhushou/index → 拿到 api_url / agent_ip_url 等
+
+    结果缓存在 _runtime_config 中。如果 udid 未设置，跳过。
+    """
+    global _runtime_config
+    if _runtime_config:
+        return _runtime_config
+    if not GEO_UDID:
+        return {}
+
+    # 1. 登录获取 uid
+    login_body = json.dumps({
+        "username": GEO_USERNAME,
+        "password": GEO_PASSWORD,
+        "udid": GEO_UDID,
+    })
+    code, data = http_post(f"{REMOTE_BASE}/api/zhushou/login", body=json.loads(login_body), timeout=15)
+    if code == 200 and isinstance(data, dict) and data.get("code") == 1:
+        login_data = data.get("data", {})
+        _runtime_config["uid"] = str(login_data.get("uid", ""))
+        _runtime_config["udid"] = login_data.get("udid", GEO_UDID)
+
+    # 2. 获取首页配置
+    index_body = {"username": GEO_USERNAME, "udid": GEO_UDID, "uid": _runtime_config.get("uid", "")}
+    code2, data2 = http_post(f"{REMOTE_BASE}/api/zhushou/index", body=index_body, timeout=15)
+    if code2 == 200 and isinstance(data2, dict) and data2.get("code") == 1:
+        cfg = data2.get("data", {})
+        _runtime_config["api_url"] = cfg.get("api_url", "")
+        _runtime_config["agent_ip_url"] = cfg.get("agent_ip_url", "")
+        _runtime_config["agent_ip_username"] = cfg.get("agent_ip_username", "")
+
+    return _runtime_config
 
 # ============================================================
 # HTTP 工具
@@ -94,11 +137,20 @@ def _ps_request(url, method="GET", body=None, timeout=10):
 
     result = subprocess.run(
         ["powershell.exe", "-NoProfile", "-Command", ps_script],
-        capture_output=True, text=True, timeout=timeout + 10
+        capture_output=True, timeout=timeout + 10
     )
-    output = result.stdout.strip()
+    # PowerShell on Chinese Windows outputs GBK (cp936); decode safely
+    try:
+        output = result.stdout.decode("gbk", errors="replace").strip()
+    except Exception:
+        output = result.stdout.decode("utf-8", errors="replace").strip() if result.stdout else ""
     if not output:
-        return 0, result.stderr.strip() or "PowerShell error"
+        stderr_msg = ""
+        try:
+            stderr_msg = result.stderr.decode("gbk", errors="replace").strip()
+        except Exception:
+            stderr_msg = "PowerShell error"
+        return 0, stderr_msg or "PowerShell error"
 
     lines = output.split("\n", 2)
     status = int(lines[0].strip()) if lines[0].strip().isdigit() else 0
@@ -150,17 +202,17 @@ def cmd_status():
     result = subprocess.run(
         ["powershell.exe", "-NoProfile", "-Command",
          "(Get-Process -Name 'auth helper' -ErrorAction SilentlyContinue | Measure-Object).Count"],
-        capture_output=True, text=True, timeout=5
+        capture_output=True, timeout=5
     )
-    proc_count = result.stdout.strip()
+    proc_count = result.stdout.decode("gbk", errors="replace").strip() if result.stdout else ""
     print(f"Electron 进程: {'✅ ' + proc_count + ' 个进程' if proc_count and proc_count != '0' else '❌ 未运行'}")
 
     result2 = subprocess.run(
         ["powershell.exe", "-NoProfile", "-Command",
          "(Get-Process -Name 'main' -ErrorAction SilentlyContinue | Measure-Object).Count"],
-        capture_output=True, text=True, timeout=5
+        capture_output=True, timeout=5
     )
-    flask_proc = result2.stdout.strip()
+    flask_proc = result2.stdout.decode("gbk", errors="replace").strip() if result2.stdout else ""
     print(f"Flask 进程 (main.exe): {'✅ 运行中' if flask_proc and flask_proc != '0' else '❌ 未运行'}")
 
     # 4. 凭证状态
@@ -218,14 +270,19 @@ def cmd_push():
 
     print("启动社媒发布任务...")
 
+    # 自动获取凭证（如果设置了 udid）
+    cfg = _resolve_credentials()
+    uid = GEO_UID or cfg.get("uid", "")
+    api_url = cfg.get("api_url", "")
+
     # 构建 push 请求体
     body = {
-        "uid": GEO_UID,
+        "uid": uid,
         "udid": GEO_UDID,
-        "my_headless": False,
+        "my_headless": True,    # True = 显示浏览器窗口（参数名是反的！True→可见）
         "publish_interval": 5,
         "google_path": "",
-        "api_url": "",
+        "api_url": api_url,
         "agent_ip_url": "",
         "agent_ip_username": "",
     }
@@ -304,16 +361,21 @@ def cmd_ai_push():
         print("❌ 客户端未运行")
         return False
 
+    # 自动获取凭证（如果设置了 udid）
+    cfg = _resolve_credentials()
+    uid = GEO_UID or cfg.get("uid", "")
+    api_url = cfg.get("api_url", "")
+
     # Parameters must match the client's Vue component exactly
     # Source: app.fd1c1ddf.js → startAiPushTask({uid,udid,model_type,my_headless,...})
     body = {
-        "uid": GEO_UID,
+        "uid": uid,
         "udid": GEO_UDID,
         "model_type": "",           # AI model ID (empty = default/all)
-        "my_headless": False,       # False = show browser window
+        "my_headless": True,       # True = 显示浏览器窗口（参数名是反的！True→可见）
         "publish_interval": 5,
         "google_path": "",
-        "api_url": "",
+        "api_url": api_url,
         "agent_ip_url": "",
         "agent_ip_username": "",
     }
