@@ -53,6 +53,21 @@ export GEO_USERNAME="4000761588"  # 默认
 
 所有命令通过 `scripts/geo-cli.js` 执行。工作目录为 skill 根目录。
 
+**可选参数**（所有命令通用）：
+- 默认显示浏览器窗口（可视化模式），用户可实时观看自动化操作
+- `--headless` — 切换为无头模式（后台运行，不显示窗口，速度更快）
+- 环境变量 `GEO_HEADLESS=true` 也能达到同样效果
+
+```bash
+# 默认可视化模式（显示浏览器窗口）
+node scripts/geo-cli.js login
+
+# 无头模式（后台运行，速度更快）
+node scripts/geo-cli.js login --headless
+```
+
+当用户说"后台运行"、"不用看"、"无头模式"等，加 `--headless` 参数。
+
 ### 1. 登录测试
 
 ```bash

@@ -24,7 +24,7 @@ const CONFIG = {
   url: 'https://geo.heikexia.cc',
   username: process.env.GEO_USERNAME || '4000761588',
   password: process.env.GEO_PASSWORD || '4000761588',
-  headless: true,
+  headless: process.env.GEO_HEADLESS ? process.env.GEO_HEADLESS === 'true' : false,
   timeout: 30000,
 };
 
@@ -44,6 +44,10 @@ function parseArgs() {
         params[key] = true;
       }
     }
+  }
+  // --headless overrides headless to true (run in background without UI)
+  if (params['headless']) {
+    CONFIG.headless = true;
   }
   return { action, params };
 }
