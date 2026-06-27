@@ -5069,12 +5069,26 @@ def _desktop_packaged_executable(desktop_dir: Path) -> Optional[Path]:
     release_dir = desktop_dir / "release"
     if sys.platform == "darwin":
         candidates = list(release_dir.glob("mac*/Hermes.app/Contents/MacOS/Hermes"))
+        # White-label: also glob for any .app bundle (productName may differ)
+        candidates.extend(
+            p
+            for patt in release_dir.glob("mac*/*.app")
+            for p in patt.glob("Contents/MacOS/*")
+            if p.is_file() and os.access(p, os.X_OK)
+        )
     elif sys.platform == "win32":
         candidates = [
             release_dir / "win-unpacked" / "Hermes.exe",
             release_dir / "win-ia32-unpacked" / "Hermes.exe",
             release_dir / "win-arm64-unpacked" / "Hermes.exe",
         ]
+        # White-label builds produce a differently-named exe (e.g. Qiji.exe).
+        for sub in ("win-unpacked", "win-ia32-unpacked", "win-arm64-unpacked"):
+            unpacked = release_dir / sub
+            if unpacked.is_dir():
+                for exe in unpacked.glob("*.exe"):
+                    if exe not in candidates:
+                        candidates.append(exe)
     else:
         candidates = [
             release_dir / "linux-unpacked" / "hermes",
@@ -5082,6 +5096,13 @@ def _desktop_packaged_executable(desktop_dir: Path) -> Optional[Path]:
             release_dir / "linux-arm64-unpacked" / "hermes",
             release_dir / "linux-arm64-unpacked" / "Hermes",
         ]
+        # White-label: glob for any executable in linux-unpacked root
+        for sub in ("linux-unpacked", "linux-arm64-unpacked"):
+            unpacked = release_dir / sub
+            if unpacked.is_dir():
+                for exe in unpacked.iterdir():
+                    if exe.is_file() and os.access(exe, os.X_OK) and exe not in candidates:
+                        candidates.append(exe)
 
     existing = [p for p in candidates if p.exists()]
     if not existing:

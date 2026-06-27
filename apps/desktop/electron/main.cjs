@@ -2170,11 +2170,24 @@ async function applyUpdatesPosixInApp() {
     return runStreamedUpdate(hermes, ['desktop', '--build-only'], { cwd: updateRoot, env, stage: 'rebuild' })
   })
   if (rebuilt.code !== 0) {
+    rememberLog(`[updates] rebuild failed: ${rebuilt.error || 'unknown'}`)
     emitUpdateProgress({
       stage: 'error',
       message: '后端已更新，但桌面重建失败。请重启奇计以重试。',
       error: rebuilt.error || 'rebuild-failed'
     })
+    // Show a native dialog so the user knows to restart — the WebSocket-based
+    // progress overlay is unreliable here because `hermes update` killed the
+    // backend and the renderer may be showing "backend stopped" instead.
+    try {
+      dialog.showMessageBoxSync({
+        type: 'warning',
+        title: '奇计',
+        message: '后端代码已更新成功，但桌面界面重建未完成。',
+        detail: '请关闭奇计并重新打开即可使用新版本。',
+        buttons: ['知道了']
+      })
+    } catch { /* best effort */ }
     return { ok: false, backendUpdated: true, error: 'desktop rebuild failed' }
   }
 
@@ -2266,6 +2279,18 @@ async function applyUpdatesPosixInApp() {
           message: '更新成功！正在重启奇计…',
           percent: 100
         })
+        // Show a native dialog as backup — if app.relaunch() fails silently
+        // (e.g. Windows registry/exec permissions), the user still knows to
+        // restart manually instead of staring at a dead window.
+        try {
+          dialog.showMessageBoxSync({
+            type: 'info',
+            title: '奇计',
+            message: '更新成功！奇计即将自动重启。',
+            detail: '如果没有自动重启，请手动关闭并重新打开奇计。',
+            buttons: ['确定']
+          })
+        } catch { /* best effort */ }
         // Auto-relaunch: the Electron main process is still alive, but the
         // backend was killed by `hermes update` and the renderer lost its
         // WebSocket. Rather than leaving the user on a dead UI, relaunch
