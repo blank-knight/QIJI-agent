@@ -62,7 +62,17 @@ function output(success, data, message = '') {
 // ========== 浏览器管理 ==========
 
 async function createBrowser() {
-  const browser = await chromium.launch({ headless: CONFIG.headless });
+  console.error(`[geo-cli] launching browser, headless=${CONFIG.headless}`);
+  const browser = await chromium.launch({
+    headless: CONFIG.headless,
+    slowMo: CONFIG.headless ? 0 : 500,
+    args: [
+      '--start-maximized',
+      '--disable-background-timer-throttling',
+      '--disable-backgrounding-occluded-windows',
+      '--disable-renderer-backgrounding',
+    ],
+  });
   const context = await browser.newContext({
     viewport: { width: 1280, height: 800 },
     locale: 'zh-CN',
