@@ -2148,6 +2148,13 @@ async function applyUpdatesPosixInApp() {
     // best effort
   }
 
+  // ── Incremental update: record pre-update HEAD to diff afterwards ──────
+  let preUpdateSha = null
+  try {
+    const shaResult = await runGit(['rev-parse', 'HEAD'], { cwd: updateRoot })
+    if (shaResult.code === 0) preUpdateSha = (shaResult.stdout || '').trim()
+  } catch { /* best effort */ }
+
   emitUpdateProgress({ stage: 'update', message: '正在更新奇计（代码 + 依赖）…', percent: 10 })
   const updated = await runStreamedUpdate(hermes, ['update', '--yes', ...branchArgs], {
     cwd: updateRoot,
@@ -2157,6 +2164,183 @@ async function applyUpdatesPosixInApp() {
   if (updated.code !== 0) {
     emitUpdateProgress({ stage: 'error', message: 'hermes update failed.', error: updated.error || 'update-failed' })
     return { ok: false, error: 'hermes update failed' }
+  }
+
+  // ── Classify changed files to decide the rebuild strategy ──────────────
+  //   Path A: only Python/skills changed   → skip rebuild entirely (~30s)
+  //   Path B: frontend (.ts/.tsx/.css/.html) changed → only tsc+vite+asar (~60s)
+  //   Path C: Electron/.cjs/icon changed   → full electron-builder rebuild (~3min)
+  let changedFiles = []
+  try {
+    if (preUpdateSha) {
+      const diffResult = await runGit(['diff', '--name-only', preUpdateSha, 'HEAD'], { cwd: updateRoot })
+      if (diffResult.code === 0) {
+        changedFiles = (diffResult.stdout || '').split('\n').map(f => f.trim()).filter(Boolean)
+      }
+    }
+  } catch { /* best effort — fall through to full rebuild */ }
+
+  // Classify each changed file into categories
+  const isFrontend = f => /\.(tsx?|jsx?|css|html|svg|json)$/.test(f) &&
+    (f.includes('apps/desktop/src/') || f.includes('apps/desktop/public/'))
+  const isElectronCore = f => f.endsWith('.cjs') ||
+    f.includes('apps/desktop/electron/') ||
+    f.includes('apps/desktop/build/') ||
+    f.includes('apps/desktop/assets/') ||
+    f.includes('apps/desktop/scripts/') ||
+    f.endsWith('package.json') ||
+    f.endsWith('package-lock.json') ||
+    f.endsWith('electron-builder.yml') ||
+    f.endsWith('electron-builder.yaml') ||
+    f.endsWith('tsconfig.json')
+  const isBackendOrConfig = f => f.endsWith('.py') ||
+    f.endsWith('.md') ||
+    f.endsWith('.yaml') ||
+    f.endsWith('.yml') ||
+    f.includes('skills/') ||
+    f.includes('hermes_cli/') ||
+    f.includes('agent/') ||
+    f.endsWith('.gitignore') ||
+    f.endsWith('.gitattributes')
+
+  const hasFrontend = changedFiles.some(isFrontend)
+  const hasElectronCore = changedFiles.some(isElectronCore)
+  const onlyBackend = !hasFrontend && !hasElectronCore
+
+  // ── Path A: only backend/skills — skip rebuild entirely ────────────────
+  if (onlyBackend && changedFiles.length > 0) {
+    rememberLog(`[updates] incremental: ${changedFiles.length} files, backend-only — skipping rebuild`)
+    emitUpdateProgress({
+      stage: 'done',
+      message: '后端代码已更新，无需重建界面。正在重启…',
+      percent: 100
+    })
+    // Backend was updated; just relaunch to pick up the new Python code.
+    try {
+      dialog.showMessageBoxSync({
+        type: 'info',
+        title: '奇计',
+        message: '更新成功！奇计即将自动重启。',
+        detail: '本次更新仅涉及后端代码，已跳过界面重建。',
+        buttons: ['确定']
+      })
+    } catch { /* best effort */ }
+    rememberLog('[updates] backend-only update done, scheduling app relaunch')
+    setTimeout(() => {
+      app.relaunch()
+      app.exit(0)
+    }, 2000)
+    return { ok: true, backendUpdated: true, guiUpdated: false, skipped: 'backend-only' }
+  }
+
+  // ── Path B: frontend changed but no Electron core — asar-only rebuild ──
+  if (hasFrontend && !hasElectronCore) {
+    rememberLog(`[updates] incremental: ${changedFiles.length} files, frontend-only — asar rebuild`)
+    emitUpdateProgress({
+      stage: 'rebuild',
+      message: '检测到前端更新，正在快速重建界面…',
+      percent: 70
+    })
+
+    // Run only tsc + vite (skip electron-builder's full packaging)
+    const desktopDir = path.join(updateRoot, 'apps', 'desktop')
+    const npmCmd = IS_WINDOWS ? 'npm.cmd' : 'npm'
+    const asarResult = await new Promise(resolve => {
+      const child = spawn(npmCmd, ['run', 'build'], {
+        ...hiddenWindowsChildOptions({
+          cwd: desktopDir,
+          env: { ...process.env, ...env },
+          stdio: ['ignore', 'pipe', 'pipe']
+        })
+      })
+      const emitLines = chunk => {
+        for (const line of chunk.toString().split('\n')) {
+          const trimmed = line.trim()
+          if (trimmed) emitUpdateProgress({ stage: 'rebuild', message: trimmed, percent: null })
+        }
+      }
+      child.stdout.on('data', emitLines)
+      child.stderr.on('data', emitLines)
+      child.once('error', err => resolve({ code: 1, error: err.message }))
+      child.once('exit', code => resolve({ code }))
+    })
+
+    if (asarResult.code !== 0) {
+      rememberLog('[updates] asar rebuild failed, falling back to full rebuild')
+      // Fall through to full rebuild below
+    } else {
+      // Pack dist/ into app.asar and replace the running app's asar
+      const asarCmd = IS_WINDOWS ? 'npx.cmd' : 'npx'
+      const packResult = await new Promise(resolve => {
+        const child = spawn(asarCmd, ['--yes', 'asar', 'pack', 'dist',
+          path.join(path.dirname(app.getAppPath()), 'app.asar.new')], {
+          ...hiddenWindowsChildOptions({
+            cwd: desktopDir,
+            env: { ...process.env, ...env },
+            stdio: ['ignore', 'pipe', 'pipe']
+          })
+        })
+        child.stdout.on('data', () => {})
+        child.stderr.on('data', () => {})
+        child.once('error', err => resolve({ code: 1, error: err.message }))
+        child.once('exit', code => resolve({ code }))
+      })
+
+      if (packResult.code === 0) {
+        // Swap the asar: move old to .bak, new to active
+        const resourcesDir = path.dirname(app.getAppPath())
+        const currentAsar = path.join(resourcesDir, 'app.asar')
+        const newAsar = path.join(resourcesDir, 'app.asar.new')
+        const bakAsar = path.join(resourcesDir, 'app.asar.bak')
+        try {
+          if (fs.existsSync(bakAsar)) fs.unlinkSync(bakAsar)
+          if (fs.existsSync(currentAsar)) fs.renameSync(currentAsar, bakAsar)
+          fs.renameSync(newAsar, currentAsar)
+          rememberLog('[updates] asar swapped successfully')
+        } catch (swapErr) {
+          rememberLog(`[updates] asar swap failed: ${swapErr.message}, will full rebuild`)
+          // Restore backup
+          try {
+            if (fs.existsSync(bakAsar) && !fs.existsSync(currentAsar)) {
+              fs.renameSync(bakAsar, currentAsar)
+            }
+          } catch { /* give up */ }
+          // Fall through to full rebuild
+        }
+      } else {
+        rememberLog('[updates] asar pack failed, falling back to full rebuild')
+      }
+    }
+
+    // If asar path succeeded (no fallthrough), relaunch
+    if (asarResult.code === 0) {
+      emitUpdateProgress({
+        stage: 'done',
+        message: '界面更新完成！正在重启奇计…',
+        percent: 100
+      })
+      try {
+        dialog.showMessageBoxSync({
+          type: 'info',
+          title: '奇计',
+          message: '更新成功！奇计即将自动重启。',
+          detail: '如果没有自动重启，请手动关闭并重新打开奇计。',
+          buttons: ['确定']
+        })
+      } catch { /* best effort */ }
+      rememberLog('[updates] frontend-only update done, scheduling app relaunch')
+      setTimeout(() => {
+        app.relaunch()
+        app.exit(0)
+      }, 2000)
+      return { ok: true, backendUpdated: true, guiUpdated: true, skipped: 'frontend-only' }
+    }
+    // else: fall through to full rebuild
+  }
+
+  // ── Path C: full rebuild (Electron core changed, or fallback from B) ───
+  if (changedFiles.length > 0) {
+    rememberLog(`[updates] incremental: ${changedFiles.length} files, full rebuild needed`)
   }
 
   emitUpdateProgress({ stage: 'rebuild', message: 'Rebuilding the desktop app…', percent: 60 })
