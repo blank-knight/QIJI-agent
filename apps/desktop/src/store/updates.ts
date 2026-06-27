@@ -134,7 +134,7 @@ export function reportBackendContract(contract: number | undefined): void {
 
   notify({
     action: {
-      label: translateNow('notifications.updateHermes'),
+      label: translateNow('notifications.update奇计'),
       onClick: () => {
         snoozeSkewToast()
         void applyBackendUpdate()

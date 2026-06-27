@@ -65,7 +65,7 @@ export interface Translations {
       loadingSettings: string
       loadingSessions: string
       startingDesktopConnection: string
-      startingHermesDesktop: string
+      starting奇计Desktop: string
     }
     errors: {
       backgroundExited: string
@@ -111,7 +111,7 @@ export interface Translations {
     copyDetailFailed: string
     backendOutOfDateTitle: string
     backendOutOfDateMessage: string
-    updateHermes: string
+    update奇计: string
     updateReadyTitle: string
     updateReadyMessage: (count: number) => string
     seeWhatsNew: string
@@ -672,7 +672,7 @@ export interface Translations {
     hermesActiveSessions: (version: string, count: number) => string
     restartGateway: string
     gatewayRestartFailed: string
-    updateHermes: string
+    update奇计: string
     actionRunning: string
     actionDone: string
     actionFailed: string
