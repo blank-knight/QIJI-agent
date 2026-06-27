@@ -24,7 +24,7 @@ const CONFIG = {
   url: 'https://geo.heikexia.cc',
   username: process.env.GEO_USERNAME || '4000761588',
   password: process.env.GEO_PASSWORD || '4000761588',
-  headless: process.env.GEO_HEADLESS ? process.env.GEO_HEADLESS === 'true' : false,
+  headless: false,
   timeout: 30000,
 };
 
@@ -45,10 +45,6 @@ function parseArgs() {
       }
     }
   }
-  // --headless overrides headless to true (run in background without UI)
-  if (params['headless']) {
-    CONFIG.headless = true;
-  }
   return { action, params };
 }
 
@@ -62,17 +58,7 @@ function output(success, data, message = '') {
 // ========== 浏览器管理 ==========
 
 async function createBrowser() {
-  console.error(`[geo-cli] launching browser, headless=${CONFIG.headless}`);
-  const browser = await chromium.launch({
-    headless: CONFIG.headless,
-    slowMo: CONFIG.headless ? 0 : 500,
-    args: [
-      '--start-maximized',
-      '--disable-background-timer-throttling',
-      '--disable-backgrounding-occluded-windows',
-      '--disable-renderer-backgrounding',
-    ],
-  });
+  const browser = await chromium.launch({ headless: CONFIG.headless });
   const context = await browser.newContext({
     viewport: { width: 1280, height: 800 },
     locale: 'zh-CN',
@@ -355,6 +341,139 @@ async function getKeywords(page) {
   return rows;
 }
 
+// ========== 通用 Bootstrap Table 解析器 ==========
+
+/**
+ * 通用表格解析：导航到指定页面，解析 Bootstrap Table。
+ * @param {object} page - Playwright page
+ * @param {string} menu - 顶级菜单名
+ * @param {string|null} submenu - 子菜单名
+ * @param {string[]} columnNames - 列名映射（不含序号列），如 ['keyword', 'count']
+ */
+async function parseTable(page, menu, submenu, columnNames) {
+  await goHome(page);
+  await clickMenu(page, menu, submenu);
+  const frame = await getFrame(page);
+  if (!frame) return { error: 'iframe未加载' };
+
+  // 策略 A：DOM 解析
+  let rows = await frame.evaluate((cols) => {
+    const trs = document.querySelectorAll('table tbody tr, .fixed-table-body tbody tr');
+    return Array.from(trs).map(tr => {
+      let tds = Array.from(tr.querySelectorAll('td')).map(td => td.textContent.trim());
+      // 去掉序号列
+      if (tds.length > 0 && /^\d+$/.test(tds[0])) tds = tds.slice(1);
+      const row = {};
+      cols.forEach((name, i) => { row[name] = tds[i] || ''; });
+      return row;
+    }).filter(r => cols.some(c => r[c] && !/^\d+$/.test(r[c])));
+  }, columnNames);
+
+  // 策略 B：innerText 回退
+  if (rows.length === 0) {
+    const text = await frame.locator('body').innerText().catch(() => '');
+    rows = [];
+    for (const line of text.split('\n')) {
+      const parts = line.split('\t').map(p => p.trim()).filter(Boolean);
+      if (parts.length >= columnNames.length + 1 && /^\d+$/.test(parts[0])) {
+        const row = {};
+        columnNames.forEach((name, i) => { row[name] = parts[i + 1] || ''; });
+        rows.push(row);
+      }
+    }
+  }
+
+  return rows;
+}
+
+// ========== 5a. 写作标题列表 ==========
+
+async function getTitles(page) {
+  return parseTable(page, 'AI素材源力', '写作标题', ['mainWord', 'question', 'status', 'time']);
+}
+
+// ========== 5b. 企业画像图库 ==========
+
+async function getGalleries(page) {
+  return parseTable(page, 'AI素材源力', '企业画像图库', ['category', 'imageCount', 'gallery', 'time']);
+}
+
+// ========== 5c. 企业知识库 ==========
+
+async function getKnowledgeBases(page) {
+  return parseTable(page, 'AI素材源力', '企业知识库', ['name', 'company', 'time']);
+}
+
+// ========== 5d. 写作指令列表 ==========
+
+async function getWriteInstructions(page) {
+  return parseTable(page, 'AI文章写作', '写作指令', ['name', 'type', 'time']);
+}
+
+// ========== 5e. 文章分类列表 ==========
+
+async function getArticleCategories(page) {
+  return parseTable(page, 'AI文章写作', '文章分类', ['groupName', 'articleCount', 'remaining', 'time']);
+}
+
+// ========== 5f. AI写作任务列表 ==========
+
+async function getWriteTasks(page) {
+  return parseTable(page, 'AI文章写作', 'AI写作任务', ['taskName', 'distillWord', 'maxCount', 'created', 'knowledgeBase', 'detail', 'error']);
+}
+
+// ========== 5g. 批量爆文复刻列表 ==========
+
+async function getBatchFuken(page) {
+  return parseTable(page, 'AI流量复刻', '批量爆文复刻', ['taskName', 'keywords', 'maxRewrite', 'current', 'status', 'viewTask', 'time']);
+}
+
+// ========== 5h. AI数据中心 ==========
+
+async function getDashboard(page) {
+  await goHome(page);
+  await clickMenu(page, 'AI数据中心');
+  const frame = await getFrame(page);
+  if (!frame) return { error: 'iframe未加载' };
+
+  const text = await frame.locator('body').innerText().catch(() => '');
+  const stats = {};
+
+  // 提取余额
+  const balanceMatch = text.match(/余额[:：]\s*(\d+\.?\d*)/);
+  if (balanceMatch) stats.balance = balanceMatch[1];
+
+  // 提取各类统计数字
+  const numberPatterns = [
+    ['AI创作', /AI创作[\s\S]*?(\d+)/],
+    ['发布统计', /发布统计[\s\S]*?(\d+)/],
+    ['数据大屏', /数据大屏/],
+    ['关键词', /关键词[\s\S]*?(\d+)/],
+  ];
+  for (const [key, regex] of numberPatterns) {
+    const m = text.match(regex);
+    if (m) stats[key] = m[1] || true;
+  }
+
+  // 提取额度信息（类似权益页的格式）
+  const quotaRegex = /([\u4e00-\u9fa5\w]+?)\s*(\d+)\/(\d+|不限)/g;
+  let match;
+  while ((match = quotaRegex.exec(text)) !== null) {
+    const name = match[1].trim();
+    if (name.length >= 2 && name.length <= 10) {
+      stats[name] = `${match[2]}/${match[3]}`;
+    }
+  }
+
+  return stats;
+}
+
+// ========== 5i. 消耗明细 ==========
+
+async function getConsumption(page) {
+  return parseTable(page, '消耗明细', null, ['type', 'detail', 'amount', 'time']);
+}
+
 // ========== 5. 爆文复刻 ==========
 
 async function createFuken(page, params) {
@@ -486,21 +605,27 @@ async function runTests(page) {
   if (action === 'help' || action === '--help') {
     console.log(JSON.stringify({
       usage: 'node geo-cli.js <action> [options]',
-      actions: ['login', 'rights', 'diagnose', 'report', 'keywords', 'fuken', 'articles', 'test'],
-      examples: [
-        'node geo-cli.js login',
-        'node geo-cli.js rights',
-        'node geo-cli.js diagnose --brand 华为 --keywords 手机,Mate70',
-        'node geo-cli.js diagnose --brand 华为 --keywords 手机 --submit',
-        'node geo-cli.js report',
-        'node geo-cli.js keywords',
-        'node geo-cli.js fuken --url https://mp.weixin.qq.com/xxx',
+      actions: [
+        'login', 'rights',
+        'diagnose --brand X --keywords A,B [--submit] [--suggestion]',
+        'report', 'keywords',
+        'titles', 'galleries', 'knowledge',
+        'instructions', 'categories', 'write-tasks',
+        'batch-fuken', 'dashboard', 'consumption',
+        'articles', 'fuken --url URL [--submit]',
+        'test',
       ],
     }, null, 2));
     process.exit(0);
   }
 
-  const validActions = ['login', 'rights', 'diagnose', 'report', 'keywords', 'fuken', 'articles', 'test'];
+  const validActions = [
+    'login', 'rights', 'diagnose', 'report', 'keywords',
+    'titles', 'galleries', 'knowledge',
+    'instructions', 'categories', 'write-tasks',
+    'batch-fuken', 'dashboard', 'consumption',
+    'fuken', 'articles', 'test',
+  ];
   if (!validActions.includes(action)) {
     output(false, null, `未知操作: ${action}。可用: ${validActions.join(', ')}`);
     process.exit(1);
@@ -557,6 +682,69 @@ async function runTests(page) {
         message = Array.isArray(data) && data.length > 0
           ? `找到 ${data.length} 个关键词`
           : '暂无关键词';
+        break;
+
+      case 'titles':
+        data = await getTitles(page);
+        message = Array.isArray(data) && data.length > 0
+          ? `找到 ${data.length} 条写作标题`
+          : '暂无写作标题';
+        break;
+
+      case 'galleries':
+        data = await getGalleries(page);
+        message = Array.isArray(data) && data.length > 0
+          ? `找到 ${data.length} 个图库分类`
+          : '暂无图库';
+        break;
+
+      case 'knowledge':
+        data = await getKnowledgeBases(page);
+        message = Array.isArray(data) && data.length > 0
+          ? `找到 ${data.length} 个企业知识库`
+          : '暂无知识库';
+        break;
+
+      case 'instructions':
+        data = await getWriteInstructions(page);
+        message = Array.isArray(data) && data.length > 0
+          ? `找到 ${data.length} 条写作指令`
+          : '暂无写作指令';
+        break;
+
+      case 'categories':
+        data = await getArticleCategories(page);
+        message = Array.isArray(data) && data.length > 0
+          ? `找到 ${data.length} 个文章分类`
+          : '暂无文章分类';
+        break;
+
+      case 'write-tasks':
+        data = await getWriteTasks(page);
+        message = Array.isArray(data) && data.length > 0
+          ? `找到 ${data.length} 个写作任务`
+          : '暂无写作任务';
+        break;
+
+      case 'batch-fuken':
+        data = await getBatchFuken(page);
+        message = Array.isArray(data) && data.length > 0
+          ? `找到 ${data.length} 个批量复刻任务`
+          : '暂无批量复刻任务';
+        break;
+
+      case 'dashboard':
+        data = await getDashboard(page);
+        message = Object.keys(data).length > 0
+          ? '数据中心信息获取成功'
+          : '未获取到数据中心信息';
+        break;
+
+      case 'consumption':
+        data = await getConsumption(page);
+        message = Array.isArray(data) && data.length > 0
+          ? `找到 ${data.length} 条消耗记录`
+          : '暂无消耗记录';
         break;
 
       case 'fuken':

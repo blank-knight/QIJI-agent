@@ -1,7 +1,7 @@
 ---
 name: qiji-geo
 description: "奇计GEO平台自动化（网页端 + 桌面客户端）。网页端操作 geo.heikexia.cc：AI可见度诊断、诊断报告、关键词管理、爆文复刻、文章列表、账号权益查询。桌面客户端（auth helper.exe）操作16个社媒平台分发 + 8个AI认证。当用户提到奇计、GEO诊断、AI可见度、品牌诊断、geo.heikexia、auth helper、社媒分发 时加载。"
-version: 1.3.1
+version: 1.4.0
 ---
 
 # 奇计GEO平台自动化 Skill
@@ -127,6 +127,60 @@ node scripts/geo-cli.js test
 
 遍历所有菜单页面，返回加载状态。
 
+### 9. 写作标题列表
+
+```bash
+node scripts/geo-cli.js titles
+```
+
+### 10. 企业画像图库
+
+```bash
+node scripts/geo-cli.js galleries
+```
+
+### 11. 企业知识库
+
+```bash
+node scripts/geo-cli.js knowledge
+```
+
+### 12. 写作指令列表
+
+```bash
+node scripts/geo-cli.js instructions
+```
+
+### 13. 文章分类列表
+
+```bash
+node scripts/geo-cli.js categories
+```
+
+### 14. AI写作任务列表
+
+```bash
+node scripts/geo-cli.js write-tasks
+```
+
+### 15. 批量爆文复刻列表
+
+```bash
+node scripts/geo-cli.js batch-fuken
+```
+
+### 16. AI数据中心
+
+```bash
+node scripts/geo-cli.js dashboard
+```
+
+### 17. 消耗明细
+
+```bash
+node scripts/geo-cli.js consumption
+```
+
 ## Agent 使用规则
 
 **⚠️ 用户偏好：浏览器操作必须可视化**
@@ -186,8 +240,15 @@ python3 scripts/geo-client.py ai-push    # 启动
 python3 scripts/geo-client.py ai-stop    # 停止
 
 # 账号管理（需 GEO_UDID 环境变量）
-python3 scripts/geo-client.py accounts   # 社媒账号列表
-python3 scripts/geo-client.py platforms  # 支持的平台
+python3 scripts/geo-client.py accounts          # 社媒账号列表
+python3 scripts/geo-client.py platforms         # 支持的平台
+python3 scripts/geo-client.py stats             # 发布统计
+python3 scripts/geo-client.py delete-account <id>  # 删除社媒账号
+
+# 平台授权（可视化浏览器弹出）
+python3 scripts/geo-client.py media-login               # 社媒平台授权
+python3 scripts/geo-client.py ai-auth                   # 全部 AI 平台认证
+python3 scripts/geo-client.py ai-auth deepseek          # 指定单个 AI 平台认证
 ```
 
 环境变量配置：

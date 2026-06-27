@@ -458,6 +458,153 @@ def cmd_platforms():
     return code == 200
 
 
+def cmd_stats():
+    """查看发布统计（远程 API）"""
+    if not GEO_UDID:
+        print("❌ 需要设置 GEO_UDID 环境变量")
+        return False
+
+    cfg = _resolve_credentials()
+    uid = GEO_UID or cfg.get("uid", "")
+    body = {"udid": GEO_UDID, "uid": uid}
+    code, data = http_post(f"{REMOTE_BASE}/api/zhushou/get_tongji", body=body, timeout=10)
+
+    if code == 200 and isinstance(data, dict):
+        stats = data.get("data", data)
+        print(f"=== 发布统计 ===\n")
+        if isinstance(stats, dict):
+            for k, v in stats.items():
+                print(f"  {k}: {v}")
+        elif isinstance(stats, list):
+            for s in stats:
+                print(json.dumps(s, ensure_ascii=False))
+        else:
+            print(json.dumps(data, ensure_ascii=False, indent=2))
+    else:
+        print(f"❌ HTTP {code}: {data}")
+
+    return code == 200
+
+
+def cmd_delete_account(*args):
+    """删除社媒账号（远程 API）"""
+    if not GEO_UDID:
+        print("❌ 需要设置 GEO_UDID 环境变量")
+        return False
+
+    if len(args) < 1:
+        print("用法: python3 geo-client.py delete-account <平台ID或账号名>")
+        return False
+
+    target = args[0]
+    cfg = _resolve_credentials()
+    uid = GEO_UID or cfg.get("uid", "")
+
+    # 远程 API 的 del_user 需要 udid+uid+平台标识
+    body = {"udid": GEO_UDID, "uid": uid, "id": target}
+    code, data = http_post(f"{REMOTE_BASE}/api/zhushou/del_user", body=body, timeout=10)
+
+    if code == 200 and isinstance(data, dict):
+        if data.get("code") == 1:
+            print(f"✅ 已删除: {target}")
+        else:
+            print(f"❌ 删除失败: {data.get('msg', data)}")
+    else:
+        print(f"❌ HTTP {code}: {data}")
+
+    return code == 200
+
+
+def cmd_media_login():
+    """社媒平台授权登录（本地 Flask，可视化浏览器）"""
+    if not check_flask():
+        print("❌ 客户端未运行，请先执行: python3 geo-client.py start")
+        return False
+
+    cfg = _resolve_credentials()
+
+    body = {
+        "udid": GEO_UDID,
+        "uid": GEO_UID or cfg.get("uid", ""),
+        "agent_ip_username": "",
+        "agent_ip_url": "",
+        "googlePath": cfg.get("google_path", ""),
+        "platform": "",  # 空=全部，或指定平台名
+    }
+
+    code, data = http_post(f"{FLASK_BASE}/api/media/login", body=body, timeout=60)
+
+    if code == 200 and isinstance(data, dict):
+        if data.get("code") == 1:
+            print(f"✅ 授权成功")
+            print(f"   消息: {data.get('msg', '')}")
+        else:
+            print(f"❌ 授权失败: {data.get('msg', data)}")
+    else:
+        print(f"❌ HTTP {code}: {data}")
+
+    return code == 200
+
+
+# AI 平台认证端点映射
+AI_AUTH_ENDPOINTS = {
+    "deepseek": "/api/deepseek/login",
+    "doubao": "/api/doubao/login",
+    "kimi": "/api/kimi/login",
+    "nami": "/api/nami/login",
+    "qianwen": "/api/qianwen/login",
+    "wenxin": "/api/wenxin/login",
+    "yuanbao": "/api/yuanbao/login",
+    "zhipu": "/api/zhipu/login",
+}
+
+
+def cmd_ai_auth(*args):
+    """AI 平台认证（本地 Flask，可视化浏览器）
+
+    用法: python3 geo-client.py ai-auth [平台名]
+    平台名: deepseek, doubao, kimi, nami, qianwen, wenxin, yuanbao, zhipu
+    不指定平台名则认证全部。
+    """
+    if not check_flask():
+        print("❌ 客户端未运行，请先执行: python3 geo-client.py start")
+        return False
+
+    platform = args[0] if args else ""
+
+    if platform and platform not in AI_AUTH_ENDPOINTS:
+        print(f"❌ 未知平台: {platform}")
+        print(f"   支持: {', '.join(AI_AUTH_ENDPOINTS.keys())}")
+        return False
+
+    cfg = _resolve_credentials()
+
+    targets = [platform] if platform else list(AI_AUTH_ENDPOINTS.keys())
+
+    for p in targets:
+        endpoint = AI_AUTH_ENDPOINTS[p]
+        body = {
+            "udid": GEO_UDID,
+            "agent_ip_username": "",
+            "agent_ip_url": "",
+            "googlePath": cfg.get("google_path", ""),
+        }
+
+        print(f"认证 {p}...")
+        code, data = http_post(f"{FLASK_BASE}{endpoint}", body=body, timeout=120)
+
+        if code == 200 and isinstance(data, dict):
+            if data.get("code") == 1:
+                print(f"  ✅ {p} 认证成功")
+            else:
+                msg = data.get("msg", "")
+                print(f"  ❌ {p} 认证失败: {msg}")
+        else:
+            print(f"  ❌ {p} HTTP {code}: {data}")
+
+    return True
+
+
 # ============================================================
 # 主入口
 # ============================================================
@@ -472,6 +619,10 @@ COMMANDS = {
     "ai-stop": ("停止 AI 发布", cmd_ai_stop),
     "accounts": ("查看社媒账号列表", cmd_accounts),
     "platforms": ("查看支持的平台", cmd_platforms),
+    "stats": ("查看发布统计", cmd_stats),
+    "delete-account": ("删除社媒账号", cmd_delete_account),
+    "media-login": ("社媒平台授权登录（可视化）", cmd_media_login),
+    "ai-auth": ("AI平台认证（可视化，可指定平台）", cmd_ai_auth),
 }
 
 def main():
@@ -491,7 +642,11 @@ def main():
     args = sys.argv[2:]
     
     desc, fn = COMMANDS[cmd]
-    success = fn(*args) if cmd == "logs" else fn()
+    # logs / delete-account / ai-auth 接收额外参数
+    if cmd in ("logs", "delete-account", "ai-auth"):
+        success = fn(*args)
+    else:
+        success = fn()
     sys.exit(0 if success else 1)
 
 
