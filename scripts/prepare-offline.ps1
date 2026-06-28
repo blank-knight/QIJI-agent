@@ -65,7 +65,9 @@ $vendorRepo = Join-Path $VendorDir "hermes-agent"
 if (Test-Path $installDir) {
     # Copy everything except .git and venv and node_modules
     New-Item -ItemType Directory -Force -Path $vendorRepo | Out-Null
-    robocopy $installDir $vendorRepo /E /XD ".git" "venv" "node_modules" /NJH /NJS /NFL /NDL /NP | Out-Null
+    # Exclude build/dist/release to avoid recursive vendor nesting and bloat.
+    # node_modules at any level is excluded by name match.
+    robocopy $installDir $vendorRepo /E /XD ".git" "venv" "node_modules" "__pycache__" "build" "dist" "release" ".venv" /NJH /NJS /NFL /NDL /NP | Out-Null
     Write-Host "[5/8] Repository source ✅" -ForegroundColor Cyan
 }
 
