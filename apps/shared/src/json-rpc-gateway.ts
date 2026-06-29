@@ -278,7 +278,7 @@ export class JsonRpcGatewayClient {
       this.clearPending(frame.id)
 
       if (frame.error) {
-        call.reject(new Error(frame.error.message || 'Hermes RPC failed'))
+        call.reject(new Error(frame.error.message || 'RPC 通信失败'))
       } else {
         call.resolve(frame.result)
       }

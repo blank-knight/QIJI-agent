@@ -618,7 +618,7 @@ export function useTerminalSession({ cwd, onAddSelectionToChat }: UseTerminalSes
         term.loadAddon(webgl)
         webglRef.current = webgl
       } catch (err) {
-        console.warn('[hermes-terminal] WebGL unavailable; falling back to DOM', err)
+        console.warn('[qiji-terminal] WebGL unavailable; falling back to DOM', err)
       }
 
       fitAndResize()

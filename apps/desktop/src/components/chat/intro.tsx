@@ -20,24 +20,24 @@ const NEUTRAL_PERSONALITIES = new Set(['', 'default', 'none', 'neutral'])
 
 const FALLBACK_COPY: IntroCopy[] = [
   {
-    headline: 'What are we moving today?',
-    body: "Send a bug, branch, plan, or rough idea. I'll inspect the repo and turn it into the next concrete step."
+    headline: '今天要做点什么？',
+    body: '发个问题、任务、或想法，我来看手帮你搞定。'
   },
   {
-    headline: "What's on your mind?",
-    body: "Bring the code, question, or stuck part. I'll read the room before making changes."
+    headline: '在想什么？',
+    body: '把你的问题或卡住的地方告诉我，我先理解再动手。'
   },
   {
-    headline: 'What should 奇计 look at?',
-    body: "Send the task, failing path, or half-formed plan. I'll help turn it into action."
+    headline: '奇计能帮你看什么？',
+    body: '发任务、问题、或想法，我帮你拆解成具体步骤。'
   },
   {
-    headline: 'Where should we start?',
-    body: "Bring the problem, goal, or file. I'll inspect first and keep the next step concrete."
+    headline: '从哪里开始？',
+    body: '把问题、目标或文件发过来，我先看看再动手。'
   },
   {
-    headline: 'What needs attention?',
-    body: "Send the context you have. I'll help sort it into a plan or a fix."
+    headline: '需要什么帮助？',
+    body: '把你已知的信息发过来，我帮你梳理成方案或直接解决。'
   }
 ]
 
@@ -116,24 +116,24 @@ function fallbackCopyForPersonality(personalityKey: string): IntroCopy[] {
 
   return [
     {
-      headline: `${label} mode is on. What should we work on?`,
-      body: "Send the task, file, or rough idea. I'll use your configured voice and keep the work grounded in this repo."
+      headline: `${label} 模式已开启，需要做什么？`,
+      body: '发任务、文件、或想法。我会按你配置的风格来工作。'
     },
     {
-      headline: `What does ${label} 奇计 need to see?`,
-      body: "Bring the context or the stuck part. I'll adapt to your configured personality."
+      headline: `${label} 奇计需要看什么？`,
+      body: '把上下文或卡住的部分发过来，我会适配你的风格。'
     },
     {
-      headline: `${label} mode is ready.`,
-      body: "Send the problem, file, or idea. I'll follow the personality you've configured."
+      headline: `${label} 模式就绪。`,
+      body: '发问题、文件、或想法，我会按你配置的风格回应。'
     },
     {
-      headline: `What should ${label} 奇计 tackle?`,
-      body: "Drop the task here. I'll keep the work grounded in the repo."
+      headline: `${label} 奇计该处理什么？`,
+      body: '把任务发过来，我会认真完成。'
     },
     {
-      headline: 'Where should we begin?',
-      body: `Give me the context and I'll answer in ${label} mode.`
+      headline: '从哪里开始？',
+      body: `给我上下文，我会用 ${label} 模式回应。`
     }
   ]
 }
@@ -142,7 +142,7 @@ function pickCopy(copies: IntroCopy[], seed = 0): IntroCopy {
   return copies[Math.abs(seed) % copies.length] || FALLBACK_COPY[0]
 }
 
-const WORDMARK = 'HERMES AGENT'
+const WORDMARK = '奇计'
 
 function resolveCopy(personality?: string, seed?: number): IntroCopy {
   const personalityKey = normalizeKey(personality)
