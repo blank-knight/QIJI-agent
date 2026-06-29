@@ -19,6 +19,8 @@ INTERNAL_PATTERNS = [
     # Electron bridge API
     re.compile(r'window\.hermesDesktop', re.I),
     re.compile(r'\.hermesDesktop', re.I),
+    re.compile(r'^hermesDesktop\.', re.I),  # minified: window. is outside context window
+    re.compile(r'hermesDesktop\.api\b', re.I),
     # Environment variables
     re.compile(r'HERMES_DESKTOP_\w+', re.I),
     re.compile(r'HERMES_HOME', re.I),
@@ -66,8 +68,9 @@ INTERNAL_PATTERNS = [
     # Internal sentinel values
     re.compile(r'__hermes_empty__', re.I),
     # Skill/toolset IDs (JSON keys mapping to backend directory names)
-    re.compile(r'"hermes-[\w-]+":\s*\{?\s*name:', re.I),
-    re.compile(r"'hermes-[\w-]+':\s*\{?\s*name:", re.I),
+    re.compile(r'"hermes-[\w-]+"', re.I),
+    re.compile(r"'hermes-[\w-]+'", re.I),
+    re.compile(r'hermes-(agent|cli|cron|desktop|gateway|tui)[\w-]*', re.I),
     # URL protocol whitelist in regex
     re.compile(r'about\|hermes\)', re.I),
     # hermes): in protocol regex
