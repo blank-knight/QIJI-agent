@@ -125,18 +125,27 @@ Copy-Item $exe "C:\Users\{user}\Desktop\" -Force
 
 ## 踩坑记录
 
-### 坑 1: vendor 无限嵌套（19 GB → 2.7 GB）
+### 坑 1: vendor 无限嵌套（7-19 GB 膨胀）
 
-**现象：** vendor 目录膨胀到 19+ GB，C 盘爆满。
+**现象：** vendor 目录膨胀到 7-19+ GB，52万+文件，C 盘爆满。
 
-**原因：** `prepare-offline.ps1` 用 robocopy 复制源码到
-`vendor/hermes-agent/`，但没有排除 `build` 目录。
-`build/vendor` 是 vendor 输出目录本身 → robocopy 把 vendor
-递归复制进 vendor/hermes-agent/apps/desktop/build/vendor/ → 无限嵌套。
+**根因（已定位）：** `prepare-offline.ps1` 第7步用 `Copy-Item -Recurse`
+复制 node_modules。但 `node_modules\hermes` 是一个 **Junction**（Windows
+符号链接），指向 `apps\desktop`，而 `apps\desktop\build\vendor` 是 vendor
+输出目录本身。
 
-**修复：** robocopy 排除 `build`、`dist`、`release`：
-```
-/XD ".git" "venv" "node_modules" "__pycache__" "build" "dist" "release" ".venv"
+`Copy-Item -Recurse` 会跟随 Junction，把整个 desktop（包括 build/vendor）
+复制进 `vendor\nm\hermes\`。如果 vendor 已有内容，形成无限递归：
+`vendor\nm\hermes\build\vendor\nm\hermes\build\vendor\nm\...`
+
+**修复（已提交 commit 6a81eff）：**
+1. node_modules 复制改用 `robocopy /XJ`（/XJ = 不跟随 junction）
+2. 额外排除 build/dist/release 目录
+3. 源码复制也加上 /XJ
+
+```powershell
+# 修复后的代码
+robocopy $nmPath $vendorNM /E /XJ /XD "build" "dist" "release" ".git" /NJH /NJS /NFL /NDL /NP
 ```
 
 ### 坑 2: PowerShell 编码错误（LF + 无 BOM）
