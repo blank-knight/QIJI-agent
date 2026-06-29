@@ -67,7 +67,7 @@ if (Test-Path $installDir) {
     New-Item -ItemType Directory -Force -Path $vendorRepo | Out-Null
     # Exclude build/dist/release to avoid recursive vendor nesting and bloat.
     # node_modules at any level is excluded by name match.
-    robocopy $installDir $vendorRepo /E /XD ".git" "venv" "node_modules" "__pycache__" "build" "dist" "release" ".venv" /NJH /NJS /NFL /NDL /NP | Out-Null
+    robocopy $installDir $vendorRepo /E /XJ /XD ".git" "venv" "node_modules" "__pycache__" "build" "dist" "release" ".venv" /NJH /NJS /NFL /NDL /NP | Out-Null
     Write-Host "[5/8] Repository source ✅" -ForegroundColor Cyan
 }
 
@@ -100,11 +100,17 @@ if (Test-Path (Join-Path $venvPath "Scripts\python.exe")) {
 }
 
 # 7. node_modules (named "nm" because electron-builder strips "node_modules")
+# IMPORTANT: Use robocopy /XJ to NOT follow junctions/symlinks.
+# node_modules/hermes is a junction -> apps/desktop, which contains build/vendor.
+# Copy-Item -Recurse follows junctions, causing infinite nesting.
+# robocopy /XJ skips junction points, copying only real files.
 $nmPath = Join-Path $installDir "node_modules"
 if (Test-Path $nmPath) {
     $vendorNM = Join-Path $VendorDir "nm"
-    Copy-Item $nmPath $vendorNM -Recurse -Force
-    Write-Host "[7/8] node_modules ✅" -ForegroundColor Cyan
+    if (Test-Path $vendorNM) { Remove-Item $vendorNM -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path $vendorNM | Out-Null
+    robocopy $nmPath $vendorNM /E /XJ /XD "build" "dist" "release" ".git" /NJH /NJS /NFL /NDL /NP /R:1 /W:1 | Out-Null
+    Write-Host "[7/8] node_modules (robocopy /XJ, no junctions) OK" -ForegroundColor Cyan
 }
 
 # 8. Playwright Chromium
