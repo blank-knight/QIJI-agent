@@ -7,80 +7,127 @@
 
 最终产物：`Qiji-{version}-win-x64.exe`（约 900 MB）
 
+## 架构：隔离编译（重要）
+
+编译在独立的 Windows 副本中进行，**不碰正在运行的 Hermes 实例**：
+
+```
+~/clawd/qiji-fork (WSL)                    ← 代码仓库，git/commit/改代码
+C:\Users\{user}\qiji-fork (Windows)        ← 编译副本（自包含）
+C:\Users\{user}\AppData\Local\hermes\      ← 正在运行的 Hermes（只读引用）
+```
+
+工作流：WSL fork 改代码 → 同步到 Windows 编译副本 → 在编译副本里编译出 exe
+
+**为什么不在 AppData\Local\hermes 里编译？**
+1. 编译会覆盖正在运行的 Hermes 代码，可能导致当前会话崩溃
+2. 运行中的 Hermes 版本和 fork 版本不同步，混在一起无法区分
+3. vendor 嵌套问题的部分原因就是 robocopy 把 fork 同步到了运行实例上
+
 ## 前置条件
 
 - Windows 机器（WSL 或原生均可操作）
 - Hermes 已安装且正常运行（`~/.hermes` 或 `AppData\Local\hermes`）
-- Hermes 源码同步到 Windows 安装目录：
-  `C:\Users\{user}\AppData\Local\hermes\hermes-agent`
-- C 盘至少 10 GB 可用空间（vendor 临时占 2.7 GB + 编译产物）
+  — 仅作为 prepare-offline 的只读依赖来源
+- C 盘至少 15 GB 可用空间
 - Node.js + npm（编译需要）
-- apps/desktop/node_modules 已安装（`npm install` at workspace root）
 
-## 编译流程（4 步）
+## 编译流程（5 步）
 
-### Step 1: 同步最新代码 → Windows 安装目录
+### Step 0: 首次准备 — 建立 Windows 编译副本
+
+只需执行一次。之后每次编译跳到 Step 1。
 
 ```powershell
-# 从 WSL fork 同步到 Windows 安装目录
-# 用 robocopy（WSL rsync 在 /mnt/c 上太慢会超时）
+# 从 WSL fork 同步源码到 Windows 编译副本
 $wslFork = "\\wsl.localhost\Ubuntu\home\zwt\clawd\qiji-fork"
-$installDir = "C:\Users\84673\AppData\Local\hermes\hermes-agent"
-robocopy $wslFork $installDir /MIR `
-    /XD ".git" "venv" "__pycache__" "node_modules" ".venv" "build\vendor" "release" "dist" `
+$buildDir = "C:\Users\84673\qiji-fork"
+robocopy $wslFork $buildDir /E /XJ `
+    /XD ".git" "venv" "__pycache__" ".venv" "node_modules" "build" "release" "dist" `
     /XF "*.pyc" "*.pyo" `
     /NJH /NJS /NFL /NDL /NP /R:1 /W:1
 # exit code < 8 = success
+
+# 安装 node_modules（约 5-10 分钟）
+cd $buildDir
+npm install
+
+# 修复 PowerShell 脚本编码（WSL 同步后是 LF + 无 BOM）
+foreach ($f in @("prepare-offline.ps1","install.ps1")) {
+    $path = Join-Path $buildDir "scripts\$f"
+    $content = [System.IO.File]::ReadAllText($path)
+    $content = $content -replace "`r`n", "`n" -replace "`n", "`r`n"
+    $utf8bom = New-Object System.Text.UTF8Encoding($true)
+    [System.IO.File]::WriteAllText($path, $content, $utf8bom)
+}
 ```
 
-**重要：** robocopy 必须排除 `build` 目录（否则 vendor 无限嵌套，
-详见下方"踩坑记录"）。
+### Step 1: 同步代码更新 → Windows 编译副本
+
+每次 fork 有新 commit 后执行。
+
+```powershell
+$wslFork = "\\wsl.localhost\Ubuntu\home\zwt\clawd\qiji-fork"
+$buildDir = "C:\Users\84673\qiji-fork"
+robocopy $wslFork $buildDir /MIR /XJ `
+    /XD ".git" "venv" "__pycache__" ".venv" "node_modules" "build" "release" "dist" `
+    /XF "*.pyc" "*.pyo" `
+    /NJH /NJS /NFL/NDL /NP /R:1 /W:1
+
+# 修复同步过来的 ps1 编码
+foreach ($f in @("prepare-offline.ps1","install.ps1")) {
+    $path = Join-Path $buildDir "scripts\$f"
+    $content = [System.IO.File]::ReadAllText($path)
+    $content = $content -replace "`r`n", "`n" -replace "`n", "`r`n"
+    $utf8bom = New-Object System.Text.UTF8Encoding($true)
+    [System.IO.File]::WriteAllText($path, $content, $utf8bom)
+}
+```
 
 ### Step 2: 生成 vendor 目录
 
 ```powershell
-cd $installDir
+cd C:\Users\84673\qiji-fork
+
+# 清理旧 vendor（如果存在）
+if (Test-Path "apps\desktop\build\vendor") {
+    Remove-Item "apps\desktop\build\vendor" -Recurse -Force
+}
+
+# HermesHome 指向正在运行的 Hermes（只读引用 Python/Git/site-packages）
 .\scripts\prepare-offline.ps1 `
     -HermesHome "C:\Users\84673\AppData\Local\hermes" `
     -VendorDir "apps\desktop\build\vendor"
 ```
 
-vendor 目录结构（约 2.7 GB）：
+vendor 目录结构（约 2.8 GB）：
 
 ```
 vendor/
 ├── bin/uv.exe              (70 MB)   — uv 包管理器
-├── git/                     (387 MB)  — PortableGit
-├── hermes-agent/            (109 MB)  — 源码（排除 venv/node_modules/build）
+├── git/                     (386 MB)  — PortableGit
+├── hermes-agent/            (110 MB)  — 源码（排除 venv/node_modules/build）
 ├── python/                  (71 MB)   — CPython 3.11.15
-├── site-packages/           (224 MB)  — Python 依赖
-├── venv-scripts/            (1.3 MB)  — venv Scripts（pip, uvicorn 等）
-├── nm/                      (299 MB)  — backend node_modules（非 desktop 的）
+├── site-packages/           (246 MB)  — Python 依赖
+├── venv-scripts/            (2 MB)    — venv Scripts（pip, uvicorn 等）
+├── nm/                      (336 MB)  — node_modules（robocopy /XJ 不跟随 junction）
 ├── tools/                   (221 MB)  — ripgrep + ffmpeg
 └── chromium/                (1368 MB) — Playwright Chromium
 ```
 
-**注意：** `prepare-offline.ps1` 是 UTF-8 with BOM + CRLF 编码。
+**编码注意：** `prepare-offline.ps1` 是 UTF-8 with BOM + CRLF 编码。
 如果从 WSL 同步后编码变成 LF/无 BOM，PowerShell 会报语法错误。
-转换方法：
-
-```powershell
-$content = [System.IO.File]::ReadAllText($path)
-$content = $content -replace "`r`n", "`n" -replace "`n", "`r`n"
-$utf8bom = New-Object System.Text.UTF8Encoding($true)
-[System.IO.File]::WriteAllText($path, $content, $utf8bom)
-```
+转换方法（见 Step 0/1）。
 
 ### Step 3: electron-builder 打包
 
 ```powershell
-cd "$installDir\apps\desktop"
+cd C:\Users\84673\qiji-fork\apps\desktop
 
-# 确保 workspace root 的 node-pty 已安装
-#（npm hoist 到 root node_modules，但有时会缺）
-if (-not (Test-Path "..\node_modules\node-pty")) {
-    npm install --no-save
-}
+# 设置 GITHUB_SHA（robocopy 排除了 .git，编译脚本找不到 commit hash）
+$env:GITHUB_SHA = git -C "\\wsl.localhost\Ubuntu\home\zwt\clawd\qiji-fork" rev-parse HEAD
+# 或者直接写死:
+# $env:GITHUB_SHA = "db4c753c2a43933188e817d54ead565c7ec103a3"
 
 # 编译 + 打包（NSIS installer）
 npm run dist:win:nsis
@@ -92,19 +139,29 @@ npm run dist:win:nsis
 3. `stage-native-deps.cjs` — 复制 node-pty native 二进制
 4. `electron-builder --win nsis` — 打成 NSIS 安装包
 
-**耗时：** 约 40 分钟（主要花在 7za LZMA 压缩 3.1 GB 内容上）
+**耗时：** 约 10-15 分钟（fork 自带的 node_modules 比运行实例的更精简）
 
 ### Step 4: 验证 + 分发
 
 ```powershell
-# 安装包路径
-$exe = "$installDir\apps\desktop\release\Qiji-{version}-win-x64.exe"
+$buildDir = "C:\Users\84673\qiji-fork"
 
-# 验证 vendor 在安装包内（检查 win-unpacked）
-$vendor = "$installDir\apps\desktop\release\win-unpacked\resources\vendor"
+# 安装包路径
+$exe = "$buildDir\apps\desktop\release\Qiji-{version}-win-x64.exe"
+
+# 验证 exe 名称是 Qiji（不是 Hermes）
+$exeFile = Get-ChildItem $exe
+Write-Host "exe: $($exeFile.Name) ($([math]::Round($exeFile.Length/1MB)) MB)"
+
+# 验证 vendor 在安装包内
+$vendor = "$buildDir\apps\desktop\release\win-unpacked\resources\vendor"
 Test-Path $vendor  # 应该返回 True
 
-# 复制到桌面
+# 验证 unpacked exe 是 Qiji.exe
+Test-Path "$buildDir\apps\desktop\release\win-unpacked\Qiji.exe"  # True
+Test-Path "$buildDir\apps\desktop\release\win-unpacked\Hermes.exe"  # False
+
+# 复制到桌面或分发
 Copy-Item $exe "C:\Users\{user}\Desktop\" -Force
 ```
 
@@ -167,6 +224,22 @@ npm workspace 会把 node-pty hoist 到 root，但某些情况下不会自动安
 
 **修复：** 在 `apps/desktop` 目录运行 `npm install --no-save`。
 
+### 坑 5: GITHUB_SHA 缺失导致编译失败
+
+**现象：** `write-build-stamp.cjs` 报 `could not determine git commit`。
+
+**原因：** robocopy 同步时排除了 `.git` 目录，编译脚本找不到 git commit hash
+来 pin install.ps1 版本。
+
+**修复：** 编译前设置环境变量：
+```powershell
+$env:GITHUB_SHA = "db4c753c2a43933188e817d54ead565c7ec103a3"
+```
+或从 WSL fork 获取最新 hash：
+```powershell
+$env:GITHUB_SHA = git -C "\\wsl.localhost\Ubuntu\home\zwt\clawd\qiji-fork" rev-parse HEAD
+```
+
 ### 坑 4: 7za LZMA 压缩极慢
 
 **现象：** NSIS 打包阶段耗时 30+ 分钟。
@@ -180,13 +253,13 @@ npm workspace 会把 node-pty hoist 到 root，但某些情况下不会自动安
 编译完成后可安全删除以回收空间：
 
 ```powershell
-$installDir = "C:\Users\84673\AppData\Local\hermes\hermes-agent"
+$buildDir = "C:\Users\84673\qiji-fork"
 
-# vendor 临时目录（2.7 GB）
-Remove-Item "$installDir\apps\desktop\build\vendor" -Recurse -Force
+# vendor 临时目录（2.8 GB）
+Remove-Item "$buildDir\apps\desktop\build\vendor" -Recurse -Force
 
 # win-unpacked 解包目录（3.1 GB）
-Remove-Item "$installDir\apps\desktop\release\win-unpacked" -Recurse -Force
+Remove-Item "$buildDir\apps\desktop\release\win-unpacked" -Recurse -Force
 
 # 保留 release\Qiji-{version}-win-x64.exe（安装包本体）
 ```
