@@ -30,6 +30,16 @@ npm run dist:win:nsis
 
 产物在：`C:\Users\84673\qiji-fork\apps\desktop\release\Qiji-*.exe`
 
+## 为什么不能直接在 WSL 仓库里编译？
+
+编译的是 Windows exe，需要 Windows 原生工具链，而 WSL 是 Linux 文件系统：
+
+1. **native 模块不兼容** — npm install 装的 node-pty 有 .node 二进制文件，WSL 上装的是 Linux 版，Windows electron 加载不了。必须在 NTFS 上用 Windows node 装一遍。
+2. **electron-builder 要 Windows 版 electron** — electron/dist 里是 Windows 的 chrome.exe / electron.exe，WSL 文件系统上没有。
+3. **跨文件系统 I/O 极慢** — 让 powershell.exe 通过 `\\wsl.localhost\` 访问 WSL 路径，52万文件的 node_modules 走 9P 协议慢到不可用。
+
+如果编译 Linux 版（AppImage）则可以直接在 WSL 里搞，不用复制。
+
 ## 注意
 
 - ps1 编码报错 → 修 BOM+CRLF（见完整文档）
