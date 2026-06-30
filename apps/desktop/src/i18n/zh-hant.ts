@@ -754,7 +754,7 @@ export const zhHant = defineLocale({
       noProviderOptions: '此工具集沒有提供方選項；啟用後即可使用目前設定。',
       noProviders: '此工具集目前沒有可用提供方。',
       ready: '就緒',
-      nousIncluded: '包含在 Nous 訂閱中；登入 Nous Portal 即可啟用。',
+      nousIncluded: '包含在奇計雲訂閱中；登入 aicps.vip 即可啟用。',
       noApiKeyRequired: '不需要 API 金鑰。',
       postSetupHint: step => `此後端需要一次性安裝 (${step})。將在此機器上執行，可能需要幾分鐘。`,
       postSetupRun: '執行設定',
@@ -1573,7 +1573,7 @@ export const zhHant = defineLocale({
     chooseLater: '稍後再選擇提供方',
     recommended: '建議',
     connected: '已連線',
-    featuredPitch: '一個訂閱，300+ 前沿模型 — 執行 奇计 的建議方式',
+    featuredPitch: '一個訂閱，300+ 前沿模型 — 透過 aicps.vip 執行 奇計 的建議方式',
     openRouterPitch: '一個金鑰，數百個模型 — 穩定的預設選擇',
     apiKeyOptions: {
       openrouter: { short: '一個金鑰，多個模型', description: '用一個金鑰存取數百個模型。適合新安裝的預設選擇。' },

@@ -42,7 +42,7 @@ export const PROVIDER_GROUPS: ProviderPrefix[] = [
     prefix: 'NOUS_',
     name: '奇计云',
     description: '奇计托管的 AI 模型服务',
-    docsUrl: 'https://geo.heikexia.cc',
+    docsUrl: 'https://www.aicps.vip/',
     priority: 0
   },
   {
