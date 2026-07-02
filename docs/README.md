@@ -12,9 +12,11 @@
 ## offline-build/ — 离线包专题（核心）
 | 文件 | 说明 |
 |------|------|
+| how-it-works.md | **离线包原理详解** — vendor 是什么、npm 为什么在 desktop 下、完整架构图 |
 | brand-customization.md | **品牌替换指南** — 换名称/图标/链接该改哪些文件 |
-| build-and-test.md | **编译测试手册** — Windows 编译命令、快速验证 UI、三种测试方式 |
-| bugs-and-pitfalls.md | **踩坑记录** — 反复犯的错误（加重标注）、根因、修复方案 |
+| build-and-test.md | **编译测试手册** — 完整编译流程、一键脚本、检查清单、三种测试方式 |
+| bugs-and-pitfalls.md | **踩坑记录** — 11个坑（★高频标注）、根因、修复方案 |
+| ui-customization-guide.md | UI 定制速查 — 改文案/颜色/图标的快速参考 |
 
 ## 上游文档（Hermes 原始，不修改）
 以下为 Hermes Agent 上游文档，保持原样：
