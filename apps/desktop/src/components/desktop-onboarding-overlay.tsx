@@ -463,7 +463,13 @@ export function Picker({ ctx }: { ctx: OnboardingContext }) {
     return <Status>{t.onboarding.lookingUpProviders}</Status>
   }
 
-  const select = (p: OAuthProvider) => void startProviderOAuth(p, ctx)
+  const select = (p: OAuthProvider) => {
+    if (p.id === FEATURED_ID) {
+      window.hermesDesktop?.openExternal?.('https://www.aicps.vip/')
+      return
+    }
+    void startProviderOAuth(p, ctx)
+  }
   const featured = ordered.find(p => p.id === FEATURED_ID) ?? null
   const rest = featured ? ordered.filter(p => p.id !== FEATURED_ID) : ordered
   // Collapse the secondary providers behind a disclosure only when Nous

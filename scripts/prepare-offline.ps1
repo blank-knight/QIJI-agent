@@ -60,15 +60,23 @@ if (Test-Path $managedTools) {
 }
 
 # 5. Repository source
+# Use the fork's own source (brand-customized), NOT the installed Hermes Agent.
+# $PSScriptRoot = scripts/, so parent = fork root.
+$repoSource = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $installDir = Join-Path $HermesHome "hermes-agent"
 $vendorRepo = Join-Path $VendorDir "hermes-agent"
-if (Test-Path $installDir) {
+if (Test-Path $repoSource) {
     # Copy everything except .git and venv and node_modules
     New-Item -ItemType Directory -Force -Path $vendorRepo | Out-Null
     # Exclude build/dist/release to avoid recursive vendor nesting and bloat.
     # node_modules at any level is excluded by name match.
+    robocopy $repoSource $vendorRepo /E /XJ /XD ".git" "venv" "node_modules" "__pycache__" "build" "dist" "release" ".venv" /NJH /NJS /NFL /NDL /NP | Out-Null
+    Write-Host "[5/8] Repository source (from fork) ✅" -ForegroundColor Cyan
+} elseif (Test-Path $installDir) {
+    # Fallback: use installed Hermes Agent source
+    New-Item -ItemType Directory -Force -Path $vendorRepo | Out-Null
     robocopy $installDir $vendorRepo /E /XJ /XD ".git" "venv" "node_modules" "__pycache__" "build" "dist" "release" ".venv" /NJH /NJS /NFL /NDL /NP | Out-Null
-    Write-Host "[5/8] Repository source ✅" -ForegroundColor Cyan
+    Write-Host "[5/8] Repository source (from installed Hermes, WARNING: not branded) ✅" -ForegroundColor Yellow
 }
 
 # 6. Python interpreter + site-packages
@@ -113,11 +121,33 @@ if (Test-Path $nmPath) {
     Write-Host "[7/8] node_modules (robocopy /XJ, no junctions) OK" -ForegroundColor Cyan
 }
 
-# 8. Playwright Chromium
+# 8. Playwright Chromium — copy only the latest version of each browser
+# to avoid bloating the installer with stale Playwright cache entries.
 $pwCache = Join-Path $env:LOCALAPPDATA "ms-playwright"
 if (Test-Path $pwCache) {
     $vendorChromium = Join-Path $VendorDir "chromium"
-    Copy-Item $pwCache $vendorChromium -Recurse -Force
+    New-Item -ItemType Directory -Path $vendorChromium -Force | Out-Null
+
+    # Group subdirs by base name (e.g. "chromium-1228" -> base "chromium"),
+    # keep only the highest-numbered version of each.
+    $groups = @{}
+    Get-ChildItem $pwCache -Directory | ForEach-Object {
+        if ($_.Name -match '^(.+)-(\d+)$') {
+            $base = $Matches[1]
+            $ver = [int]$Matches[2]
+            if (-not $groups[$base] -or $ver -gt $groups[$base].Version) {
+                $groups[$base] = @{ Version = $ver; Path = $_.FullName }
+            }
+        } else {
+            # No version suffix — copy as-is (e.g. ffmpeg-1011 already unique)
+            $groups[$_.Name] = @{ Version = 0; Path = $_.FullName }
+        }
+    }
+
+    foreach ($entry in $groups.Values) {
+        Copy-Item $entry.Path $vendorChromium -Recurse -Force
+        Write-Host ("  {0} (latest)" -f (Split-Path $entry.Path -Leaf)) -ForegroundColor DarkGray
+    }
     Write-Host "[8/8] Playwright Chromium ✅" -ForegroundColor Cyan
 }
 

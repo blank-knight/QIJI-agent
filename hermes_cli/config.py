@@ -1768,7 +1768,7 @@ DEFAULT_CONFIG = {
         # touch config.yaml. Local dev / non-Fly deploys can set either
         # surface; missing values fall through to the plugin's defaults
         # (no provider registered when ``client_id`` is empty;
-        # ``portal_url`` defaults to https://portal.nousresearch.com).
+        # ``portal_url`` defaults to https://www.aicps.vip).
         "oauth": {
             "client_id": "",  # agent:{instance_id} — Portal provisions this
             "portal_url": "",  # blank → use plugin default (production Portal)
@@ -2354,7 +2354,7 @@ DEFAULT_CONFIG = {
         "chronos": {
             # NAS / portal base URL the agent calls to arm/cancel one-shots
             # and that mints the inbound fire JWT (used as the expected issuer).
-            "portal_url": "https://portal.nousresearch.com",
+            "portal_url": "https://www.aicps.vip",
             # The agent's OWN publicly-reachable base URL for NAS→agent fires
             # (NAS POSTs {callback_url}/api/cron/fire). Empty → Chronos is
             # unavailable and the resolver falls back to the built-in ticker.

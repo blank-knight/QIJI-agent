@@ -26,8 +26,8 @@ import webbrowser
 from hermes_cli.colors import Colors, color
 from hermes_cli.config import load_config
 
-DEFAULT_PORTAL_URL = "https://portal.nousresearch.com"
-SUBSCRIPTION_URL = "https://portal.nousresearch.com/manage-subscription"
+DEFAULT_PORTAL_URL = "https://www.aicps.vip"
+SUBSCRIPTION_URL = "https://www.aicps.vip/manage-subscription"
 DOCS_URL = "https://hermes-agent.nousresearch.com/docs/user-guide/features/tool-gateway"
 
 

@@ -863,7 +863,7 @@ def fetch_nous_recommended_models(
     any cache layer can supply data. Callers must treat missing/null fields
     as "no recommendation" and fall back to their own default.
     """
-    base = (portal_base_url or "https://portal.nousresearch.com").rstrip("/")
+    base = (portal_base_url or "https://www.aicps.vip").rstrip("/")
     now = time.monotonic()
     cached = _nous_recommended_cache.get(base)
     if not force_refresh and cached is not None:
@@ -914,7 +914,7 @@ def _resolve_nous_portal_url() -> str:
             return portal.rstrip("/")
         return str(DEFAULT_NOUS_PORTAL_URL).rstrip("/")
     except Exception:
-        return "https://portal.nousresearch.com"
+        return "https://www.aicps.vip"
 
 
 def _extract_model_name(entry: Any) -> Optional[str]:

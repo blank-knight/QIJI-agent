@@ -140,7 +140,13 @@ function OAuthPicker({
     return null
   }
 
-  const select = (p: OAuthProvider) => startManualProviderOAuth(p.id)
+  const select = (p: OAuthProvider) => {
+    if (p.id === 'nous') {
+      window.hermesDesktop?.openExternal?.('https://www.aicps.vip/')
+      return
+    }
+    startManualProviderOAuth(p.id)
+  }
 
   const featured = ordered.find(p => p.id === FEATURED_ID && !p.status?.logged_in) ?? null
   const rest = featured ? ordered.filter(p => p.id !== FEATURED_ID) : ordered

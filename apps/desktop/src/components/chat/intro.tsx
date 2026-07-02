@@ -167,7 +167,7 @@ export function Intro({ personality, seed }: IntroProps) {
         <p
           aria-label={WORDMARK}
           className="fit-text mx-auto mb-1 w-[calc(100%-1rem)] font-['Collapse'] font-bold uppercase leading-[0.9] tracking-[0.08em] text-midground mix-blend-plus-lighter dark:text-foreground/90"
-          style={{ '--fit-min': '2.75rem' } as CSSProperties}
+          style={{ '--fit-min': '2rem' } as CSSProperties}
         >
           <span>
             <span>{WORDMARK}</span>
