@@ -406,3 +406,4 @@ C+D / A+C+D / B+C+D / A+B+C+D / C+D+E / C+D+F / A+C+D+E / B+C+D+E / A+B+C+D+E / 
 |------|------|
 | 2026-07-05 | v1.0 初版：基线现状分析 + 需求缺口分解 + 优先级规划 |
 | 2026-07-05 | v1.1 澄清：①拓词工具降为待定（幕布标TODO）②收录查询经API逆向验证=诊断报告，非独立模块 ③全流程从9步调整为8步 |
+| 2026-07-05 | v2.0 功能实现：①知识库引导模板（knowledge-base-template.md）②12平台×3类指令模板（instruction-templates.md，平台列表待补充）③GEO全流程引导逻辑写入SKILL.md ④新增SEO命令（seo-sites/columns/tasks/publish）⑤文章审核强约束+账号管理引导规则 |

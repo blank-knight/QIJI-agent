@@ -597,6 +597,80 @@ async function runTests(page) {
   return results;
 }
 
+// ========== 5j. SEO 站点列表 ==========
+
+async function getSeoSites(page) {
+  return parseTable(page, 'AI官网SEO', '站点管理', ['networkType', 'domain', 'downloadTraffic', 'remark', 'createdTime']);
+}
+
+// ========== 5k. SEO 栏目列表（含栏目名↔ID映射） ==========
+
+async function getSeoColumns(page) {
+  return parseTable(page, 'AI官网SEO', '栏目列表', ['columnName', 'code', 'urlName', 'model', 'listTemplate', 'detailTemplate', 'sort', 'status']);
+}
+
+// ========== 5l. SEO 发布任务列表 ==========
+
+async function getSeoTasks(page) {
+  return parseTable(page, 'AI官网SEO', '发布任务', ['taskName', 'site', 'articleCategory', 'dailyCount', 'published', 'publishDate', 'publishTime', 'status']);
+}
+
+// ========== 5m. 创建 SEO 发布任务 ==========
+
+async function createSeoPublish(page, params) {
+  await goHome(page);
+  await clickMenu(page, 'AI官网SEO', '发布任务');
+  const frame = await getFrame(page);
+  if (!frame) return { error: 'iframe未加载' };
+
+  // 点击"添加"按钮打开弹窗
+  const addBtn = frame.locator('button:has-text("添加"), .btn:has-text("添加")').first();
+  await addBtn.click().catch(() => {});
+  await page.waitForTimeout(1000);
+
+  // 填写任务名
+  if (params.name) {
+    const nameInput = frame.locator('input[placeholder*="任务名"], input[placeholder*="task"]').first();
+    await nameInput.fill(params.name).catch(() => {});
+  }
+
+  // 选择站点（下拉）
+  if (params.site) {
+    const siteSelect = frame.locator('select').first();
+    await siteSelect.selectOption({ label: params.site }).catch(() => {});
+  }
+
+  // 选择发布栏目
+  if (params.column) {
+    const columnSelect = frame.locator('select').nth(1);
+    await columnSelect.selectOption({ label: params.column }).catch(() => {});
+  }
+
+  // 选择文章分类
+  if (params.category) {
+    const categorySelect = frame.locator('select').nth(2);
+    await categorySelect.selectOption({ label: params.category }).catch(() => {});
+  }
+
+  // 设置每日发布量
+  if (params.dailyCount) {
+    const countInput = frame.locator('input[type="number"], input[placeholder*="发布量"]').first();
+    await countInput.fill(params.dailyCount).catch(() => {});
+  }
+
+  // 提交（如果指定了 --submit）
+  if (params.submit) {
+    const submitBtn = frame.locator('button:has-text("提交"), .btn:has-text("提交"), button:has-text("确定")').first();
+    await submitBtn.click().catch(() => {});
+    // 自动确认 confirm 弹窗
+    page.on('dialog', dialog => dialog.accept());
+    await page.waitForTimeout(2000);
+    return { submitted: true, name: params.name, site: params.site, column: params.column };
+  }
+
+  return { submitted: false, name: params.name, site: params.site, column: params.column };
+}
+
 // ========== 主入口 ==========
 
 (async () => {
@@ -613,6 +687,8 @@ async function runTests(page) {
         'instructions', 'categories', 'write-tasks',
         'batch-fuken', 'dashboard', 'consumption',
         'articles', 'fuken --url URL [--submit]',
+        'seo-sites', 'seo-columns', 'seo-tasks',
+        'seo-publish --name X --site Y --column Z --category W --daily-count N [--submit]',
         'test',
       ],
     }, null, 2));
@@ -625,6 +701,7 @@ async function runTests(page) {
     'instructions', 'categories', 'write-tasks',
     'batch-fuken', 'dashboard', 'consumption',
     'fuken', 'articles', 'test',
+    'seo-sites', 'seo-columns', 'seo-tasks', 'seo-publish',
   ];
   if (!validActions.includes(action)) {
     output(false, null, `未知操作: ${action}。可用: ${validActions.join(', ')}`);
@@ -761,6 +838,38 @@ async function runTests(page) {
         message = Array.isArray(data) && data.length > 0
           ? `找到 ${data.length} 篇文章`
           : '暂无文章';
+        break;
+
+      case 'seo-sites':
+        data = await getSeoSites(page);
+        message = Array.isArray(data) && data.length > 0
+          ? `找到 ${data.length} 个SEO站点`
+          : '暂无SEO站点（或菜单名不匹配，需验证）';
+        break;
+
+      case 'seo-columns':
+        data = await getSeoColumns(page);
+        message = Array.isArray(data) && data.length > 0
+          ? `找到 ${data.length} 个栏目`
+          : '暂无栏目（或菜单名不匹配，需验证）';
+        break;
+
+      case 'seo-tasks':
+        data = await getSeoTasks(page);
+        message = Array.isArray(data) && data.length > 0
+          ? `找到 ${data.length} 个SEO发布任务`
+          : '暂无SEO发布任务';
+        break;
+
+      case 'seo-publish':
+        if (!params.name) {
+          output(false, null, 'seo-publish 需要 --name 参数');
+          process.exit(1);
+        }
+        data = await createSeoPublish(page, params);
+        message = data.submitted
+          ? 'SEO发布任务已提交'
+          : '表单已填写（未提交）。加 --submit 提交。';
         break;
 
       case 'test':
