@@ -1,0 +1,27 @@
+{
+  "_comment": "奇计品牌配置 — 从上游 Hermes Agent 做白标时使用",
+
+  "name_cn": "奇计",
+  "name_en": "Qiji",
+  "name_ja": "Qiji",
+  "name_hant": "奇計",
+
+  "app_id": "com.qiji.desktop",
+
+  "portal_name_cn": "奇计云",
+  "portal_name_en": "Qiji Cloud",
+  "portal_url": "https://www.aicps.vip",
+  "subscription_path": "/manage-subscription",
+  "docs_url": "https://www.aicps.vip",
+
+  "brand_logo": "qiji-brand.png",
+
+  "theme_name_cn": "奇计青",
+  "nsis_title": "安装奇计",
+  "synopsis_cn": "奇计 — AI智能助手桌面版",
+  "installer_name": "Qiji Installer",
+  "legal_trademarks": "奇计",
+
+  "git_origin": "https://gitee.com/wintao-storm/QIJI-agent.git",
+  "git_remote_name": "gitee"
+}

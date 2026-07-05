@@ -152,6 +152,7 @@ vendor 是一个**预下载的离线依赖包**，包含了用户安装奇计时
     │     C:\Users\<用户>\AppData\Local\hermes\     │
     │     ├── hermes-agent/  ← Python 后端源码     │
     │     ├── venv/         ← Python 虚拟环境      │
+    │     ├── python/       ← ★ Python 解释器      │
     │     ├── git/          ← PortableGit          │
     │     ├── node/         ← Node.js              │
     │     ├── bin/uv.exe    ← uv                   │
@@ -227,16 +228,34 @@ Copy-Item "$VendorDir\node" "$HermesHome\node" -Recurse
 # 4. Python 源码 → $HermesHome\hermes-agent\
 Copy-Item "$VendorDir\hermes-agent" "$HermesHome\hermes-agent" -Recurse
 
-# 5. Python 解释器 + site-packages → $HermesHome\hermes-agent\venv\
-Copy-Item "$VendorDir\python"        "$uvStore\python\cpython-3.11..." -Recurse
-Copy-Item "$VendorDir\site-packages" "$HermesHome\hermes-agent\venv\Lib\site-packages" -Recurse
+# 5. Python 解释器 → $HermesHome\python\（★ 新架构：放在 InstallDir 内，不进 uv store）
+robocopy "$VendorDir\python" "$HermesHome\python" /E /NJH /NJS /NFL /NDL /NP
 
-# 6. node_modules → $HermesHome\hermes-agent\node_modules\
+# 6. site-packages → venv\Lib\site-packages\
+robocopy "$VendorDir\site-packages" "$HermesHome\hermes-agent\venv\Lib\site-packages" /E /NJH /NJS /NFL /NDL /NP
+
+# 7. venv Scripts（hermes.exe 入口点）
+robocopy "$VendorDir\venv-scripts" "$HermesHome\hermes-agent\venv\Scripts" /E /NJH /NJS /NFL /NDL /NP
+
+# 8. pyvenv.cfg — home 指向 $HermesHome\python（不是 uv store）
+Write-AllText "$venv\pyvenv.cfg" @"
+home = $HermesHome\python
+implementation = CPython
+uv = 0.11.23
+version_info = 3.11.15
+include-system-site-packages = false
+"@
+
+# 9. node_modules → $HermesHome\hermes-agent\node_modules\
 Copy-Item "$VendorDir\nm" "$HermesHome\hermes-agent\node_modules" -Recurse
 
-# 7. Chromium → %LOCALAPPDATA%\ms-playwright\
+# 10. Chromium → %LOCALAPPDATA%\ms-playwright\
 Copy-Item "$VendorDir\chromium" "$env:LOCALAPPDATA\ms-playwright" -Recurse
 ```
+
+> **架构变更（2026-07-04）：** Python 解释器原本复制到 `%APPDATA%\uv\python\cpython-3.11-...\`，
+> 现在改为直接放在 `$HermesHome\python\`。好处：路径短、不依赖 uv store 命名约定、
+> 不跨目录树复制（这是安装失败的头号原因）。详见 [bugs-and-pitfalls.md 坑14](bugs-and-pitfalls.md)。
 
 每个步骤都是**幂等的**——如果目标已存在就跳过，所以重复运行不会出错。
 

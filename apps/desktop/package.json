@@ -179,6 +179,10 @@
         "to": "install.ps1"
       },
       {
+        "from": "../../scripts/qiji-repair.bat",
+        "to": "qiji-repair.bat"
+      },
+      {
         "from": "build/vendor",
         "to": "vendor"
       }

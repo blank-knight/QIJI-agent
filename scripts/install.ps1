@@ -69,6 +69,20 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# ============================================================================
+# Install log — captures ALL output for post-mortem debugging.
+# Customers installing via NSIS exe can't see the console; this file is the
+# ONLY trace we get when they report "it didn't work".
+# ============================================================================
+$_InstallLogDir = Join-Path $HermesHome "logs"
+New-Item -ItemType Directory -Force -Path $_InstallLogDir -ErrorAction SilentlyContinue | Out-Null
+$_InstallLog = Join-Path $_InstallLogDir "install.log"
+try {
+    Start-Transcript -Path $_InstallLog -Force -ErrorAction SilentlyContinue | Out-Null
+} catch {
+    # Some hosts disallow transcript. Install still works; we just lose the log.
+}
+
 # Suppress Invoke-WebRequest's per-chunk progress bar.  Windows PowerShell
 # 5.1's progress UI repaints synchronously on every received byte, which
 # pegs CPU on a single core and throttles downloads by 10-100x (a 57MB
@@ -119,7 +133,10 @@ function Stage-VendorFiles {
     $vendorGit = Join-Path $VendorDir "git"
     $managedGit = Join-Path $HermesHome "git"
     if ((Test-Path $vendorGit) -and -not (Test-Path (Join-Path $managedGit "bin\bash.exe"))) {
-        Copy-Item $vendorGit $managedGit -Recurse -Force
+        & robocopy $vendorGit $managedGit /E /NJH /NJS /NFL /NDL /NP /R:5 /W:3 2>$null | Out-Null
+        if (-not (Test-Path "$managedGit\bin\bash.exe")) {
+            Write-Host "[vendor] WARNING: git\bin\bash.exe missing after staging — git will not work" -ForegroundColor Red
+        }
         Write-Host "[vendor] Staged PortableGit" -ForegroundColor Cyan
     }
     # Prepend managed git to PATH so git commands work in vendor repo init below.
@@ -132,7 +149,10 @@ function Stage-VendorFiles {
     $vendorNode = Join-Path $VendorDir "node"
     $managedNode = Join-Path $HermesHome "node"
     if ((Test-Path $vendorNode) -and -not (Test-Path (Join-Path $managedNode "node.exe"))) {
-        Copy-Item $vendorNode $managedNode -Recurse -Force
+        & robocopy $vendorNode $managedNode /E /NJH /NJS /NFL /NDL /NP /R:5 /W:3 2>$null | Out-Null
+        if (-not (Test-Path "$managedNode\node.exe")) {
+            Write-Host "[vendor] WARNING: node\node.exe missing after staging — Node.js will not work" -ForegroundColor Red
+        }
         Write-Host "[vendor] Staged Node.js" -ForegroundColor Cyan
     }
 
@@ -155,9 +175,13 @@ function Stage-VendorFiles {
 
     # 5. Repository source -> $InstallDir
     $vendorRepo = Join-Path $VendorDir "hermes-agent"
-    if ((Test-Path $vendorRepo) -and -not (Test-Path (Join-Path $InstallDir "cli.py"))) {
+    if (Test-Path $vendorRepo) {
         New-Item -ItemType Directory -Force -Path (Split-Path $InstallDir) | Out-Null
-        Copy-Item $vendorRepo $InstallDir -Recurse -Force
+        & robocopy $vendorRepo $InstallDir /E /NJH /NJS /NFL /NDL /NP /R:5 /W:3 2>$null | Out-Null
+        if (-not (Test-Path "$InstallDir\hermes_cli\__init__.py")) {
+            Write-Host "[vendor] CRITICAL: hermes_cli\__init__.py missing after staging" -ForegroundColor Red
+            throw "Backend source copy incomplete: hermes_cli\__init__.py not found. Check install log at $_InstallLog"
+        }
         # Initialize git so future updates work, AND create a commit so
         # Install-Repository's rev-parse --verify HEAD check passes
         # (otherwise it moves the vendor dir aside and re-clones from GitHub).
@@ -179,18 +203,33 @@ function Stage-VendorFiles {
     # 6. Python interpreter + site-packages (offline venv creation)
     # Instead of downloading wheels via uv sync, we copy a pre-built Python
     # and the full site-packages directly. This avoids all PyPI network access.
+    #
+    # Architecture (revised 2026-07-04):
+    #   Python interpreter lives INSIDE the install dir (InstallDir\python\),
+    #   NOT in the uv managed store (%APPDATA%\uv\python\cpython-...).
+    #   Benefits:
+    #     - No cross-directory copy to %APPDATA% (the #1 install failure point)
+    #     - Shorter paths (fewer long-path issues)
+    #     - No dependency on uv's internal directory naming convention
+    #     - All runtime files in one tree — easier to debug and clean up
+    #   pyvenv.cfg's "home" points to InstallDir\python, which is where
+    #   gateway_windows.py._resolve_detached_python() looks for pythonw.exe.
     $vendorPython = Join-Path $VendorDir "python"
     $vendorSitePackages = Join-Path $VendorDir "site-packages"
     $vendorVenvScripts = Join-Path $VendorDir "venv-scripts"
     $managedVenv = Join-Path $InstallDir "venv"
+    $managedPython = Join-Path $InstallDir "python"
 
     if ((Test-Path $vendorPython) -and (Test-Path $vendorSitePackages) -and -not (Test-Path (Join-Path $managedVenv "Scripts\python.exe"))) {
-        # a) Copy Python interpreter into the managed uv python store
-        $pythonStore = Join-Path $env:APPDATA "uv\python\cpython-3.11-windows-x86_64-none"
-        if (-not (Test-Path $pythonStore)) {
-            New-Item -ItemType Directory -Force -Path (Split-Path $pythonStore) | Out-Null
-            Copy-Item $vendorPython $pythonStore -Recurse -Force
-            Write-Host "[vendor] Staged Python 3.11.15 interpreter" -ForegroundColor Cyan
+        # a) Copy Python interpreter into InstallDir\python\
+        #    This is the ONLY copy — no second hop to %APPDATA%\uv\python\.
+        if (-not (Test-Path "$managedPython\python.exe")) {
+            & robocopy $vendorPython $managedPython /E /NJH /NJS /NFL /NDL /NP /R:5 /W:3 2>$null | Out-Null
+            if (-not (Test-Path "$managedPython\python.exe")) {
+                Write-Host "[vendor] ERROR: Python interpreter copy failed — python.exe not found at $managedPython after robocopy" -ForegroundColor Red
+            } else {
+                Write-Host "[vendor] Staged Python 3.11.15 interpreter → $managedPython" -ForegroundColor Cyan
+            }
         }
 
         # b) Create venv directory structure
@@ -199,23 +238,33 @@ function Stage-VendorFiles {
 
         # c) Copy site-packages
         if (-not (Test-Path "$managedVenv\Lib\site-packages")) {
-            Copy-Item $vendorSitePackages "$managedVenv\Lib\site-packages" -Recurse -Force
+            & robocopy $vendorSitePackages "$managedVenv\Lib\site-packages" /E /NJH /NJS /NFL /NDL /NP /R:5 /W:3 2>$null | Out-Null
         }
 
         # d) Copy venv Scripts (has hermes.exe entry points + activation)
         if (Test-Path $vendorVenvScripts) {
-            Copy-Item "$vendorVenvScripts\*" "$managedVenv\Scripts\" -Recurse -Force
+            & robocopy $vendorVenvScripts "$managedVenv\Scripts" /E /NJH /NJS /NFL /NDL /NP /R:5 /W:3 2>$null | Out-Null
         }
 
-        # e) Write pyvenv.cfg (points to the staged Python)
+        # e) Write pyvenv.cfg (home points to InstallDir\python — same tree)
         $pyvenvCfg = @"
-home = $pythonStore
+home = $managedPython
 implementation = CPython
 uv = 0.11.23
 version_info = 3.11.15
 include-system-site-packages = false
 "@
         [System.IO.File]::WriteAllText("$managedVenv\pyvenv.cfg", $pyvenvCfg)
+
+        # f) Verify critical files exist after staging
+        if (-not (Test-Path "$managedPython\python.exe")) {
+            Write-Host "[vendor] CRITICAL: python.exe missing after staging" -ForegroundColor Red
+            throw "Python interpreter copy failed: python.exe not found at $managedPython. Check install log at $_InstallLog"
+        }
+        if (-not (Test-Path "$managedPython\python311.dll")) {
+            Write-Host "[vendor] CRITICAL: python311.dll missing after staging" -ForegroundColor Red
+            throw "Python interpreter copy failed: python311.dll not found at $managedPython. Check install log at $_InstallLog"
+        }
 
         Write-Host "[vendor] Staged pre-built venv (Python + site-packages)" -ForegroundColor Cyan
     }
@@ -224,19 +273,29 @@ include-system-site-packages = false
     # NOTE: We can't name it "node_modules" in vendor/ because electron-builder
     # silently strips any directory named node_modules from extraResources.
     # We store it as "nm" and restore it to the correct name here.
+    # Use robocopy (not Copy-Item) — node_modules has tens of thousands of files
+    # with deep nesting, making it the most Copy-Item-fragile directory in vendor.
     $vendorNM = Join-Path $VendorDir "nm"
     $managedNM = Join-Path $InstallDir "node_modules"
     if ((Test-Path $vendorNM) -and -not (Test-Path $managedNM)) {
-        Copy-Item $vendorNM $managedNM -Recurse -Force
+        & robocopy $vendorNM $managedNM /E /NJH /NJS /NFL /NDL /NP /R:5 /W:3 2>$null | Out-Null
+        if (-not (Test-Path "$managedNM\.bin\node.cmd")) {
+            Write-Host "[vendor] WARNING: node_modules\.bin\node.cmd missing after staging — browser tools may not work" -ForegroundColor Red
+        }
         Write-Host "[vendor] Staged node_modules" -ForegroundColor Cyan
     }
 
     # 8. Playwright Chromium -> cache (skip npx playwright install)
+    # Use robocopy — Chromium has deep directory nesting and large binaries.
     $vendorChromium = Join-Path $VendorDir "chromium"
     if (Test-Path $vendorChromium) {
         $pwCache = Join-Path $env:LOCALAPPDATA "ms-playwright"
         if (-not (Test-Path $pwCache) -or (Get-ChildItem $pwCache -Directory -ErrorAction SilentlyContinue).Count -eq 0) {
-            Copy-Item $vendorChromium $pwCache -Recurse -Force
+            & robocopy $vendorChromium $pwCache /E /NJH /NJS /NFL /NDL /NP /R:5 /W:3 2>$null | Out-Null
+            $chromeExe = Get-ChildItem "$pwCache\*\chrome-win\chrome.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if (-not $chromeExe) {
+                Write-Host "[vendor] WARNING: chrome.exe not found in Playwright cache after staging — browser automation will fail" -ForegroundColor Red
+            }
             Write-Host "[vendor] Staged Playwright Chromium" -ForegroundColor Cyan
         }
     }
@@ -3248,7 +3307,19 @@ $InstallStages += @(
 # (the default-invocation case where Main runs everything in one
 # process), and throws cleanly if uv truly isn't installed yet.
 function Stage-Uv               { if (-not (Install-Uv))     { throw "uv installation failed" } }
-function Stage-Python           { Resolve-UvCmd; if (-not (Test-Python))    { throw "Python $PythonVersion not available" } }
+function Stage-Python           {
+    # Offline/vendor mode: if the venv was pre-staged (Scripts\python.exe
+    # exists and InstallDir\python\ has the interpreter), skip online Python
+    # verification entirely.  We don't need uv python find because the
+    # interpreter is bundled inside InstallDir, not in uv's managed store.
+    $vendorVenvMarker = Join-Path $InstallDir "venv\Scripts\python.exe"
+    $vendorPythonMarker = Join-Path $InstallDir "python\python.exe"
+    if ((Test-Path $vendorVenvMarker) -and (Test-Path $vendorPythonMarker)) {
+        Write-Host "[python] Pre-staged (offline mode), skipping verification" -ForegroundColor Cyan
+        return
+    }
+    Resolve-UvCmd; if (-not (Test-Python))    { throw "Python $PythonVersion not available" }
+}
 function Stage-Git              { if (-not (Install-Git))    { throw "Git not available and auto-install failed -- install from https://git-scm.com/download/win then re-run" } }
 # Node is optional (browser tools degrade gracefully without it).  Surface
 # failure to the JSON contract as skipped=true / reason rather than ok=true,
@@ -3512,8 +3583,13 @@ try {
     Write-Host ""
     Write-Err "Installation failed: $_"
     Write-Host ""
-    Write-Info "If the error is unclear, try downloading and running the script directly:"
+    Write-Info "Full install log saved to:"
+    Write-Host "  $_InstallLog" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Info "Send this file to technical support for diagnosis."
     Write-Host "  Invoke-WebRequest -Uri 'https://hermes-agent.nousresearch.com/install.ps1' -OutFile install.ps1" -ForegroundColor Yellow
     Write-Host "  .\install.ps1" -ForegroundColor Yellow
     Write-Host ""
+} finally {
+    try { Stop-Transcript -ErrorAction SilentlyContinue } catch {}
 }

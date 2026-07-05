@@ -253,3 +253,118 @@ Select-String "Run Hermes|Run QiJi" "C:\Users\84673\qiji-fork\apps\desktop\build
 1. **vendor 是快照，不是实时映射。** 每次改了 Python 后端，必须删掉 vendor 重新 `prepare-offline.ps1`。只改前端（tsx/ts）不受影响——前端是 Vite 从编译目录直接打包的。
 2. **dev 模式不能替代离线包验证。** dev 模式的后端来自 fork 源码（SOURCE\_REPO\_ROOT），离线包的后端来自安装目录（ACTIVE\_HERMES\_ROOT）。品牌文案验证必须以离线包安装后的实际表现为准。
 3. **改动涉及品牌化的 Python 文件清单：** web\_server.py、setup.py、tips.py 等——只要改了任意一个，就必须重新生成 vendor。
+
+---
+
+## 坑12：install.ps1 升级时跳过 vendor 拷贝（品牌化残留）
+
+**严重度：★★★★☆**
+
+**现象：** 已装过奇计/Hermes 的用户，装新版离线包后，消息平台描述仍显示旧品牌名（"Run Hermes" 而非 "Run QiJi"）。全新安装的用户没有这个问题。
+
+**根因（源码验证）：** install.ps1 原版 L158：
+```powershell
+if ((Test-Path $vendorRepo) -and -not (Test-Path (Join-Path $InstallDir "cli.py"))) {
+    Copy-Item $vendorRepo $InstallDir -Recurse -Force
+}
+```
+条件 `-not (Test-Path "cli.py")` 意味着：**只有安装目录没有 cli.py 时才拷 vendor 仓库**。已装过的用户安装目录里 cli.py 存在 → vendor 拷贝被跳过 → 旧的品牌化代码原封不动。
+
+三种场景对比：
+
+| 场景 | cli.py 存在？ | vendor 拷贝？ | 结果 |
+|------|-------------|-------------|------|
+| 全新电脑（没装过） | ❌ | ✅ | 品牌化生效 |
+| 之前装过，覆盖安装 | ✅ | ⏭️ 跳过 | ❌ 旧代码残留 |
+| 卸载后重装（卸载不删后端目录） | ✅ | ⏭️ 跳过 | ❌ 旧代码残留 |
+
+**修复（已实施）：** install.ps1 L158 去掉 cli.py 检查条件，强制覆盖：
+```powershell
+if (Test-Path $vendorRepo) {
+    Copy-Item $vendorRepo $InstallDir -Recurse -Force
+}
+```
+
+**教训：** vendor 覆盖逻辑不能依赖"是否已安装"判断。升级场景和全新安装场景应该走相同的 vendor 拷贝流程。
+
+---
+
+## 坑13：误删 AppData\Local\hermes 工具链目录
+
+**严重度：★★★★☆**
+
+**现象：** 清理卸载残留时，误删了 `C:\Users\<user>\AppData\Local\hermes\`，导致 prepare-offline.ps1 无法收割工具链（uv/git/node/python/site-packages），第3步报错或产物不完整。
+
+**根因：** 这个目录有双重身份：
+1. **旧后端源码残留**位置（`hermes-agent\hermes_cli\` 下的品牌化代码）
+2. **hermes CLI 工具链**目录（uv/git/node/python/venv/site-packages/node_modules）
+
+prepare-offline.ps1 需要从这里收割工具链打包进 vendor。删了这个目录 = 删了工具链。
+
+**修复：** 如果误删了，重装 hermes CLI 恢复：
+```powershell
+iex (irm https://hermes-agent.nousresearch.com/install.ps1)
+```
+
+**教训：** 清理卸载残留时，只删以下目录：
+- `D:\奇计Claw\` 或 `D:\奇计Agent\`（桌面 app 安装目录）
+- `C:\Users\<user>\AppData\Roaming\Qiji\`（用户数据）
+- `C:\Users\<user>\AppData\Roaming\奇计\`（用户数据）
+- 开始菜单快捷方式 .lnk
+- 注册表卸载条目
+
+**不要删** `C:\Users\<user>\AppData\Local\hermes\`，那是工具链目录。
+
+---
+
+## 坑14：Python 解释器复制到 uv store 失败（uv trampoline entity not found）
+
+**严重度：★★★★★（安装完成后无法启动，用户看到"couldn't start"白屏）**
+
+**现象：** 离线包安装完成后，app 启动报错：
+```
+uv trampoline failed to spawn Python child process
+Caused by: entity not found (os error 2)
+奇计 backend exited before it became ready (1)
+```
+
+**根因（源码验证）：**
+
+venv 里的 `Scripts\python.exe` 是 uv 的 trampoline（跳板程序），它启动时读 `venv\pyvenv.cfg` 的 `home` 路径，然后去那个路径找真正的 Python 解释器。
+
+旧架构：pyvenv.cfg 的 home 指向 `%APPDATA%\uv\python\cpython-3.11-windows-x86_64-none\`，安装时用 `Copy-Item -Recurse` 从 vendor 复制到这个路径。`Copy-Item` 有两个致命问题：
+1. **长路径静默失败**：Windows MAX_PATH=260，site-packages 里深层路径可能超限，Copy-Item 不报错直接跳过
+2. **Defender 拦截**：实时扫描可能在复制过程中锁文件，导致部分文件丢失
+
+**修复（2026-07-04 架构重构）：**
+
+彻底改变 Python 解释器的存放位置——不再复制到 `%APPDATA%\uv\python\`，而是直接放在 InstallDir 内：
+
+```
+旧架构（脆弱）：
+  vendor\python → Copy-Item → %APPDATA%\uv\python\cpython-3.11-...\  ← 跨目录，易失败
+  pyvenv.cfg home = %APPDATA%\uv\python\cpython-3.11-...           ← 长路径
+
+新架构（稳健）：
+  vendor\python → robocopy → InstallDir\python\                    ← 同目录树，路径短
+  pyvenv.cfg home = InstallDir\python                              ← 和 venv 同级
+```
+
+三处改动：
+1. `Stage-VendorFiles` 第6步：Python 复制目标从 `%APPDATA%\uv\python\` 改为 `InstallDir\python\`，工具从 `Copy-Item` 改为 `robocopy`
+2. `pyvenv.cfg` 的 `home` 改为指向 `InstallDir\python`
+3. `Stage-Python`：vendor 模式下（venv + python 已 staged），跳过在线 Python 验证，不再需要 `uv python find`
+
+兼容性：`gateway_windows.py` 的 `_resolve_detached_python()` (L685-707) 读 pyvenv.cfg 的 home，去 `Path(home)/pythonw.exe` 找 Python。vendor\python 包含 python.exe + pythonw.exe + python311.dll，完全兼容。
+
+**旧版离线包（未重构）的目标机器快速修复：**
+```powershell
+# 检查 Python 是否到位
+Test-Path "$env:APPDATA\uv\python\cpython-3.11-windows-x86_64-none\python.exe"
+# 如果 False，从安装目录手动复制
+$src = "D:\qijclaw\Qiji\resources\vendor\python"
+$dst = "$env:APPDATA\uv\python\cpython-3.11-windows-x86_64-none"
+New-Item -ItemType Directory -Force -Path (Split-Path $dst) | Out-Null
+robocopy $src $dst /E /NJH /NJS /NFL /NDL /NP
+```
+复制完后重启奇计。

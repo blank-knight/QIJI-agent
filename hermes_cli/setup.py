@@ -1,5 +1,5 @@
 """
-Interactive setup wizard for Hermes Agent.
+Interactive setup wizard for 奇计 Agent.
 
 Modular wizard with independently-runnable sections:
   1. Model & Provider — choose your AI provider and model
@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 
-_DOCS_BASE = "https://hermes-agent.nousresearch.com/docs"
+_DOCS_BASE = "https://www.aicps.vip/docs"
 
 
 def _model_config_dict(config: Dict[str, Any]) -> Dict[str, Any]:
@@ -994,7 +994,7 @@ def _setup_tts_provider(config: dict):
 
     elif selected == "xai":
         # Resolution order: existing OAuth tokens (free for SuperGrok subscribers
-        # via the Hermes auth store) > existing XAI_API_KEY > prompt the user.
+        # via the 奇计 auth store) > existing XAI_API_KEY > prompt the user.
         # When neither is configured, offer both options instead of forcing the
         # API-key path — xAI TTS works fine with OAuth bearer tokens too.
         oauth_logged_in = _xai_oauth_logged_in_for_setup()
@@ -1894,7 +1894,7 @@ def _setup_webhooks():
     print_warning("   internet. For security, run the gateway in a sandboxed environment")
     print_warning("   (Docker, VM, etc.) to limit blast radius from prompt injection.")
     print()
-    print_info("   Full guide: https://hermes-agent.nousresearch.com/docs/user-guide/messaging/webhooks/")
+    print_info("   Full guide: https://www.aicps.vip/docs/user-guide/messaging/webhooks/")
     print()
 
     port = prompt("Webhook port (default 8644)")
@@ -1921,7 +1921,7 @@ def _setup_webhooks():
     print_info("      http://your-server:8644/webhooks/<route-name>")
     print()
     print_info("   Route configuration guide:")
-    print_info("   https://hermes-agent.nousresearch.com/docs/user-guide/messaging/webhooks/#configuring-routes")
+    print_info("   https://www.aicps.vip/docs/user-guide/messaging/webhooks/#configuring-routes")
     print()
     print_info("   Open config in your editor:  hermes config edit")
     print_info("   Open config in your editor:  hermes config edit")
@@ -2368,7 +2368,7 @@ def _load_openclaw_migration_module():
 
 # Item kinds that represent high-impact changes warranting explicit warnings.
 # Gateway tokens/channels can hijack messaging platforms from the old agent.
-# Config values may have different semantics between OpenClaw and Hermes.
+# Config values may have different semantics between OpenClaw and 奇计.
 # Instruction/context files (.md) can contain incompatible setup procedures.
 _HIGH_IMPACT_KIND_KEYWORDS = {
     "gateway": "⚠ Gateway/messaging — this will configure 奇计 to use your OpenClaw messaging channels",
@@ -2376,7 +2376,7 @@ _HIGH_IMPACT_KIND_KEYWORDS = {
     "slack": "⚠ Slack — this will point 奇计 at your OpenClaw Slack workspace",
     "discord": "⚠ Discord — this will point 奇计 at your OpenClaw Discord bot",
     "whatsapp": "⚠ WhatsApp — this will point 奇计 at your OpenClaw WhatsApp connection",
-    "config": "⚠ Config values — OpenClaw settings may not map 1:1 to Hermes equivalents",
+    "config": "⚠ Config values — OpenClaw settings may not map 1:1 to 奇计 equivalents",
     "soul": "⚠ Instruction file — may contain OpenClaw-specific setup/restart procedures",
     "memory": "⚠ Memory/context file — may reference OpenClaw-specific infrastructure",
     "context": "⚠ Context file — may contain OpenClaw-specific instructions",
@@ -2535,7 +2535,7 @@ def _offer_openclaw_migration(hermes_home: Path) -> bool:
         )
         return False
 
-    # Execute the migration — overwrite=False so existing Hermes configs are
+    # Execute the migration — overwrite=False so existing 奇计 configs are
     # preserved. The user saw the preview; conflicts are skipped by default.
     try:
         migrator = mod.Migrator(
@@ -2543,7 +2543,7 @@ def _offer_openclaw_migration(hermes_home: Path) -> bool:
             target_root=hermes_home.resolve(),
             execute=True,
             workspace_target=None,
-            overwrite=False,  # preserve existing Hermes config
+            overwrite=False,  # preserve existing 奇计 config
             migrate_secrets=True,
             output_dir=None,
             selected_options=selected,
@@ -2600,7 +2600,7 @@ def _run_portal_one_shot(config: dict) -> None:
     Wired into ``hermes setup --portal`` and ``hermes portal``. This is the
     Nous-Portal slice of the first-time quick setup, collapsed into a single
     shareable command so a brand-new user goes from zero to a fully working
-    Hermes session — model selected, provider set, and web/image/tts/browser
+    奇计 session — model selected, provider set, and web/image/tts/browser
     tools routed via their Portal sub — without being told to run
     ``hermes setup`` and hunt for the quick-setup option.
 
@@ -2786,7 +2786,7 @@ def run_setup_wizard(args):
     )
     print(
         color(
-            "│             ⚕ Hermes Agent Setup Wizard                │", Colors.MAGENTA
+            "│             ⚕ 奇计 Agent Setup Wizard                │", Colors.MAGENTA
         )
     )
     print(
@@ -2797,7 +2797,7 @@ def run_setup_wizard(args):
     )
     print(
         color(
-            "│  Let's configure your Hermes Agent installation.       │", Colors.MAGENTA
+            "│  Let's configure your 奇计 Agent installation.       │", Colors.MAGENTA
         )
     )
     print(
@@ -2851,7 +2851,7 @@ def run_setup_wizard(args):
             config = load_config()
 
         setup_mode = prompt_choice(
-            "How would you like to set up Hermes?",
+            "How would you like to set up 奇计?",
             [
                 "Quick Setup (Nous Portal) — free OAuth login, no API keys, model + tools (recommended)",
                 "Full setup — configure every provider, tool & option yourself (bring your own keys)",

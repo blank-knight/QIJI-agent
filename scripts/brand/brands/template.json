@@ -1,0 +1,27 @@
+{
+  "_comment": "品牌配置模板 — 复制此文件并修改为你的品牌",
+
+  "name_cn": "品牌中文名",
+  "name_en": "BrandName",
+  "name_ja": "BrandName",
+  "name_hant": "品牌繁體名",
+
+  "app_id": "com.yourbrand.desktop",
+
+  "portal_name_cn": "品牌云",
+  "portal_name_en": "Brand Cloud",
+  "portal_url": "https://www.yourbrand.com",
+  "subscription_path": "/manage-subscription",
+  "docs_url": "https://www.yourbrand.com",
+
+  "brand_logo": "yourbrand-logo.png",
+
+  "theme_name_cn": "品牌色",
+  "nsis_title": "安装品牌名",
+  "synopsis_cn": "品牌名 — AI智能助手桌面版",
+  "installer_name": "BrandName Installer",
+  "legal_trademarks": "品牌名",
+
+  "git_origin": "https://gitee.com/yourorg/yourbrand-agent.git",
+  "git_remote_name": "gitee"
+}
