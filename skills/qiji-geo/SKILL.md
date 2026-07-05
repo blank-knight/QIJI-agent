@@ -8,6 +8,10 @@ version: 1.4.1
 
 通过 Playwright 自动化操作奇计GEO平台 (geo.heikexia.cc)。
 
+## 仓库绑定（重要）
+
+**本 skill 与 qiji-fork 仓库强绑定，不是通用 Hermes skill。** 正式版在 `~/clawd/qiji-fork/skills/qiji-geo/`，跟随离线安装包一起编译分发。`~/.hermes/skills/qiji-geo/` 只是开发测试用的副本，方便当前 Hermes 实例调用和调试。改 skill 时两份都要同步。
+
 ## ⚠️ 费用警告
 
 以下操作会消耗真实费用，执行前**必须**向用户确认：
@@ -301,6 +305,7 @@ for (const line of text.split('\n')) {
 | docs/client-architecture.md | 桌面客户端逆向分析：三层架构、双API、CDP拦截 |
 | references/platform-selectors.md | 网页端 CSS 选择器速查表 |
 | references/auth-helper-client.md | 桌面客户端完整 API 端点表 |
+| references/geo-workflow-requirements.md | GEO全流程需求文档（幕布原始需求+21张截图OCR）：三大场景、强约束、知识库/指令/SEO/拓词模块 |
 
 ## 故障排查
 
