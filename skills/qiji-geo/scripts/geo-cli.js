@@ -361,13 +361,25 @@ async function parseTable(page, menu, submenu, columnNames) {
     const trs = document.querySelectorAll('table tbody tr, .fixed-table-body tbody tr');
     return Array.from(trs).map(tr => {
       let tds = Array.from(tr.querySelectorAll('td')).map(td => td.textContent.trim());
-      // 去掉序号列
-      if (tds.length > 0 && /^\d+$/.test(tds[0])) tds = tds.slice(1);
+      // 去掉前导的序号列和 checkbox 列（可能有多个）
+      while (tds.length > 0 && (/^\d+$/.test(tds[0]) || tds[0] === '')) {
+        tds = tds.slice(1);
+      }
       const row = {};
       cols.forEach((name, i) => { row[name] = tds[i] || ''; });
       return row;
-    }).filter(r => cols.some(c => r[c] && !/^\d+$/.test(r[c])));
+    });
   }, columnNames);
+
+  // 过滤空表占位行（"没有找到匹配的记录"等）
+  rows = rows.filter(r => {
+    const vals = Object.values(r).map(v => String(v).trim());
+    // 全空行
+    if (vals.every(v => !v)) return false;
+    // 包含"没有找到"占位文本
+    if (vals.some(v => v.includes('没有找到匹配') || v.includes('没有数据'))) return false;
+    return true;
+  });
 
   // 策略 B：innerText 回退
   if (rows.length === 0) {
@@ -706,6 +718,11 @@ async function createSeoPublish(page, params) {
   if (!validActions.includes(action)) {
     output(false, null, `未知操作: ${action}。可用: ${validActions.join(', ')}`);
     process.exit(1);
+  }
+
+  // 应用 --headless 参数到 CONFIG
+  if (params.headless || process.env.GEO_HEADLESS === 'true') {
+    CONFIG.headless = true;
   }
 
   const { browser, page } = await createBrowser();
