@@ -246,6 +246,64 @@ function Stage-VendorFiles {
             & robocopy $vendorVenvScripts "$managedVenv\Scripts" /E /NJH /NJS /NFL /NDL /NP /R:5 /W:3 2>$null | Out-Null
         }
 
+        # d.2) CRITICAL FIX: Replace uv trampoline python.exe with the REAL python.exe
+        #
+        # uv trampoline binaries (python.exe, hermes.exe, etc.) have the BUILD
+        # MACHINE's Python path hardcoded in the binary:
+        #   C:\Users\<build_user>\AppData\Roaming\uv\python\cpython-...-none\python.exe
+        # On a different user's machine this path doesn't exist → "entity not found (os error 2)"
+        # Writing pyvenv.cfg does NOT fix this because the trampoline loads the path
+        # from its embedded resources, not from pyvenv.cfg.
+        #
+        # Fix: overwrite the trampoline python.exe with the real python.exe from
+        # InstallDir\python. The real python.exe detects the venv via pyvenv.cfg
+        # and uses its "home" key to locate the base interpreter for DLLs.
+        # This makes `venv\Scripts\python.exe -m hermes_cli.main` work on any machine.
+        if (Test-Path "$managedPython\python.exe") {
+            Copy-Item "$managedPython\python.exe" "$managedVenv\Scripts\python.exe" -Force
+            # Also copy pythonw.exe (needed by gateway_windows.py _resolve_detached_python)
+            if (Test-Path "$managedPython\pythonw.exe") {
+                Copy-Item "$managedPython\pythonw.exe" "$managedVenv\Scripts\pythonw.exe" -Force
+            }
+            Write-Host "[vendor] Replaced uv trampoline python.exe with real interpreter" -ForegroundColor Cyan
+        }
+
+        # d.3) CRITICAL FIX: Regenerate entry-point trampolines (hermes.exe etc.)
+        #
+        # Same issue as python.exe above: uv entry-point executables (hermes.exe,
+        # hermes-agent.exe, etc.) have the build machine's python.exe path embedded.
+        # We can't binary-patch them (path lengths differ), so we replace each
+        # *.exe entry point with a batch wrapper that calls python.exe directly.
+        #
+        # Only do this for entry points (not python.exe/pythonw.exe which we
+        # already replaced with the real interpreter above).
+        $entryPoints = @(
+            'hermes.exe', 'hermes-agent.exe', 'hermes-acp.exe',
+            'fastapi.exe', 'edge-tts.exe', 'edge-playback.exe',
+            'dotenv.exe', 'httpx.exe', 'jsonschema.exe', 'markdown-it.exe',
+            'distro.exe', 'google-oauthlib-tool.exe'
+        )
+        foreach ($ep in $entryPoints) {
+            $epPath = Join-Path "$managedVenv\Scripts" $ep
+            if (Test-Path $epPath) {
+                # Derive the module name from the entry point
+                # e.g., hermes.exe → hermes_cli, fastapi.exe → fastapi
+                $moduleName = $ep.BaseName
+                if ($moduleName -eq 'hermes' -or $moduleName -eq 'hermes-agent') {
+                    $moduleName = 'hermes_cli.main'
+                } elseif ($moduleName -eq 'hermes-acp') {
+                    $moduleName = 'hermes_cli.acp'
+                }
+                # Create a batch wrapper (same name, .bat extension)
+                $batPath = Join-Path "$managedVenv\Scripts" "$($ep.BaseName).bat"
+                $batContent = "@echo off`r`n`"$managedPython\python.exe`" -m $moduleName %*"
+                [System.IO.File]::WriteAllText($batPath, $batContent)
+                # Remove the broken trampoline .exe
+                Remove-Item $epPath -Force -ErrorAction SilentlyContinue
+            }
+        }
+        Write-Host "[vendor] Replaced entry-point trampolines with batch wrappers" -ForegroundColor Cyan
+
         # e) Write pyvenv.cfg (home points to InstallDir\python — same tree)
         $pyvenvCfg = @"
 home = $managedPython
