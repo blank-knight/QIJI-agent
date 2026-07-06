@@ -458,6 +458,149 @@ def cmd_platforms():
     return code == 200
 
 
+def cmd_account_status():
+    """查看全平台授权状态（社媒16 + AI 8）
+
+    对比「支持的16个社媒平台」和「已授权的账号列表」，
+    以及「8个AI平台」和「已认证的AI列表」，
+    输出每个平台的授权状态。
+
+    用法: python3 geo-client.py account-status
+    """
+    # ── 社媒平台完整定义（与客户端 16 个脚本一一对应）──
+    SOCIAL_PLATFORMS = {
+        "bili":    "B站",
+        "bjh":     "百家号",
+        "csdn":    "CSDN",
+        "dy":      "抖音",
+        "js":      "简书",
+        "kuaishou":"快手",
+        "qeh":     "企鹅号",
+        "sh":      "搜狐号",
+        "sph":     "视频号",
+        "tt":      "头条号",
+        "weibo":   "微博",
+        "wxgzh":   "微信公众号",
+        "wy":      "网易号",
+        "xhs":     "小红书",
+        "zdm":     "什么值得买",
+        "zh":      "知乎",
+    }
+
+    # ── AI 平台完整定义（8个认证端点）──
+    AI_PLATFORMS = {
+        "deepseek": "DeepSeek",
+        "doubao":   "豆包",
+        "kimi":     "Kimi",
+        "nami":     "Nami",
+        "qianwen":  "通义千问",
+        "wenxin":   "文心一言",
+        "yuanbao":  "元宝",
+        "zhipu":    "智谱",
+    }
+
+    print("═" * 50)
+    print("  奇计 GEO 全平台授权状态")
+    print("═" * 50)
+
+    # ════════ 社媒平台 ════════
+    print("\n📋 社媒平台（16个）\n")
+
+    social_authorized = set()
+    social_data_ok = False
+
+    if GEO_UDID:
+        cfg = _resolve_credentials()
+        uid = GEO_UID or cfg.get("uid", "")
+        url = f"{REMOTE_BASE}/api/zhushou/get_user_list?udid={GEO_UDID}&uid={uid}"
+        code, data = http_get(url, timeout=15)
+        if code == 200 and isinstance(data, dict):
+            users = data.get("data", data.get("users", []))
+            if isinstance(users, list):
+                social_data_ok = True
+                for u in users:
+                    plat = u.get("platform", u.get("pt", "")).lower().strip()
+                    if not plat:
+                        # 有些返回用中文名或 id，尝试匹配
+                        for en, cn in SOCIAL_PLATFORMS.items():
+                            if cn in str(u) or en in str(u):
+                                plat = en
+                                break
+                    if plat:
+                        social_authorized.add(plat)
+
+    social_done = 0
+    for en, cn in SOCIAL_PLATFORMS.items():
+        if en in social_authorized:
+            print(f"  ✅ {cn:8s} ({en})")
+            social_done += 1
+        else:
+            print(f"  ❌ {cn:8s} ({en})  ← 未授权")
+
+    print(f"\n  社媒汇总: {social_done}/{len(SOCIAL_PLATFORMS)} 已授权")
+
+    if not social_data_ok:
+        print("  ⚠️  无法获取账号列表（需要 GEO_UDID），以上仅显示默认状态")
+
+    # ════════ AI 平台 ════════
+    print("\n🤖 AI 平台（8个）\n")
+
+    ai_authorized = set()
+    ai_data_ok = False
+
+    if GEO_UDID:
+        cfg = _resolve_credentials()
+        uid = GEO_UID or cfg.get("uid", "")
+        # 尝试 get_model 获取已认证的 AI 列表
+        url = f"{REMOTE_BASE}/api/zhushou/get_model?udid={GEO_UDID}&uid={uid}"
+        code, data = http_get(url, timeout=15)
+        if code == 200 and isinstance(data, dict):
+            models = data.get("data", [])
+            if isinstance(models, list):
+                ai_data_ok = True
+                for m in models:
+                    plat = str(m.get("platform", m.get("pt", m.get("name", "")))).lower().strip()
+                    for en, cn in AI_PLATFORMS.items():
+                        if en in plat or cn in plat:
+                            ai_authorized.add(en)
+                            break
+
+    ai_done = 0
+    for en, cn in AI_PLATFORMS.items():
+        if en in ai_authorized:
+            print(f"  ✅ {cn:8s} ({en})")
+            ai_done += 1
+        else:
+            print(f"  ❌ {cn:8s} ({en})  ← 未认证")
+
+    print(f"\n  AI 汇总: {ai_done}/{len(AI_PLATFORMS)} 已认证")
+
+    if not ai_data_ok:
+        print("  ⚠️  无法获取AI认证列表（需要 GEO_UDID），以上仅显示默认状态")
+
+    # ════════ 总结 ════════
+    total = len(SOCIAL_PLATFORMS) + len(AI_PLATFORMS)
+    done = social_done + ai_done
+    print("\n" + "═" * 50)
+    print(f"  总计: {done}/{total} 已授权")
+
+    pending_social = [cn for en, cn in SOCIAL_PLATFORMS.items() if en not in social_authorized]
+    pending_ai = [cn for en, cn in AI_PLATFORMS.items() if en not in ai_authorized]
+
+    if pending_social:
+        print(f"\n⚠️  未授权社媒 ({len(pending_social)}): {', '.join(pending_social)}")
+        print(f"   批量授权: python3 {sys.argv[0]} media-login")
+
+    if pending_ai:
+        print(f"\n⚠️  未认证AI ({len(pending_ai)}): {', '.join(pending_ai)}")
+        print(f"   批量认证: python3 {sys.argv[0]} ai-auth")
+
+    if not pending_social and not pending_ai:
+        print("\n🎉 全部平台已授权！可以开始发布内容了。")
+
+    return True
+
+
 def cmd_stats():
     """查看发布统计（远程 API）"""
     if not GEO_UDID:
@@ -621,6 +764,7 @@ COMMANDS = {
     "platforms": ("查看支持的平台", cmd_platforms),
     "stats": ("查看发布统计", cmd_stats),
     "delete-account": ("删除社媒账号", cmd_delete_account),
+    "account-status": ("查看全平台授权状态（社媒16+AI 8）", cmd_account_status),
     "media-login": ("社媒平台授权登录（可视化）", cmd_media_login),
     "ai-auth": ("AI平台认证（可视化，可指定平台）", cmd_ai_auth),
 }

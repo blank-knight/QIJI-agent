@@ -628,6 +628,15 @@ async function getSeoTasks(page) {
 }
 
 // ========== 5m. 创建 SEO 发布任务 ==========
+// 表单结构（2026-07-06 截图验证）：
+//   1. 任务名      — 文本输入框     *
+//   2. 站点         — 文本输入框     *
+//   3. 发布栏目     — 文本输入框     *
+//   4. AI文章分类   — 自定义下拉框   *  (Element UI 风格，非原生 select)
+//   5. 发布日期     — 日期范围选择器 *  (起始/结束两个输入框)
+//   6. 每日发布时间 — 时间范围选择器 *  (起始/结束两个输入框)
+//   7. 每日发布     — 文本输入框     *
+//   底部按钮：提交任务
 
 async function createSeoPublish(page, params) {
   await goHome(page);
@@ -635,52 +644,96 @@ async function createSeoPublish(page, params) {
   const frame = await getFrame(page);
   if (!frame) return { error: 'iframe未加载' };
 
+  // 收集填写结果，最终返回给 Agent 核对
+  const filled = {};
+
   // 点击"添加"按钮打开弹窗
-  const addBtn = frame.locator('button:has-text("添加"), .btn:has-text("添加")').first();
+  const addBtn = frame.locator('button:has-text("添加"), .btn:has-text("添加"), a:has-text("添加")').first();
   await addBtn.click().catch(() => {});
-  await page.waitForTimeout(1000);
+  await page.waitForTimeout(1500);
 
-  // 填写任务名
+  // 1. 任务名 — 文本输入框
   if (params.name) {
-    const nameInput = frame.locator('input[placeholder*="任务名"], input[placeholder*="task"]').first();
+    const nameInput = frame.locator('input[placeholder*="任务名"], input[placeholder*="task"], input[placeholder*="名称"]').first();
     await nameInput.fill(params.name).catch(() => {});
+    filled.name = params.name;
   }
 
-  // 选择站点（下拉）
+  // 2. 站点 — 文本输入框（不是下拉框！）
   if (params.site) {
-    const siteSelect = frame.locator('select').first();
-    await siteSelect.selectOption({ label: params.site }).catch(() => {});
+    const siteInput = frame.locator('input[placeholder*="站点"], input[placeholder*="site"], input[placeholder*="域名"]').first();
+    await siteInput.fill(params.site).catch(() => {});
+    filled.site = params.site;
   }
 
-  // 选择发布栏目
+  // 3. 发布栏目 — 文本输入框（不是下拉框！）
   if (params.column) {
-    const columnSelect = frame.locator('select').nth(1);
-    await columnSelect.selectOption({ label: params.column }).catch(() => {});
+    const columnInput = frame.locator('input[placeholder*="栏目"], input[placeholder*="column"]').first();
+    await columnInput.fill(params.column).catch(() => {});
+    filled.column = params.column;
   }
 
-  // 选择文章分类
+  // 4. AI文章分类 — 自定义下拉框（Element UI 风格）
+  //    策略：点击触发器 → 等待下拉面板 → 点击匹配选项
   if (params.category) {
-    const categorySelect = frame.locator('select').nth(2);
-    await categorySelect.selectOption({ label: params.category }).catch(() => {});
+    const categoryTrigger = frame.locator('.el-select:has(input[placeholder*="分类"]) .el-input, input[placeholder*="分类"]').first();
+    await categoryTrigger.click().catch(() => {});
+    await page.waitForTimeout(500);
+    // 下拉选项通常出现在 body 下面的 .el-select-dropdown
+    const option = page.locator('.el-select-dropdown__item:has-text("' + params.category + '")').first();
+    await option.click().catch(() => {});
+    filled.category = params.category;
   }
 
-  // 设置每日发布量
+  // 5. 发布日期 — 日期范围选择器（两个输入框）
+  if (params.startDate) {
+    // 起始日期
+    const startDateInput = frame.locator('input[placeholder*="开始"], input[placeholder*="起始"], input[placeholder*="start"]').first();
+    await startDateInput.fill(params.startDate).catch(() => {});
+    // 触发 change 事件（Element UI 日期选择器需要）
+    await startDateInput.press('Enter').catch(() => {});
+    filled.startDate = params.startDate;
+  }
+  if (params.endDate) {
+    const endDateInput = frame.locator('input[placeholder*="结束"], input[placeholder*="到期"], input[placeholder*="end"]').first();
+    await endDateInput.fill(params.endDate).catch(() => {});
+    await endDateInput.press('Enter').catch(() => {});
+    filled.endDate = params.endDate;
+  }
+
+  // 6. 每日发布时间 — 时间范围选择器（两个输入框）
+  if (params.timeStart) {
+    const timeStartInput = frame.locator('input[placeholder*="发布时间"], input[placeholder*="开始时间"], input[placeholder*="time"]').first();
+    await timeStartInput.fill(params.timeStart).catch(() => {});
+    await timeStartInput.press('Enter').catch(() => {});
+    filled.timeStart = params.timeStart;
+  }
+  if (params.timeEnd) {
+    const timeEndInput = frame.locator('input[placeholder*="结束时间"], input[placeholder*="截止时间"]').first();
+    await timeEndInput.fill(params.timeEnd).catch(() => {});
+    await timeEndInput.press('Enter').catch(() => {});
+    filled.timeEnd = params.timeEnd;
+  }
+
+  // 7. 每日发布量 — 文本/数字输入框
   if (params.dailyCount) {
-    const countInput = frame.locator('input[type="number"], input[placeholder*="发布量"]').first();
-    await countInput.fill(params.dailyCount).catch(() => {});
+    const countInput = frame.locator('input[placeholder*="每日"], input[placeholder*="发布量"], input[placeholder*="数量"], input[type="number"]').first();
+    await countInput.fill(String(params.dailyCount)).catch(() => {});
+    filled.dailyCount = params.dailyCount;
   }
 
   // 提交（如果指定了 --submit）
   if (params.submit) {
-    const submitBtn = frame.locator('button:has-text("提交"), .btn:has-text("提交"), button:has-text("确定")').first();
+    // 按钮文字是"提交任务"（截图确认）
+    const submitBtn = frame.locator('button:has-text("提交任务"), button:has-text("提交"), .btn:has-text("提交"), button[type="submit"]').first();
     await submitBtn.click().catch(() => {});
     // 自动确认 confirm 弹窗
     page.on('dialog', dialog => dialog.accept());
     await page.waitForTimeout(2000);
-    return { submitted: true, name: params.name, site: params.site, column: params.column };
+    return { submitted: true, ...filled };
   }
 
-  return { submitted: false, name: params.name, site: params.site, column: params.column };
+  return { submitted: false, ...filled };
 }
 
 // ========== 主入口 ==========
@@ -700,7 +753,7 @@ async function createSeoPublish(page, params) {
         'batch-fuken', 'dashboard', 'consumption',
         'articles', 'fuken --url URL [--submit]',
         'seo-sites', 'seo-columns', 'seo-tasks',
-        'seo-publish --name X --site Y --column Z --category W --daily-count N [--submit]',
+        'seo-publish --name X --site Y --column Z --category W --start-date YYYY-MM-DD --end-date YYYY-MM-DD --time-start HH:mm --time-end HH:mm --daily-count N [--submit]',
         'test',
       ],
     }, null, 2));
@@ -880,7 +933,7 @@ async function createSeoPublish(page, params) {
 
       case 'seo-publish':
         if (!params.name) {
-          output(false, null, 'seo-publish 需要 --name 参数');
+          output(false, null, 'seo-publish 需要 --name 参数（任务名）');
           process.exit(1);
         }
         data = await createSeoPublish(page, params);

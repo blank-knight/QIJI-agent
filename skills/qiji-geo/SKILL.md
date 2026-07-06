@@ -158,23 +158,46 @@ node scripts/geo-cli.js seo-columns
 node scripts/geo-cli.js seo-tasks
 
 # 创建SEO发布任务（仅填写，不提交）
-node scripts/geo-cli.js seo-publish --name "测试任务" --site example.com --column "新闻中心" --category "公司动态" --daily-count 3
+node scripts/geo-cli.js seo-publish \
+  --name "测试任务" \
+  --site example.com \
+  --column "新闻中心" \
+  --category "公司动态" \
+  --start-date 2026-07-07 \
+  --end-date 2026-08-07 \
+  --time-start "09:00" \
+  --time-end "18:00" \
+  --daily-count 3
 
 # 提交（确认后）
-node scripts/geo-cli.js seo-publish --name "测试任务" --site example.com --column "新闻中心" --category "公司动态" --daily-count 3 --submit
+node scripts/geo-cli.js seo-publish \
+  --name "测试任务" \
+  --site example.com \
+  --column "新闻中心" \
+  --category "公司动态" \
+  --start-date 2026-07-07 \
+  --end-date 2026-08-07 \
+  --time-start "09:00" \
+  --time-end "18:00" \
+  --daily-count 3 \
+  --submit
 ```
 
-参数：
-- `--name`：任务名（必填）
-- `--site`：站点域名
-- `--column`：发布栏目（对应官网后台栏目名）
-- `--category`：文章分类
-- `--daily-count`：每日发布量
-- `--submit`：实际提交
+参数（7个全部必填，对应表单7个红色*字段）：
+- `--name`：任务名（如"华为-新闻中心-每日3篇"）
+- `--site`：站点域名（如 huawei.com）
+- `--column`：发布栏目（对应官网后台栏目名，不是下拉框，是文本输入）
+- `--category`：AI文章分类（自定义下拉框，不是原生select）
+- `--start-date`：发布起始日期（YYYY-MM-DD）
+- `--end-date`：发布结束日期（YYYY-MM-DD）
+- `--time-start`：每日发布起始时间（HH:mm，如 09:00）
+- `--time-end`：每日发布结束时间（HH:mm，如 18:00）
+- `--daily-count`：每日发布量（数字）
+- `--submit`：实际提交（不加则只填表单）
 
-⚠️ SEO 相关菜单名和选择器未经实数据验证。首次使用时如果返回"暂无数据"，可能是菜单名不匹配（如实际是"站点列表"而非"站点管理"），需要检查 `references/platform-selectors.md`。
+⚠️ 表单结构已按 2026-07-06 截图验证更新。但 CSS 选择器的 placeholder 文字是推断的，首次使用时如果填写失败，需要用可视化模式跑一次看真实 DOM。
 
-⚠️ 栏目映射：首次使用SEO发布前，需要客户提供官网后台截图，让 AI 识别栏目名↔ID映射关系。详见"GEO全流程引导 → SEO网站发布"。
+⚠️ **SEO 发布依赖已有文章。** 建任务前必须先确认有已审核的文章可用，否则任务创建后没有内容可发。详见"GEO全流程引导 → SEO网站发布"。
 
 ## GEO 全流程引导（核心）
 
@@ -253,12 +276,66 @@ node scripts/geo-cli.js seo-publish --name "测试任务" --site example.com --c
 
 **触发条件：** 用户要求发布到官网，或涉及站点管理
 
-前提：站点管理里已有客户官网域名。
+**⚠️ 核心前提：SEO发布依赖已有文章。** 必须先有审核通过的文章，否则任务建好了也没有内容可发。
 
-栏目映射流程：
-1. 首次使用时，要求用户提供官网后台截图
-2. 识别截图中的栏目名和ID，存储映射关系
-3. 后续发布时，分组名对应栏目名 → 自动匹配栏目ID
+#### 完整流程
+
+```
+Step 1: 前置检查
+│
+├─ ① 站点加了吗？
+│   node scripts/geo-cli.js seo-sites
+│   → 没有站点 → 引导用户在网页端添加官网域名
+│
+├─ ② 栏目映射建了吗？
+│   首次使用需要用户提供官网后台截图
+│   → AI 识别栏目名→ID映射
+│   → 后续填充"发布栏目"字段时使用
+│
+├─ ③ 有没有文章可发？（关键！）
+│   node scripts/geo-cli.js articles
+│   → 如果没有审核通过的文章 → 转 Step 2 准备文章
+│   → 如果有文章 → 转 Step 3 创建任务
+│
+Step 2: 准备文章（如果没有文章）
+│   两条路（都需要用户审核通过后才能用于SEO发布）：
+│   ├─ A. AI写作：基于知识库+指令，奇计AI生成文章
+│   └─ B. 爆文复刻：拿一篇参考文章让奇计改写
+│       node scripts/geo-cli.js fuken --url xxx
+│   ⚠️ 文章必须过用户手动审核（铁律）
+│   → 文章准备好后，转 Step 3
+│
+Step 3: 创建SEO发布任务
+│   收集7个必填参数：
+│   ├─ 任务名：你想叫什么？
+│   ├─ 站点：从 seo-sites 选
+│   ├─ 发布栏目：对应官网栏目名（文本输入，不是下拉）
+│   ├─ AI文章分类：对应已有的文章分类（自定义下拉）
+│   ├─ 发布日期：起始日期 + 结束日期
+│   ├─ 每日发布时间：如 09:00-18:00
+│   └─ 每日发布量：每天发几篇？
+│
+├─ 填表单（不加 --submit）
+│   node scripts/geo-cli.js seo-publish \
+│     --name "xxx" --site xxx --column "xxx" \
+│     --category "xxx" --start-date xxx --end-date xxx \
+│     --time-start "09:00" --time-end "18:00" \
+│     --daily-count 3
+│   → 浏览器弹出，自动填写，停下不提交
+│
+├─ 用户确认
+│   "表单已填好，请确认：任务名/站点/栏目/分类/日期/时间/数量"
+│
+└─ 提交（加 --submit）
+    → 点击"提交任务"按钮
+    → 确认弹窗自动 accept
+    → 完成
+│
+Step 4: 任务执行
+│  奇计后台每天从已审核的文章里，按设定频率自动发到官网
+│  → 可定期查 seo-tasks 看执行状态
+└─
+```
 
 > ⚠️ 客户修改了官网栏目名时，需要重新截图更新映射。
 
@@ -271,11 +348,68 @@ node scripts/geo-cli.js seo-publish --name "测试任务" --site example.com --c
 提醒话术：
 "你的文章已进入待审核状态。请到奇计网页端 → 文章列表 → 手动审核通过后才能发布。审核是担责操作，AI 不能替你做。"
 
-### 账号管理（P2）
+### 账号授权管理（P0，核心流程）
 
-- 客户端授权登录后，网页端才有显示
-- 如果用户提供账号密码信息，skill 应记住（存入本地配置）
-- 检测到掉线时提醒用户，有凭证则尝试重登
+**触发条件：** 客户端启动后，发布内容前，或用户主动提到"登录平台""授权""账号表格"
+
+客户端的登录机制是"弹浏览器手动登录→存cookie复用"，**无法自动填账号密码**（验证码/短信/扫码限制）。Skill 的职责是：查状态 → 引导补齐 → 验证。
+
+#### 引导流程
+
+```
+Step 1: 查看授权状态
+│  python3 scripts/geo-client.py account-status
+│  → 输出 16个社媒 + 8个AI 的 ✅/❌ 状态
+│
+├─ 全部 ✅ → "所有平台已授权，可以直接发布"
+│
+└─ 有 ❌ → Step 2
+    │
+    Step 2: 询问用户
+    │  "以下平台未授权：微博、知乎、抖音..."
+    │  "需要批量授权吗？我会帮你逐个打开浏览器窗口"
+    │
+    ├─ 用户确认社媒 → Step 3a
+    ├─ 用户确认AI   → Step 3b
+    └─ 用户只想授权部分 → 引导单个授权
+    │
+    Step 3a: 批量社媒授权
+    │  python3 scripts/geo-client.py media-login
+    │  → 客户端弹出浏览器，逐个打开16个社媒平台
+    │  → 用户在每个平台手动登录
+    │  → cookie 自动保存到远程服务器
+    │  → ⚠️ 提醒用户：验证码/短信/扫码需要手动完成
+    │
+    Step 3b: 批量AI认证
+    │  python3 scripts/geo-client.py ai-auth
+    │  → 客户端弹出浏览器，逐个打开8个AI平台
+    │  → 用户手动登录认证
+    │
+    Step 4: 验证
+       python3 scripts/geo-client.py account-status
+       → 确认新授权的平台变成 ✅
+       → 仍然 ❌ 的，说明登录可能失败（cookie 过期/验证码没过）
+```
+
+#### 用户的账号密码表格怎么用
+
+客户通常会提供一个 Excel/表格，列出每个平台的账号密码。**这个表格不能用于自动登录**，但有以下价值：
+
+1. **核对清单**：对照 account-status 输出，确认哪些平台有账号但未授权
+2. **引导参考**：用户在浏览器手动登录时，告诉用户"微博账号是 xxx，密码是 yyy"
+3. **记录状态**：Agent 可将表格内容记入知识库，标注每个平台的授权状态
+
+**铁律：账号密码只用于口头引导用户登录，绝不写入脚本参数或 API 请求。** 客户端的 login 端点只接收 `{udid, uid}`，不接收账号密码。
+
+#### 常见问题
+
+| 问题 | 原因 | 处理 |
+|------|------|------|
+| media-login 后某平台还是 ❌ | 登录时验证码没过 / cookie 过期 | 重新单独授权：`media-login` 只弹这一个平台 |
+| 抖音/快手需要短信验证 | 平台风控 | 告诉用户准备好手机接收验证码 |
+| 微信公众号需要扫码 | 平台限制 | 告诉用户用手机微信扫码 |
+| account-status 显示全是 ❌ | GEO_UDID 未设置或错误 | 检查 `echo $GEO_UDID`，需要用户提供授权码 |
+| get_user_list 返回空 | 账号列表确实为空（从未授权过） | 引导用户执行 media-login |
 
 ## Agent 使用规则
 
@@ -299,16 +433,21 @@ node scripts/geo-cli.js seo-publish --name "测试任务" --site example.com --c
 8. **"看写作任务"** → `write-tasks`
 9. **"看数据中心"** → `dashboard`
 10. **"看消耗记录"** → `consumption`
+11. **"查授权状态/哪些平台登录了/账号列表"** → `account-status`
 
 **费用操作类（先告知费用，确认后执行）：**
-11. **"诊断/测一下 XXX"** → 解析品牌+关键词 → `diagnose`（不加 `--submit`）→ 展示 → 确认 → `--submit`
-12. **"复刻这篇文章"** → 验证URL → `fuken`（不加 `--submit`）→ 确认 → `--submit`
+12. **"诊断/测一下 XXX"** → 解析品牌+关键词 → `diagnose`（不加 `--submit`）→ 展示 → 确认 → `--submit`
+13. **"复刻这篇文章"** → 验证URL → `fuken`（不加 `--submit`）→ 确认 → `--submit`
 
 **流程引导类（触发全流程引导）：**
-13. **"我要做GEO"/"开始GEO优化"** → 进入上方"GEO全流程引导"决策树
-14. **"配置知识库"/"导入资料"** → 知识库建设引导
-15. **"配置指令"/"设置写作指令"** → 指令配置引导
-16. **"SEO发布"/"发到官网"** → SEO网站发布引导
+14. **"我要做GEO"/"开始GEO优化"** → 进入上方"GEO全流程引导"决策树
+15. **"配置知识库"/"导入资料"** → 知识库建设引导
+16. **"配置指令"/"设置写作指令"** → 指令配置引导
+17. **"SEO发布"/"发到官网"** → SEO网站发布引导
+
+**客户端操作类：**
+18. **"登录平台/批量授权/账号表格"** → 账号授权管理引导（account-status → media-login/ai-auth）
+19. **"发布内容/推送"** → 确认后 `push`（需先完成账号授权）
 
 ## 平台技术细节
 
@@ -395,7 +534,7 @@ export GEO_USERNAME="4000761588"  # 默认
 - 文章生成的基础素材
 - 社媒分发时的账号信息
 
-## 已知限制（2026-06-27）
+## 已知限制（2026-07-05 E2E 测试后更新）
 
 1. **articles 列偏移**：Bootstrap Table 的分类列(category)和标题列(title)顺序可能与预期不符。实测确认：页面有两个 tbody，导致 7 条数据被解析为 14 条（完全重复）。`status` 和 `title` 字段也有互换现象。需在 `frame.evaluate` 中用 `document.querySelector('table tbody')` 只取第一个 tbody，或在结果中 `.filter((item, index, self) => index === self.findIndex(t => t.id === item.id))` 去重。
 2. **rights iframe 偶发未加载**：已修复。`getFrame()` 改为 async + 重试（15次，500ms间隔），等待 iframe 出现且内容非空后才返回。
@@ -403,6 +542,18 @@ export GEO_USERNAME="4000761588"  # 默认
 4. **表格分页**：Bootstrap Table 默认只返回第一页（通常10条），翻页未处理。
 5. **udid/uid 无法自动提取**：Chromium localStorage 存在 LevelDB 中，SSTable block 压缩会把 JSON 值打碎（实测 `savedLoginData` 被截断为 `{"username":"4000761588","password":` + 二进制碎片）。**不要浪费时间手动解析 LevelDB**——直接问用户要授权码。
 6. **ai_push/push 余额依赖**：任务启动成功（返回 task_id）但实际执行报"网络异常"时，检查 rights 命令返回的剩余点数。透支状态下任务无法执行，充值后才能恢复。这不是 skill 的 bug，是平台余额机制。
+7. **SEO 命令菜单名未验证**：`seo-sites`/`seo-columns`/`seo-tasks` 的菜单名（"站点管理"/"栏目列表"/"发布任务"）是推断的。E2E 测试时这些页面返回"暂无"——可能是空数据，也可能是菜单名不匹配。首次实际使用时需确认。
+8. **SEO publish 表单结构（2026-07-06 截图验证，代码已更新）**：实际表单有 **7 个必填字段**，代码已按截图重写：
+   - 任务名 → 文本输入框 ✅
+   - 站点 → 文本输入框 ✅（已从 select 改为 fill）
+   - 发布栏目 → 文本输入框 ✅（已从 select 改为 fill）
+   - AI文章分类 → 自定义下拉组件 ✅（已改为点击触发器→选选项）
+   - 发布日期 → 日期范围选择器 ✅（新增 start-date/end-date）
+   - 每日发布时间 → 时间范围选择器 ✅（新增 time-start/time-end）
+   - 每日发布 → 文本输入框 ✅
+   - 提交按钮文字："提交任务" ✅
+   
+   ⚠️ placeholder 选择器文字仍为推断，首次实际使用时如果某些字段没填上，需要用可视化模式查看真实 DOM 的 placeholder 属性值并修正。
 
 ## Bootstrap Table 解析策略
 
@@ -411,14 +562,26 @@ export GEO_USERNAME="4000761588"  # 默认
 ### 策略 A：DOM 解析（优先）
 
 ```javascript
-let rows = await frame.evaluate(() => {
+let rows = await frame.evaluate((cols) => {
   const trs = document.querySelectorAll('table tbody tr, .fixed-table-body tbody tr');
   return Array.from(trs).map(tr => {
     let tds = Array.from(tr.querySelectorAll('td')).map(td => td.textContent.trim());
-    // 关键：Bootstrap Table 第一列是序号或checkbox，需要去掉
-    if (tds.length > 0 && /^\d+$/.test(tds[0])) tds = tds.slice(1);
-    return { col1: tds[0], col2: tds[1] };
-  }).filter(r => r.col1 && !/^\d+$/.test(r.col1));  // 过滤掉序号行
+    // ⚠️ while 循环（不是 if）：有些表格前缀是 序号+checkbox 两列
+    while (tds.length > 0 && (/^\d+$/.test(tds[0]) || tds[0] === '')) {
+      tds = tds.slice(1);
+    }
+    const row = {};
+    cols.forEach((name, i) => { row[name] = tds[i] || ''; });
+    return row;
+  });
+}, columnNames);
+
+// ⚠️ 过滤空表占位行——Bootstrap Table 空表时返回"没有找到匹配的记录"
+rows = rows.filter(r => {
+  const vals = Object.values(r).map(v => String(v).trim());
+  if (vals.every(v => !v)) return false;
+  if (vals.some(v => v.includes('没有找到匹配') || v.includes('没有数据'))) return false;
+  return true;
 });
 ```
 
@@ -436,9 +599,10 @@ for (const line of text.split('\n')) {
 
 ### 常见坑
 
-1. **列偏移**：Bootstrap Table 默认有 checkbox/序号列，直接 `tds[0]` 拿到的是序号不是数据。必须先检测并去掉序号列。
+1. **列偏移（多列前缀）**：Bootstrap Table 有些页面有 序号+checkbox **两列**前缀。旧代码用 `if` 只去掉一个，导致字段仍然错位。必须用 `while` 循环去掉所有前导序号/空列。
 2. **重复数据**：`table` 和 `.fixed-table-body` 可能匹配到同一个 tbody，导致数据翻倍。用 `filter(r => r.keyword)` 去重。
-3. **诊断报告页**：该页面的表格结构可能跟其他页面不同，innerText 回退法可能也返回空。需要实际有数据时再验证。
+3. **空表占位行**：Bootstrap Table 无数据时，tbody 里有1行显示"没有找到匹配的记录"。不过滤的话会返回1条假数据。用 `.includes('没有找到匹配')` 过滤。
+4. **诊断报告页**：该页面的表格结构可能跟其他页面不同，innerText 回退法可能也返回空。需要实际有数据时再验证。
 
 ## 文档索引
 
@@ -468,6 +632,7 @@ for (const line of text.split('\n')) {
 | 表格解析全 undefined | Bootstrap Table 序号列偏移，见上方策略 A |
 | 关键词列对调 | 第一列是序号不是关键词，用 `tds.slice(1)` 跳过 |
 | 表格解析错位 | 第一列可能是序号或checkbox，用 `/^\d+$/` 检测并 slice |
+| `--headless` 不生效 | **CONFIG.headless 硬编码 false，parseArgs 的 params 没传进去**。已在主入口加 `if (params.headless) CONFIG.headless = true`。如果新命令也不走无头，检查 createBrowser 前是否有这行 |
 | Flask API 全 404 | 端点可能走远程服务器(8.138.58.181)而非本地 Flask。POST `{}` 测：500=路由存在(bad body)，404=路由不存在。详见 `references/auth-helper-client.md` |
 | udid/uid 获取 | ⚠️ **不要尝试从 Chromium LevelDB 提取**——SSTable block 压缩会打碎 JSON 值，提取不可靠。直接问用户要授权码。获取 uid 的正确方法：`curl -X POST http://8.138.58.181/api/zhushou/login -H 'Content-Type: application/json' -d '{"username":"4000761588","password":"4000761588","udid":"14357","instanceCount":1}'`，返回 JSON 的 `data.uid` |
 | WSL 连不上 Flask:5000 | localhost forwarding 被安全软件拦截。必须用 PowerShell 代理（`geo-client.py` 已内置 `_ps_request()`） |
