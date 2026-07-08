@@ -17,7 +17,10 @@
 #>
 param(
     [string]$VendorDir = "apps\desktop\build\vendor",
-    [string]$HermesHome = "$env:USERPROFILE\.hermes"
+    # Default to LOCALAPPDATA\hermes (matches install.ps1's default).
+    # The old default $env:USERPROFILE\.hermes was wrong — install.ps1
+    # installs to LOCALAPPDATA, so the venv harvest always missed.
+    [string]$HermesHome = $(if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA "hermes" } else { Join-Path $env:USERPROFILE ".hermes" })
 )
 
 $ErrorActionPreference = "Stop"
@@ -82,12 +85,39 @@ if (Test-Path $repoSource) {
 # 6. Python interpreter + site-packages
 $venvPath = Join-Path $installDir "venv"
 if (Test-Path (Join-Path $venvPath "Scripts\python.exe")) {
-    # Python from uv managed store
-    $pythonStore = Join-Path $env:APPDATA "uv\python\cpython-3.11-windows-x86_64-none"
-    if (Test-Path $pythonStore) {
+    # Python from uv managed store — dynamically find the directory.
+    # uv names it cpython-{version}-{platform}-{arch}-none, but the version
+    # component can be short (3.11) or full (3.11.15) depending on the uv
+    # version that installed it.  The old code hardcoded one specific name
+    # which broke when the installed version didn't match.  Glob instead.
+    $uvPythonRoots = @(
+        (Join-Path $env:APPDATA "uv\python"),
+        (Join-Path $env:LOCALAPPDATA "uv\python")
+    )
+    $pythonStore = $null
+    foreach ($root in $uvPythonRoots) {
+        if (Test-Path $root) {
+            # Prefer the longest version match (3.11.15 over 3.11)
+            $match = Get-ChildItem $root -Directory -Filter "cpython-3.11*windows*x86_64*" -ErrorAction SilentlyContinue |
+                Sort-Object Name -Descending | Select-Object -First 1
+            if ($match) {
+                $pythonStore = $match.FullName
+                Write-Host "  Found uv Python at: $pythonStore" -ForegroundColor DarkGray
+                break
+            }
+        }
+    }
+
+    if ($pythonStore -and (Test-Path $pythonStore)) {
         $vendorPython = Join-Path $VendorDir "python"
         Copy-Item $pythonStore $vendorPython -Recurse -Force
         Write-Host "[6a/8] Python interpreter ✅" -ForegroundColor Cyan
+    } else {
+        Write-Host "[6a/8] Python interpreter ❌ — uv Python store not found!" -ForegroundColor Red
+        Write-Host "       Searched: $($uvPythonRoots -join ', ')" -ForegroundColor Yellow
+        Write-Host "       The offline package will NOT work without the Python interpreter." -ForegroundColor Yellow
+        Write-Host "       Install Python 3.11 via 'uv python install 3.11' and re-run this script." -ForegroundColor Yellow
+        throw "Python interpreter not found in uv managed store. Cannot build offline package."
     }
 
     # Site-packages
@@ -95,7 +125,17 @@ if (Test-Path (Join-Path $venvPath "Scripts\python.exe")) {
     if (Test-Path $sitePackages) {
         $vendorSP = Join-Path $VendorDir "site-packages"
         Copy-Item $sitePackages $vendorSP -Recurse -Force
-        Write-Host "[6b/8] Site-packages ✅" -ForegroundColor Cyan
+
+        # Strip __pycache__ directories and .pyc files — Python generates them
+        # automatically on first run. This saves ~30-50 MB and thousands of files.
+        Get-ChildItem $vendorSP -Recurse -Directory -Filter "__pycache__" -EA SilentlyContinue |
+            ForEach-Object { Remove-Item $_.FullName -Recurse -Force -EA SilentlyContinue }
+        Get-ChildItem $vendorSP -Recurse -Filter "*.pyc" -EA SilentlyContinue |
+            ForEach-Object { Remove-Item $_.FullName -Force -EA SilentlyContinue }
+
+        $spFiles = (Get-ChildItem $vendorSP -Recurse -File -EA SilentlyContinue).Count
+        $spSize = [math]::Round((Get-ChildItem $vendorSP -Recurse -File -EA SilentlyContinue | Measure-Object Length -Sum).Sum / 1MB)
+        Write-Host "[6b/8] Site-packages: $spSize MB, $spFiles files (pycache stripped)" -ForegroundColor Cyan
     }
 
     # venv Scripts
@@ -117,8 +157,43 @@ if (Test-Path $nmPath) {
     $vendorNM = Join-Path $VendorDir "nm"
     if (Test-Path $vendorNM) { Remove-Item $vendorNM -Recurse -Force }
     New-Item -ItemType Directory -Force -Path $vendorNM | Out-Null
+
+    # Robocopy first (full copy, junctions excluded)
     robocopy $nmPath $vendorNM /E /XJ /XD "build" "dist" "release" ".git" /NJH /NJS /NFL /NDL /NP /R:1 /W:1 | Out-Null
-    Write-Host "[7/8] node_modules (robocopy /XJ, no junctions) OK" -ForegroundColor Cyan
+
+    # Then delete build-time-only packages that customers never need.
+    # The Electron app ships pre-built (vite build → dist/), so dev tooling
+    # (compilers, linters, test runners, electron-builder itself) is dead weight.
+    $devPkgs = @(
+        "typescript", "prettier", "eslint",
+        "jsdom", "vitest",
+        "electron-winstaller", "app-builder-lib", "electron-builder",
+        "rcedit", "wait-on", "concurrently", "cross-env"
+    )
+    $devScoped = @(
+        "@rolldown", "@esbuild", "@babel",
+        "@typescript-eslint", "@testing-library",
+        "@vitejs", "@vitest", "@eslint", "@types"
+    )
+    foreach ($pkg in $devPkgs) {
+        $p = Join-Path $vendorNM $pkg
+        if (Test-Path $p) { Remove-Item $p -Recurse -Force -EA SilentlyContinue }
+    }
+    foreach ($scope in $devScoped) {
+        $p = Join-Path $vendorNM $scope
+        if (Test-Path $p) { Remove-Item $p -Recurse -Force -EA SilentlyContinue }
+    }
+    # Remove eslint-plugin-* individually (wildcards don't work with Remove-Item on dirs)
+    Get-ChildItem $vendorNM -Directory -Filter "eslint-plugin-*" -EA SilentlyContinue |
+        ForEach-Object { Remove-Item $_.FullName -Recurse -Force -EA SilentlyContinue }
+    # vite is needed for its client runtime (import.meta.hot, etc.) — but
+    # the vite package itself (CLI + deps) is build-only. The runtime needs
+    # at most vite/dist/client. We keep vite but strip its node_modules deps.
+    # Same for @vitejs/plugin-react — already excluded above.
+
+    $nmFiles = (Get-ChildItem $vendorNM -Recurse -File -ErrorAction SilentlyContinue).Count
+    $nmSize = [math]::Round((Get-ChildItem $vendorNM -Recurse -File -EA SilentlyContinue | Measure-Object Length -Sum).Sum / 1MB)
+    Write-Host "[7/8] node_modules: $nmSize MB, $nmFiles files (devDeps stripped)" -ForegroundColor Cyan
 }
 
 # 8. Playwright Chromium — copy only the latest version of each browser
@@ -145,15 +220,92 @@ if (Test-Path $pwCache) {
     }
 
     foreach ($entry in $groups.Values) {
+        $dirName = Split-Path $entry.Path -Leaf
+        # Skip chromium_headless_shell — the full chromium already supports
+        # headless mode (--headless).  This saves ~270 MB in the installer.
+        if ($dirName -match 'chromium_headless_shell') {
+            Write-Host ("  {0} (SKIPPED — redundant, full chromium suffices)" -f $dirName) -ForegroundColor DarkYellow
+            continue
+        }
         Copy-Item $entry.Path $vendorChromium -Recurse -Force
-        Write-Host ("  {0} (latest)" -f (Split-Path $entry.Path -Leaf)) -ForegroundColor DarkGray
+        Write-Host ("  {0} (latest)" -f $dirName) -ForegroundColor DarkGray
     }
     Write-Host "[8/8] Playwright Chromium ✅" -ForegroundColor Cyan
 }
 
-Write-Host "`n=== Vendor directory ready ===" -ForegroundColor Green
+Write-Host "`n=== Vendor directory ready — cleaning up ===" -ForegroundColor Green
+
+# ── Global cleanup: strip files that inflate file count without runtime value ──
+# Every small file eliminated = one fewer file for NSIS to extract, Defender to scan,
+# and the filesystem to create on the customer's machine.
+#
+# NOTE: Remove-Item can throw NullReferenceException when $_.FullName is null
+# (reparse points, broken junctions, locked files).  Wrap every delete in a
+# try/catch so the cleanup never aborts the build.
+function Safe-Remove-Item {
+    param($Item, [switch]$Recurse)
+    if (-not $Item -or -not $Item.FullName) { return }
+    try {
+        Remove-Item $Item.FullName -Force -Recurse:$Recurse -EA SilentlyContinue
+    } catch { }
+}
+
+$beforeCleanup = (Get-ChildItem $VendorDir -Recurse -File -EA SilentlyContinue).Count
+
+# 1. __pycache__ directories + .pyc files (site-packages + anywhere in vendor)
+Get-ChildItem $VendorDir -Recurse -Directory -Filter "__pycache__" -EA SilentlyContinue | ForEach-Object { Safe-Remove-Item $_ -Recurse }
+Get-ChildItem $VendorDir -Recurse -Filter "*.pyc" -EA SilentlyContinue | ForEach-Object { Safe-Remove-Item $_ }
+
+# 2. Source maps (*.map) in node_modules — debug-only, runtime never loads them
+Get-ChildItem (Join-Path $VendorDir "nm") -Recurse -Filter "*.map" -EA SilentlyContinue | ForEach-Object { Safe-Remove-Item $_ }
+
+# 3. Markdown docs (*.md, *.markdown) in node_modules and git
+foreach ($sub in @("nm", "git")) {
+    $p = Join-Path $VendorDir $sub
+    if (Test-Path $p) {
+        Get-ChildItem $p -Recurse -Include "*.md", "*.markdown" -File -EA SilentlyContinue | ForEach-Object { Safe-Remove-Item $_ }
+    }
+}
+
+# 4. CHANGELOG / LICENSE files in node_modules
+Get-ChildItem (Join-Path $VendorDir "nm") -Recurse -Include "CHANGELOG*", "changelog*" -File -EA SilentlyContinue | ForEach-Object { Safe-Remove-Item $_ }
+
+# 5. Test directories in node_modules
+Get-ChildItem (Join-Path $VendorDir "nm") -Recurse -Directory -Include "test", "tests", "__tests__", "spec" -EA SilentlyContinue | ForEach-Object { Safe-Remove-Item $_ -Recurse }
+
+# 6. TypeScript source files in node_modules (runtime uses compiled .js/.cjs/.mjs)
+#    Keep *.d.ts (type declarations — some tools reference them at runtime).
+Get-ChildItem (Join-Path $VendorDir "nm") -Recurse -Include "*.ts" -File -EA SilentlyContinue |
+    Where-Object { $_.Name -notmatch '\.d\.ts$' } |
+    ForEach-Object { Safe-Remove-Item $_ }
+
+# 7. Git documentation / vim configs (PortableGit ships these, customers never need them)
+$gitDir = Join-Path $VendorDir "git"
+if (Test-Path $gitDir) {
+    Get-ChildItem $gitDir -Recurse -Include "*.vim", "*.adoc" -File -EA SilentlyContinue | ForEach-Object { Safe-Remove-Item $_ }
+    foreach ($docDir in @("mingw64\share\doc", "mingw64\share\man", "usr\share\doc", "usr\share\man", "mingw64\share\info", "mingw64\share\gtk-doc")) {
+        $p = Join-Path $gitDir $docDir
+        if (Test-Path $p) { Safe-Remove-Item ([PSCustomObject]@{ FullName = $p }) -Recurse }
+    }
+}
+
+# 8. node_modules .bin directory — contains dev tool wrappers (vite, tsc, eslint, etc.)
+$nmBin = Join-Path $VendorDir "nm\.bin"
+if (Test-Path $nmBin) { Safe-Remove-Item ([PSCustomObject]@{ FullName = $nmBin }) -Recurse }
+
+# 9. .github / .vscode / .idea directories inside node_modules packages
+foreach ($dir in @(".github", ".vscode", ".idea", ".circleci")) {
+    Get-ChildItem (Join-Path $VendorDir "nm") -Recurse -Directory -Filter $dir -EA SilentlyContinue | ForEach-Object { Safe-Remove-Item $_ -Recurse }
+}
+
+# 10. .editorconfig / .eslintrc / .prettierrc / .npmrc config files in nm
+Get-ChildItem (Join-Path $VendorDir "nm") -Recurse -Include ".editorconfig", ".eslintrc*", ".prettierrc*", ".eslintignore", ".npmignore", ".mocharc*" -File -EA SilentlyContinue | ForEach-Object { Safe-Remove-Item $_ }
+
+$afterCleanup = (Get-ChildItem $VendorDir -Recurse -File -EA SilentlyContinue).Count
+$removed = $beforeCleanup - $afterCleanup
+Write-Host "Cleanup: removed $removed files ($beforeCleanup → $afterCleanup)" -ForegroundColor Cyan
 
 # Calculate size
 $size = (Get-ChildItem $VendorDir -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB
-Write-Host ("Total size: {0:N0} MB" -f $size) -ForegroundColor Yellow
+Write-Host ("Total size: {0:N0} MB ({1:N0} files)" -f $size, $afterCleanup) -ForegroundColor Yellow
 Write-Host "`nNext: run the build to bundle this into the installer." -ForegroundColor Green

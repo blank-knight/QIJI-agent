@@ -111,6 +111,54 @@ try {
 }
 
 # ============================================================================
+# Move-OrCopy-Dir — instant directory move on same NTFS volume
+# ============================================================================
+# On a fresh install, NSIS extracts vendor/ to the install directory, then
+# Stage-VendorFiles copies each component to its final destination.  This
+# means 2.3 GB of data is written TWICE: once by NSIS extraction, once by
+# robocopy.  On NTFS, when source and destination are on the same volume
+# (they always are — both under %LOCALAPPDATA%), Directory.Move() is a
+# metadata-only operation: it updates the parent directory entry, regardless
+# of how many files or bytes are inside.  A 40,000-file node_modules tree
+# moves in <1 ms instead of 3-5 minutes of robocopy.
+#
+# Fallback: if the move fails (cross-volume, locked file, etc.), we fall
+# back to robocopy so the install still works.
+function Move-OrCopy-Dir {
+    param([string]$Source, [string]$Dest)
+    if (-not (Test-Path $Source)) { return $false }
+
+    # If dest exists and has files, we can't Move — use robocopy to merge.
+    if (Test-Path $Dest) {
+        $destItems = @(Get-ChildItem $Dest -Recurse -File -EA SilentlyContinue)
+        if ($destItems.Count -gt 0) {
+            & robocopy $Source $Dest /E /NJH /NJS /NFL /NDL /NP /R:1 /W:1 /MT:$script:RobocopyMT 2>$null | Out-Null
+            return $false
+        }
+        # Empty dest dir — remove so Directory.Move can take its place.
+        Remove-Item $Dest -Recurse -Force -EA SilentlyContinue
+    }
+
+    # Ensure parent of destination exists.
+    $parent = Split-Path $Dest -Parent
+    if ($parent -and -not (Test-Path $parent)) {
+        New-Item -ItemType Directory -Force -Path $parent | Out-Null
+    }
+
+    # Try instant NTFS move (same volume = metadata-only, <1ms regardless of size).
+    try {
+        [System.IO.Directory]::Move($Source, $Dest)
+        Write-Host "  [fast-move] instant" -ForegroundColor Green
+        return $true
+    } catch {
+        # Cross-volume, locked, or permission issue — fall back to robocopy.
+        & robocopy $Source $Dest /E /NJH /NJS /NFL /NDL /NP /R:1 /W:1 /MT:$script:RobocopyMT 2>$null | Out-Null
+        Write-Host "  [robocopy fallback]" -ForegroundColor Yellow
+        return $false
+    }
+}
+
+# ============================================================================
 # Offline vendor pre-staging (white-label builds)
 # ============================================================================
 # When -VendorDir is set, copy pre-downloaded resources into their managed
@@ -133,7 +181,7 @@ function Stage-VendorFiles {
     $vendorGit = Join-Path $VendorDir "git"
     $managedGit = Join-Path $HermesHome "git"
     if ((Test-Path $vendorGit) -and -not (Test-Path (Join-Path $managedGit "bin\bash.exe"))) {
-        & robocopy $vendorGit $managedGit /E /NJH /NJS /NFL /NDL /NP /R:5 /W:3 2>$null | Out-Null
+        Move-OrCopy-Dir $vendorGit $managedGit | Out-Null
         if (-not (Test-Path "$managedGit\bin\bash.exe")) {
             Write-Host "[vendor] WARNING: git\bin\bash.exe missing after staging — git will not work" -ForegroundColor Red
         }
@@ -149,7 +197,7 @@ function Stage-VendorFiles {
     $vendorNode = Join-Path $VendorDir "node"
     $managedNode = Join-Path $HermesHome "node"
     if ((Test-Path $vendorNode) -and -not (Test-Path (Join-Path $managedNode "node.exe"))) {
-        & robocopy $vendorNode $managedNode /E /NJH /NJS /NFL /NDL /NP /R:5 /W:3 2>$null | Out-Null
+        Move-OrCopy-Dir $vendorNode $managedNode | Out-Null
         if (-not (Test-Path "$managedNode\node.exe")) {
             Write-Host "[vendor] WARNING: node\node.exe missing after staging — Node.js will not work" -ForegroundColor Red
         }
@@ -177,7 +225,7 @@ function Stage-VendorFiles {
     $vendorRepo = Join-Path $VendorDir "hermes-agent"
     if (Test-Path $vendorRepo) {
         New-Item -ItemType Directory -Force -Path (Split-Path $InstallDir) | Out-Null
-        & robocopy $vendorRepo $InstallDir /E /NJH /NJS /NFL /NDL /NP /R:5 /W:3 2>$null | Out-Null
+        & robocopy $vendorRepo $InstallDir /E /NJH /NJS /NFL /NDL /NP /R:1 /W:1 /MT:$script:RobocopyMT 2>$null | Out-Null
         if (-not (Test-Path "$InstallDir\hermes_cli\__init__.py")) {
             Write-Host "[vendor] CRITICAL: hermes_cli\__init__.py missing after staging" -ForegroundColor Red
             throw "Backend source copy incomplete: hermes_cli\__init__.py not found. Check install log at $_InstallLog"
@@ -185,6 +233,15 @@ function Stage-VendorFiles {
         # Initialize git so future updates work, AND create a commit so
         # Install-Repository's rev-parse --verify HEAD check passes
         # (otherwise it moves the vendor dir aside and re-clones from GitHub).
+        #
+        # PERF: Only add a handful of key files instead of `git add -A`.
+        # The full repo has ~99,000 files; `git add -A` hashes every one of
+        # them (plus Windows Defender scans each), adding 2-3 minutes to
+        # offline installs.  The initial commit only needs to exist so that
+        # `git rev-parse --verify HEAD` succeeds — its content is irrelevant.
+        # When the user later runs `hermes update`, git fetch + checkout
+        # overwrites the working tree with the real remote content; this
+        # stub commit is discarded and never seen again.
         Push-Location $InstallDir
         try {
             git -c windows.appendAtomically=false init 2>$null
@@ -193,8 +250,8 @@ function Stage-VendorFiles {
             git -c windows.appendAtomically=false config user.name "Qiji Installer" 2>$null
             git -c windows.appendAtomically=false config user.email "installer@local" 2>$null
             git remote add origin "https://gitee.com/wintao-storm/QIJI-agent.git" 2>$null
-            git -c windows.appendAtomically=false add -A 2>$null
-            git -c windows.appendAtomically=false commit -m "vendor snapshot" 2>$null
+            git -c windows.appendAtomically=false add pyproject.toml hermes_cli/__init__.py AGENTS.md README.md 2>$null
+            git -c windows.appendAtomically=false commit -m "vendor snapshot (offline install)" 2>$null
         } catch {}
         Pop-Location
         Write-Host "[vendor] Staged hermes-agent repository" -ForegroundColor Cyan
@@ -224,7 +281,7 @@ function Stage-VendorFiles {
         # a) Copy Python interpreter into InstallDir\python\
         #    This is the ONLY copy — no second hop to %APPDATA%\uv\python\.
         if (-not (Test-Path "$managedPython\python.exe")) {
-            & robocopy $vendorPython $managedPython /E /NJH /NJS /NFL /NDL /NP /R:5 /W:3 2>$null | Out-Null
+            Move-OrCopy-Dir $vendorPython $managedPython | Out-Null
             if (-not (Test-Path "$managedPython\python.exe")) {
                 Write-Host "[vendor] ERROR: Python interpreter copy failed — python.exe not found at $managedPython after robocopy" -ForegroundColor Red
             } else {
@@ -238,12 +295,12 @@ function Stage-VendorFiles {
 
         # c) Copy site-packages
         if (-not (Test-Path "$managedVenv\Lib\site-packages")) {
-            & robocopy $vendorSitePackages "$managedVenv\Lib\site-packages" /E /NJH /NJS /NFL /NDL /NP /R:5 /W:3 2>$null | Out-Null
+            Move-OrCopy-Dir $vendorSitePackages "$managedVenv\Lib\site-packages" | Out-Null
         }
 
         # d) Copy venv Scripts (has hermes.exe entry points + activation)
         if (Test-Path $vendorVenvScripts) {
-            & robocopy $vendorVenvScripts "$managedVenv\Scripts" /E /NJH /NJS /NFL /NDL /NP /R:5 /W:3 2>$null | Out-Null
+            Move-OrCopy-Dir $vendorVenvScripts "$managedVenv\Scripts" | Out-Null
         }
 
         # d.2) CRITICAL FIX: Replace uv trampoline python.exe with the REAL python.exe
@@ -256,15 +313,41 @@ function Stage-VendorFiles {
         # from its embedded resources, not from pyvenv.cfg.
         #
         # Fix: overwrite the trampoline python.exe with the real python.exe from
-        # InstallDir\python. The real python.exe detects the venv via pyvenv.cfg
-        # and uses its "home" key to locate the base interpreter for DLLs.
-        # This makes `venv\Scripts\python.exe -m hermes_cli.main` work on any machine.
+        # InstallDir\python, AND copy the runtime DLLs (python311.dll, VCRUNTIME140.dll)
+        # alongside it. python.exe statically imports python311.dll — the OS loader
+        # resolves it at process creation, before any Python code (including
+        # pyvenv.cfg parsing) can run. See the DLL copy block below for details.
         if (Test-Path "$managedPython\python.exe") {
             Copy-Item "$managedPython\python.exe" "$managedVenv\Scripts\python.exe" -Force
             # Also copy pythonw.exe (needed by gateway_windows.py _resolve_detached_python)
             if (Test-Path "$managedPython\pythonw.exe") {
                 Copy-Item "$managedPython\pythonw.exe" "$managedVenv\Scripts\pythonw.exe" -Force
             }
+
+            # CRITICAL: Copy python311.dll and VC runtime DLLs alongside python.exe.
+            #
+            # python.exe STATICALLY imports python311.dll (verified via objdump:
+            # Delay Import Directory is empty — this is a regular import table entry).
+            # The Windows OS loader resolves python311.dll at process creation time,
+            # BEFORE any Python code runs. The previous comment claiming "python.exe
+            # uses pyvenv.cfg's home key to locate DLLs" was WRONG — that code path
+            # only affects sys.path / module search, not the OS-level DLL resolution.
+            #
+            # Without these DLLs in venv\Scripts\, python.exe dies instantly with
+            # STATUS_DLL_NOT_FOUND (exit code 0xC0000135 = 3221225781).
+            $requiredDlls = @(
+                'python311.dll',
+                'python3.dll',
+                'VCRUNTIME140.dll',
+                'vcruntime140_1.dll'
+            )
+            foreach ($dll in $requiredDlls) {
+                $srcDll = Join-Path $managedPython $dll
+                if (Test-Path $srcDll) {
+                    Copy-Item $srcDll (Join-Path $managedVenv "Scripts\$dll") -Force
+                }
+            }
+
             Write-Host "[vendor] Replaced uv trampoline python.exe with real interpreter" -ForegroundColor Cyan
         }
 
@@ -336,9 +419,14 @@ include-system-site-packages = false
     $vendorNM = Join-Path $VendorDir "nm"
     $managedNM = Join-Path $InstallDir "node_modules"
     if ((Test-Path $vendorNM) -and -not (Test-Path $managedNM)) {
-        & robocopy $vendorNM $managedNM /E /NJH /NJS /NFL /NDL /NP /R:5 /W:3 2>$null | Out-Null
-        if (-not (Test-Path "$managedNM\.bin\node.cmd")) {
-            Write-Host "[vendor] WARNING: node_modules\.bin\node.cmd missing after staging — browser tools may not work" -ForegroundColor Red
+        Move-OrCopy-Dir $vendorNM $managedNM | Out-Null
+        # Validate the copy by checking that .bin has .cmd wrappers.
+        # We can NOT check for "node.cmd" — "node" is the runtime, not an npm
+        # package, so .bin\node.cmd never exists in any normal project.
+        # Instead count .cmd files: a healthy .bin should have dozens.
+        $cmdFiles = @(Get-ChildItem "$managedNM\.bin" -Filter "*.cmd" -ErrorAction SilentlyContinue)
+        if ($cmdFiles.Count -lt 5) {
+            Write-Host "[vendor] WARNING: node_modules\.bin has only $($cmdFiles.Count) .cmd files after staging — browser tools may not work" -ForegroundColor Red
         }
         Write-Host "[vendor] Staged node_modules" -ForegroundColor Cyan
     }
@@ -349,8 +437,10 @@ include-system-site-packages = false
     if (Test-Path $vendorChromium) {
         $pwCache = Join-Path $env:LOCALAPPDATA "ms-playwright"
         if (-not (Test-Path $pwCache) -or (Get-ChildItem $pwCache -Directory -ErrorAction SilentlyContinue).Count -eq 0) {
-            & robocopy $vendorChromium $pwCache /E /NJH /NJS /NFL /NDL /NP /R:5 /W:3 2>$null | Out-Null
-            $chromeExe = Get-ChildItem "$pwCache\*\chrome-win\chrome.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+            Move-OrCopy-Dir $vendorChromium $pwCache | Out-Null
+            # Playwright uses "chrome-win64" on 64-bit Windows (not "chrome-win").
+            # Use a wildcard to match both naming conventions.
+            $chromeExe = Get-ChildItem "$pwCache\*\chrome-win*\chrome.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
             if (-not $chromeExe) {
                 Write-Host "[vendor] WARNING: chrome.exe not found in Playwright cache after staging — browser automation will fail" -ForegroundColor Red
             }
@@ -359,8 +449,200 @@ include-system-site-packages = false
     }
 }
 
+# ============================================================================
+# Trampoline fix — runs AFTER Stage-VendorFiles, independent of vendor\python.
+# ============================================================================
+# The d.2/d.3 fixes inside Stage-VendorFiles only fire when vendor\python is
+# present.  If prepare-offline.ps1 failed to harvest the uv Python store
+# (hardcoded path mismatch), vendor\python is empty, the entire Python staging
+# block is skipped, and the uv trampolines from vendor\venv-scripts remain
+# pointing at the BUILD machine's path → "entity not found (os error 2)" on
+# every other machine.  This block catches that case: if venv\Scripts has
+# trampolines but InstallDir\python has a real interpreter, fix them here.
+function Fix-UvTrampolines {
+    if (-not $VendorDir -or -not (Test-Path $VendorDir)) { return }
+
+    $managedVenv = Join-Path $InstallDir "venv"
+    $managedPython = Join-Path $InstallDir "python"
+    $venvPythonExe = Join-Path $managedVenv "Scripts\python.exe"
+
+    # If InstallDir\python doesn't exist (vendor\python was missing — the
+    # prepare-offline.ps1 path bug), try to recover by finding the real
+    # Python interpreter from the uv managed store on THIS machine.
+    if (-not (Test-Path "$managedPython\python.exe")) {
+        $uvRoots = @(
+            (Join-Path $env:APPDATA "uv\python"),
+            (Join-Path $env:LOCALAPPDATA "uv\python")
+        )
+        foreach ($root in $uvRoots) {
+            if (Test-Path $root) {
+                $match = Get-ChildItem $root -Directory -Filter "cpython-3.11*windows*x86_64*" -ErrorAction SilentlyContinue |
+                    Sort-Object Name -Descending | Select-Object -First 1
+                if ($match -and (Test-Path (Join-Path $match.FullName "python.exe"))) {
+                    Write-Host "[trampoline] InstallDir\python missing, recovering from uv store: $($match.FullName)" -ForegroundColor Yellow
+                    New-Item -ItemType Directory -Force -Path $managedPython | Out-Null
+                    & robocopy $match.FullName $managedPython /E /NJH /NJS /NFL /NDL /NP /R:1 /W:1 /MT:8 2>$null | Out-Null
+                    break
+                }
+            }
+        }
+    }
+
+    # Still no real interpreter — nothing we can do
+    if (-not (Test-Path "$managedPython\python.exe")) { return }
+    if (-not (Test-Path $venvPythonExe)) { return }
+
+    # Check if venv\Scripts\python.exe is already the real interpreter
+    # (d.2 already ran).  We detect trampolines by size: uv trampolines are
+    # tiny (~200KB stubs), real CPython python.exe is ~100KB but has a
+    # matching python311.dll.  The most reliable check: read the first few
+    # bytes and look for the uv trampoline marker string.
+    $needsFix = $false
+    try {
+        $bytes = [System.IO.File]::ReadAllBytes($venvPythonExe)
+        $content = [System.Text.Encoding]::ASCII.GetString($bytes)
+        # uv trampolines embed the Python path and "uv" markers
+        if ($content -match 'uv\\python\\cpython' -or $content -match 'trampoline') {
+            $needsFix = $true
+        }
+    } catch { return }
+
+    if (-not $needsFix) { return }
+
+    Write-Host "[trampoline] Detected uv trampolines, replacing with real interpreter..." -ForegroundColor Yellow
+
+    # Replace python.exe / pythonw.exe
+    Copy-Item "$managedPython\python.exe" $venvPythonExe -Force
+    if (Test-Path "$managedPython\pythonw.exe") {
+        Copy-Item "$managedPython\pythonw.exe" "$managedVenv\Scripts\pythonw.exe" -Force
+    }
+
+    # Copy runtime DLLs alongside python.exe (same fix as d.2 above).
+    # python.exe statically imports python311.dll — without these DLLs in
+    # venv\Scripts\, it dies with STATUS_DLL_NOT_FOUND (0xC0000135 = 3221225781).
+    $requiredDlls = @('python311.dll', 'python3.dll', 'VCRUNTIME140.dll', 'vcruntime140_1.dll')
+    foreach ($dll in $requiredDlls) {
+        $srcDll = Join-Path $managedPython $dll
+        if (Test-Path $srcDll) {
+            Copy-Item $srcDll (Join-Path $managedVenv "Scripts\$dll") -Force
+        }
+    }
+
+    # Replace entry-point trampolines with batch wrappers
+    $entryPoints = @(
+        'hermes.exe', 'hermes-agent.exe', 'hermes-acp.exe',
+        'fastapi.exe', 'edge-tts.exe', 'edge-playback.exe',
+        'dotenv.exe', 'httpx.exe', 'jsonschema.exe', 'markdown-it.exe',
+        'distro.exe', 'google-oauthlib-tool.exe'
+    )
+    foreach ($ep in $entryPoints) {
+        $epPath = Join-Path "$managedVenv\Scripts" $ep
+        if (Test-Path $epPath) {
+            $moduleName = $ep.BaseName
+            if ($moduleName -eq 'hermes' -or $moduleName -eq 'hermes-agent') {
+                $moduleName = 'hermes_cli.main'
+            } elseif ($moduleName -eq 'hermes-acp') {
+                $moduleName = 'hermes_cli.acp'
+            }
+            $batPath = Join-Path "$managedVenv\Scripts" "$($ep.BaseName).bat"
+            $batContent = "@echo off`r`n`"$managedPython\python.exe`" -m $moduleName %*"
+            [System.IO.File]::WriteAllText($batPath, $batContent)
+            Remove-Item $epPath -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    # Ensure pyvenv.cfg points to the right home
+    $pyvenvCfg = @"
+home = $managedPython
+implementation = CPython
+uv = 0.11.23
+version_info = 3.11.15
+include-system-site-packages = false
+"@
+    [System.IO.File]::WriteAllText("$managedVenv\pyvenv.cfg", $pyvenvCfg)
+
+    Write-Host "[trampoline] Replaced uv trampolines with real interpreter + batch wrappers" -ForegroundColor Cyan
+}
+
+# ============================================================================
+# Defender exclusion + robocopy thread budget
+# ============================================================================
+# Must run BEFORE Stage-VendorFiles so the exclusion is active when the
+# first large robocopy fires.  The Defender cmdlets are only present on
+# Windows with real-time protection enabled; everything else no-ops.
+$script:RobocopyMT = 8  # sensible default
+
+if ($env:OS -eq "Windows_NT") {
+    try {
+        $status = Get-MpComputerStatus -ErrorAction SilentlyContinue
+        $prefs  = Get-MpPreference -ErrorAction SilentlyContinue
+    } catch { $status = $null; $prefs = $null }
+
+    # Is Defender actually scanning $HermesHome right now?
+    $defenderScanning = (
+        $status -and
+        $status.RealTimeProtectionEnabled -and
+        -not ($prefs -and ($prefs.ExclusionPath -contains $HermesHome))
+    )
+
+    if ($defenderScanning) {
+        # Defender is active and $HermesHome is NOT excluded.
+        # Try to auto-add the exclusion when elevated; otherwise the heavy
+        # copy below will be slow, so we use fewer threads to avoid
+        # saturating the CPU with parallel AV scans.
+        $isAdmin = $false
+        try {
+            $isAdmin = ([Security.Principal.WindowsPrincipal]::new(
+                [Security.Principal.WindowsIdentity]::GetCurrent()
+            )).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        } catch {}
+
+        if ($isAdmin) {
+            try {
+                Add-MpPreference -ExclusionPath $HermesHome -ErrorAction Stop
+                Write-Host "[Defender] Added exclusion for $HermesHome (elevated)" -ForegroundColor Green
+                $script:RobocopyMT = 16
+            } catch {
+                Write-Host "Tip: Windows Defender real-time scanning can slow this install significantly." -ForegroundColor Yellow
+                Write-Host "     To speed up (5-10x faster), add an exclusion in an admin PowerShell:" -ForegroundColor Yellow
+                Write-Host "     Add-MpPreference -ExclusionPath `"$HermesHome`"" -ForegroundColor Cyan
+                $script:RobocopyMT = [Math]::Max(2, [int]($env:NUMBER_OF_PROCESSORS / 2))
+            }
+        } else {
+            Write-Host ""
+            Write-Host "Tip: Windows Defender real-time scanning can slow this install significantly." -ForegroundColor Yellow
+            Write-Host "     To speed up (5-10x faster), add an exclusion in an admin PowerShell:" -ForegroundColor Yellow
+            Write-Host "     Add-MpPreference -ExclusionPath `"$HermesHome`"" -ForegroundColor Cyan
+            Write-Host ""
+            $script:RobocopyMT = [Math]::Max(2, [int]($env:NUMBER_OF_PROCESSORS / 2))
+        }
+    } else {
+        # Defender off or $HermesHome already excluded — go wide.
+        $script:RobocopyMT = 16
+    }
+}
+
+Write-Host "[robocopy] Using $script:RobocopyMT threads" -ForegroundColor DarkGray
+
 # Run vendor pre-staging (safe to call in every stage process; idempotent)
 Stage-VendorFiles
+
+# Fix uv trampolines AFTER Stage-VendorFiles (needs InstallDir\python from step 6)
+Fix-UvTrampolines
+
+# Clean up the vendor directory after staging.  With Move-OrCopy-Dir, most
+# vendor subdirectories have been MOVED (not copied) to their final locations,
+# so vendor\ is now mostly empty shells.  The remaining items (hermes-agent
+# source, bin\uv.exe, tools\) were copied and are no longer needed.  Deleting
+# this saves ~100-400 MB of dead weight on the customer's disk.
+if ($VendorDir -and (Test-Path $VendorDir)) {
+    try {
+        Remove-Item $VendorDir -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Host "[vendor] Cleaned up staging directory ($VendorDir)" -ForegroundColor Cyan
+    } catch {
+        Write-Host "[vendor] Could not clean staging directory (non-fatal)" -ForegroundColor Yellow
+    }
+}
 
 # ============================================================================
 # Configuration

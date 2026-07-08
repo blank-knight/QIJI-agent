@@ -198,7 +198,9 @@ $ok = Check-And-Repair -Label "Node.js" -Source (Join-Path $VendorDir "node") -T
 if (-not $ok) { $allOk = $false }
 
 # 7. node_modules
-$ok = Check-And-Repair -Label "Node modules" -Source (Join-Path $VendorDir "nm") -Target (Join-Path $InstallDir "node_modules") -CriticalFile ".bin\node.cmd" -IsDir
+# NOTE: We can't check for ".bin\node.cmd" — "node" is the runtime, not an npm package.
+# Use ".bin\vite.cmd" as a health indicator instead (always present in this project).
+$ok = Check-And-Repair -Label "Node modules" -Source (Join-Path $VendorDir "nm") -Target (Join-Path $InstallDir "node_modules") -CriticalFile ".bin\vite.cmd" -IsDir
 if (-not $ok) { $allOk = $false }
 
 # 8. uv.exe
@@ -232,7 +234,8 @@ if (Test-Path $rgPath) {
 
 # 10. Playwright Chromium
 $pwCache = Join-Path $env:LOCALAPPDATA "ms-playwright"
-$chromeFound = Get-ChildItem "$pwCache\*\chrome-win\chrome.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+# Playwright uses "chrome-win64" on 64-bit Windows (not "chrome-win").
+$chromeFound = Get-ChildItem "$pwCache\*\chrome-win*\chrome.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($chromeFound) {
     Write-Host "[OK]      Chromium" -ForegroundColor Green
 } else {
@@ -241,7 +244,7 @@ if ($chromeFound) {
     if (Test-Path $vendorChromium) {
         Write-Host "[REPAIR]  Re-copying Chromium..." -ForegroundColor Cyan
         & robocopy $vendorChromium $pwCache /E /NJH /NJS /NFL /NDL /NP /R:5 /W:3 2>$null | Out-Null
-        $chromeFound = Get-ChildItem "$pwCache\*\chrome-win\chrome.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+        $chromeFound = Get-ChildItem "$pwCache\*\chrome-win*\chrome.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($chromeFound) { Write-Host "[FIXED]   Chromium" -ForegroundColor Green }
         else { $allOk = $false }
     } else { $allOk = $false }

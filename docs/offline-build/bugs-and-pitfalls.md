@@ -372,3 +372,60 @@ New-Item -ItemType Directory -Force -Path (Split-Path $dst) | Out-Null
 robocopy $src $dst /E /NJH /NJS /NFL /NDL /NP
 ```
 复制完后重启奇计。
+
+---
+
+## 坑15：python.exe 缺 DLL → STATUS_DLL_NOT_FOUND (exit 3221225781)
+
+**严重度：★★★★★（坑14 的遗留 bug — 安装后后端无限崩溃白屏）**
+
+**现象：** 离线包安装成功（15 阶段全绿），但 app 启动后 backend 反复崩溃，desktop.log 循环输出：
+```
+奇计 backend exited (3221225781)
+奇计 backend exited before it became ready (3221225781).
+```
+
+**退出码解读：** `3221225781` = `0xC0000135` = `STATUS_DLL_NOT_FOUND`。进程在 OS 加载器阶段就死了，一行 Python 代码都没跑到。
+
+**根因（2026-07-08 objdump PE 导入表分析验证）：**
+
+坑14 的修复把 `python.exe` 从 `InstallDir\python\` 复制到 `venv\Scripts\`，**但没复制它依赖的 DLL**。原注释声称"python.exe 通过 pyvenv.cfg 的 home key 找 DLL"——**这是错误的**。
+
+```
+objdump -p python.exe 导入表:
+  DLL Name: python311.dll         ← 静态导入（非 delay-load！）
+  DLL Name: VCRUNTIME140.dll
+  DLL Name: api-ms-win-crt-*.dll  ← Win10+ 系统自带
+Delay Import Directory: 00000000 00000000  ← 空 = 全是静态导入
+```
+
+**关键机制：** `python311.dll` 是**静态导入**。Windows OS 加载器在进程创建时就要解析它——**早于**任何 Python 代码运行。pyvenv.cfg 解析发生在 Python 解释器初始化阶段（`Py_Initialize`），那时 DLL 早已被 OS 加载器处理完毕。"通过 pyvenv.cfg home key 找 DLL"在机制上不可能成立。
+
+**install.ps1 修复（2026-07-08）：** 坑14 的 d.2 步骤现在额外复制 4 个 DLL 到 `venv\Scripts\`：
+```powershell
+$requiredDlls = @('python311.dll', 'python3.dll', 'VCRUNTIME140.dll', 'vcruntime140_1.dll')
+foreach ($dll in $requiredDlls) {
+    $srcDll = Join-Path $managedPython $dll
+    if (Test-Path $srcDll) {
+        Copy-Item $srcDll (Join-Path $managedVenv "Scripts\$dll") -Force
+    }
+}
+```
+
+**已装机热修（不重编译）：** 在目标机器 PowerShell 跑：
+```powershell
+$python = "$env:LOCALAPPDATA\hermes\hermes-agent\python"
+$venv = "$env:LOCALAPPDATA\hermes\hermes-agent\venv\Scripts"
+Copy-Item "$python\python311.dll","$python\python3.dll","$python\VCRUNTIME140.dll","$python\vcruntime140_1.dll" $venv -Force
+```
+
+**重装机注意：** install.ps1 的 vendor staging 有 `if (-not (Test-Path venv\Scripts\python.exe))` 条件。已有安装不会重新触发 staging。重装前必须先删 `%LOCALAPPDATA%\hermes`。
+
+**诊断技术（PE 导入表分析）：**
+```bash
+# 从 WSL 检查 PE 文件的导入表
+objdump -p "/mnt/c/.../python.exe" | grep "DLL Name"
+# Delay Import Directory 全零 = 静态导入 = DLL 必须在 exe 同目录或 PATH
+```
+
+**Meta 教训：** 坑14 在 2026-07-06 被"修复"了（替换 trampoline），但修复本身又遗漏了 DLL。**修复一个 bug 时，必须验证修复本身的前置条件是否满足**（python.exe 能跑吗？不只是文件存在不存在）。注释里声称的机制未经 PE 分析验证就写进去了。

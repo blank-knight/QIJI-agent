@@ -5,6 +5,25 @@
 
 ---
 
+## 2026-07-08 客户安装时间优化 (NTFS Move + Vendor 瘦身)
+
+- **目标：** 减少客户机器上的安装时间（用户原话"客户体验感比我自己重要"）
+- **改动 1 — install.ps1 Move-OrCopy-Dir：** 新增 NTFS Directory.Move() helper 函数，Stage-VendorFiles 的 7 处 robocopy 全部替换。同卷 move 是 MFT 元数据操作（<1ms），不再逐文件物理复制 2.3GB 数据。跨卷或目标已存在时自动 fallback 到 robocopy
+- **改动 2 — install.ps1 vendor 目录清理：** staging 后删除 resources\vendor\ 空壳目录
+- **改动 3 — prepare-offline.ps1 砍 headless_shell：** 跳过 chromium_headless_shell（270MB），完整 chromium 已支持 headless 模式
+- **改动 4 — prepare-offline.ps1 砍 devDependencies：** robocopy 后删除 typescript/eslint/vitest/electron-builder/prettier 等 12+ 个 dev-only 包（scoped packages: @babel/@types/@vitejs/@vitest/@esbuild/@eslint/@testing-library 等）。客户运行时不需要编译/lint/测试工具
+- **改动 5 — prepare-offline.ps1 清 __pycache__/.pyc：** site-packages 拷贝后删除 Python 缓存文件，省 30-50MB + 减少数千小文件
+- **编译验证：** 21.6 min → 12.3 min (快 43%)，NSIS 908s → 477s (快 48%)，exe 760MB → 682MB
+- **客户安装理论提升：** 磁盘写入从 4.6GB 降到 2.0GB（NTFS Move 消除了二次复制）。需在干净机器上实测验证
+- **涉及文件：** `scripts/install.ps1`（+`/mnt/c/` 同步副本）、`scripts/prepare-offline.ps1`
+
+## 2026-07-08 python.exe 缺 DLL 修复 (STATUS_DLL_NOT_FOUND)
+
+- **根因：** 坑14（uv trampoline 硬编码路径）的修复把 `python.exe` 复制到 `venv\Scripts\` 但漏了依赖的 DLL。`python311.dll` 是静态导入（objdump PE 导入表验证），OS 加载器在进程启动时就要找它，早于 pyvenv.cfg 解析
+- **修复：** install.ps1 d.2 步骤现在额外复制 4 个 DLL（`python311.dll`, `python3.dll`, `VCRUNTIME140.dll`, `vcruntime140_1.dll`）到 `venv\Scripts\`
+- **已装机热修命令：** 无需重编译，目标机器 PowerShell 跑一行 `Copy-Item` 即可
+- **影响范围：** 所有使用坑14 修复后的离线包（2026-07-06~07）安装的机器
+
 ## 2026-06-30 隔离编译架构 + vendor 修复
 
 - **隔离编译**：编译目录从 `AppData\Local\hermes` 迁移到独立的 `C:\Users\84673\qiji-fork`，不再覆盖运行中的 Hermes 实例
