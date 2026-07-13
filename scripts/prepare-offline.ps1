@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Prepare offline vendor directory for white-label builds.
 
@@ -38,28 +38,34 @@ if (Test-Path $managedUv) {
     Write-Host "[1/8] uv.exe ✅" -ForegroundColor Cyan
 }
 
-# 2. PortableGit
+# 2. PortableGit (robocopy + inline exclusions — folds old cleanup steps 3/7 into copy)
 $managedGit = Join-Path $HermesHome "git"
 $vendorGit = Join-Path $VendorDir "git"
 if (Test-Path $managedGit) {
-    Copy-Item $managedGit $vendorGit -Recurse -Force
-    Write-Host "[2/8] PortableGit ✅" -ForegroundColor Cyan
+    robocopy $managedGit $vendorGit /E /XJ /XD "doc" "man" "info" "gtk-doc" /XF "*.vim" "*.adoc" "*.md" "*.markdown" /NJH /NJS /NFL /NDL /NP /R:1 /W:1 | Out-Null
+    Write-Host "[2/8] PortableGit ✅ (docs/man/vim excluded)" -ForegroundColor Cyan
 }
 
-# 3. Node.js
+# 3. Node.js (robocopy — Copy-Item -Recurse unreliable for >50MB dirs, see 坑1/19)
 $managedNode = Join-Path $HermesHome "node"
 $vendorNode = Join-Path $VendorDir "node"
 if (Test-Path $managedNode) {
-    Copy-Item $managedNode $vendorNode -Recurse -Force
+    robocopy $managedNode $vendorNode /E /XJ /NJH /NJS /NFL /NDL /NP /R:1 /W:1 | Out-Null
     Write-Host "[3/8] Node.js ✅" -ForegroundColor Cyan
 }
 
-# 4. Tools (ripgrep + ffmpeg)
+# 4. Tools (ripgrep only — ffmpeg 217MB excluded to slim down installer)
 $managedTools = Join-Path $HermesHome "tools"
 $vendorTools = Join-Path $VendorDir "tools"
 if (Test-Path $managedTools) {
-    Copy-Item $managedTools $vendorTools -Recurse -Force
-    Write-Host "[4/8] Tools (rg + ffmpeg) ✅" -ForegroundColor Cyan
+    New-Item -ItemType Directory -Force -Path $vendorTools | Out-Null
+    $rgSrc = Join-Path $managedTools "rg.exe"
+    if (Test-Path $rgSrc) {
+        Copy-Item $rgSrc $vendorTools -Force
+        Write-Host "[4/8] Tools (rg.exe only, ffmpeg excluded) ✅" -ForegroundColor Cyan
+    } else {
+        Write-Host "[4/8] Tools: rg.exe not found in HermesHome — skipping" -ForegroundColor Yellow
+    }
 }
 
 # 5. Repository source
@@ -158,8 +164,13 @@ if (Test-Path $nmPath) {
     if (Test-Path $vendorNM) { Remove-Item $vendorNM -Recurse -Force }
     New-Item -ItemType Directory -Force -Path $vendorNM | Out-Null
 
-    # Robocopy first (full copy, junctions excluded)
-    robocopy $nmPath $vendorNM /E /XJ /XD "build" "dist" "release" ".git" /NJH /NJS /NFL /NDL /NP /R:1 /W:1 | Out-Null
+    # Robocopy with inline file/dir exclusions — folds old 10-step global cleanup
+    # into a single pass. Each /XF and /XD here replaces a separate recursive
+    # Get-ChildItem traversal that was timing out on NTFS with 75K+ files.
+    robocopy $nmPath $vendorNM /E /XJ `
+        /XD "build" "dist" "release" ".git" "test" "tests" "__tests__" "spec" ".github" ".vscode" ".idea" ".circleci" `
+        /XF "*.map" "*.md" "*.markdown" "CHANGELOG*" "changelog*" "*.ts" ".editorconfig" ".eslintrc*" ".prettierrc*" ".eslintignore" ".npmignore" ".mocharc*" `
+        /NJH /NJS /NFL /NDL /NP /R:1 /W:1 | Out-Null
 
     # Then delete build-time-only packages that customers never need.
     # The Electron app ships pre-built (vite build → dist/), so dev tooling
@@ -233,79 +244,16 @@ if (Test-Path $pwCache) {
     Write-Host "[8/8] Playwright Chromium ✅" -ForegroundColor Cyan
 }
 
-Write-Host "`n=== Vendor directory ready — cleaning up ===" -ForegroundColor Green
+Write-Host "`n=== Vendor directory ready ===" -ForegroundColor Green
 
-# ── Global cleanup: strip files that inflate file count without runtime value ──
-# Every small file eliminated = one fewer file for NSIS to extract, Defender to scan,
-# and the filesystem to create on the customer's machine.
-#
-# NOTE: Remove-Item can throw NullReferenceException when $_.FullName is null
-# (reparse points, broken junctions, locked files).  Wrap every delete in a
-# try/catch so the cleanup never aborts the build.
-function Safe-Remove-Item {
-    param($Item, [switch]$Recurse)
-    if (-not $Item -or -not $Item.FullName) { return }
-    try {
-        Remove-Item $Item.FullName -Force -Recurse:$Recurse -EA SilentlyContinue
-    } catch { }
-}
-
-$beforeCleanup = (Get-ChildItem $VendorDir -Recurse -File -EA SilentlyContinue).Count
-
-# 1. __pycache__ directories + .pyc files (site-packages + anywhere in vendor)
-Get-ChildItem $VendorDir -Recurse -Directory -Filter "__pycache__" -EA SilentlyContinue | ForEach-Object { Safe-Remove-Item $_ -Recurse }
-Get-ChildItem $VendorDir -Recurse -Filter "*.pyc" -EA SilentlyContinue | ForEach-Object { Safe-Remove-Item $_ }
-
-# 2. Source maps (*.map) in node_modules — debug-only, runtime never loads them
-Get-ChildItem (Join-Path $VendorDir "nm") -Recurse -Filter "*.map" -EA SilentlyContinue | ForEach-Object { Safe-Remove-Item $_ }
-
-# 3. Markdown docs (*.md, *.markdown) in node_modules and git
-foreach ($sub in @("nm", "git")) {
-    $p = Join-Path $VendorDir $sub
-    if (Test-Path $p) {
-        Get-ChildItem $p -Recurse -Include "*.md", "*.markdown" -File -EA SilentlyContinue | ForEach-Object { Safe-Remove-Item $_ }
-    }
-}
-
-# 4. CHANGELOG / LICENSE files in node_modules
-Get-ChildItem (Join-Path $VendorDir "nm") -Recurse -Include "CHANGELOG*", "changelog*" -File -EA SilentlyContinue | ForEach-Object { Safe-Remove-Item $_ }
-
-# 5. Test directories in node_modules
-Get-ChildItem (Join-Path $VendorDir "nm") -Recurse -Directory -Include "test", "tests", "__tests__", "spec" -EA SilentlyContinue | ForEach-Object { Safe-Remove-Item $_ -Recurse }
-
-# 6. TypeScript source files in node_modules (runtime uses compiled .js/.cjs/.mjs)
-#    Keep *.d.ts (type declarations — some tools reference them at runtime).
-Get-ChildItem (Join-Path $VendorDir "nm") -Recurse -Include "*.ts" -File -EA SilentlyContinue |
-    Where-Object { $_.Name -notmatch '\.d\.ts$' } |
-    ForEach-Object { Safe-Remove-Item $_ }
-
-# 7. Git documentation / vim configs (PortableGit ships these, customers never need them)
-$gitDir = Join-Path $VendorDir "git"
-if (Test-Path $gitDir) {
-    Get-ChildItem $gitDir -Recurse -Include "*.vim", "*.adoc" -File -EA SilentlyContinue | ForEach-Object { Safe-Remove-Item $_ }
-    foreach ($docDir in @("mingw64\share\doc", "mingw64\share\man", "usr\share\doc", "usr\share\man", "mingw64\share\info", "mingw64\share\gtk-doc")) {
-        $p = Join-Path $gitDir $docDir
-        if (Test-Path $p) { Safe-Remove-Item ([PSCustomObject]@{ FullName = $p }) -Recurse }
-    }
-}
-
-# 8. node_modules .bin directory — contains dev tool wrappers (vite, tsc, eslint, etc.)
+# .bin contains dev tool wrappers (vite, tsc, eslint) — not needed at runtime.
+# Single targeted deletion (not a recursive search).
 $nmBin = Join-Path $VendorDir "nm\.bin"
-if (Test-Path $nmBin) { Safe-Remove-Item ([PSCustomObject]@{ FullName = $nmBin }) -Recurse }
+if (Test-Path $nmBin) { Remove-Item $nmBin -Recurse -Force -EA SilentlyContinue }
 
-# 9. .github / .vscode / .idea directories inside node_modules packages
-foreach ($dir in @(".github", ".vscode", ".idea", ".circleci")) {
-    Get-ChildItem (Join-Path $VendorDir "nm") -Recurse -Directory -Filter $dir -EA SilentlyContinue | ForEach-Object { Safe-Remove-Item $_ -Recurse }
-}
-
-# 10. .editorconfig / .eslintrc / .prettierrc / .npmrc config files in nm
-Get-ChildItem (Join-Path $VendorDir "nm") -Recurse -Include ".editorconfig", ".eslintrc*", ".prettierrc*", ".eslintignore", ".npmignore", ".mocharc*" -File -EA SilentlyContinue | ForEach-Object { Safe-Remove-Item $_ }
-
-$afterCleanup = (Get-ChildItem $VendorDir -Recurse -File -EA SilentlyContinue).Count
-$removed = $beforeCleanup - $afterCleanup
-Write-Host "Cleanup: removed $removed files ($beforeCleanup → $afterCleanup)" -ForegroundColor Cyan
-
-# Calculate size
-$size = (Get-ChildItem $VendorDir -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB
-Write-Host ("Total size: {0:N0} MB ({1:N0} files)" -f $size, $afterCleanup) -ForegroundColor Yellow
+# Report (one traversal instead of 11)
+$allFiles = Get-ChildItem $VendorDir -Recurse -File -EA SilentlyContinue
+$totalFiles = if ($allFiles) { $allFiles.Count } else { 0 }
+$totalSize = if ($allFiles) { [math]::Round(($allFiles | Measure-Object Length -Sum).Sum / 1MB) } else { 0 }
+Write-Host ("Total vendor: {0:N0} MB ({1:N0} files)" -f $totalSize, $totalFiles) -ForegroundColor Yellow
 Write-Host "`nNext: run the build to bundle this into the installer." -ForegroundColor Green

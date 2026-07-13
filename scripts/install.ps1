@@ -1,4 +1,4 @@
-# ============================================================================
+﻿# ============================================================================
 # Hermes Agent Installer for Windows
 # ============================================================================
 # Installation script for Windows (PowerShell).
@@ -60,7 +60,7 @@ param(
 
     # --- Offline / vendor directory (white-label builds) ---
     # When set, install.ps1 checks this directory for pre-downloaded
-    # prerequisites (uv.exe, PortableGit, node, ripgrep, ffmpeg, repo
+    # prerequisites (uv.exe, PortableGit, node, ripgrep, repo).
     # source, Python wheels, node_modules) and copies them into place
     # before each stage, avoiding all network downloads. Enables true
     # offline installation for customers with poor/no connectivity.
@@ -204,18 +204,20 @@ function Stage-VendorFiles {
         Write-Host "[vendor] Staged Node.js" -ForegroundColor Cyan
     }
 
-    # 4. ripgrep + ffmpeg -> $HermesHome\tools\
+    # 4. ripgrep -> $HermesHome\\tools\\\
+    # NOTE: ffmpeg is EXCLUDED from vendor (217MB). It's an optional dependency
+    # for video_gen skill (TTS/video generation). Users can install it manually
+    # via scoop/choco/winget if needed. The installer checks for it and warns
+    # if missing but doesn't block installation.
     $vendorTools = Join-Path $VendorDir "tools"
     if (Test-Path $vendorTools) {
         $managedTools = Join-Path $HermesHome "tools"
         New-Item -ItemType Directory -Force -Path $managedTools | Out-Null
-        foreach ($exe in @("rg.exe", "ffmpeg.exe")) {
-            $src = Join-Path $vendorTools $exe
-            $dst = Join-Path $managedTools $exe
-            if ((Test-Path $src) -and -not (Test-Path $dst)) {
-                Copy-Item $src $dst -Force
-                Write-Host "[vendor] Staged $exe" -ForegroundColor Cyan
-            }
+        $rgSrc = Join-Path $vendorTools "rg.exe"
+        $rgDst = Join-Path $managedTools "rg.exe"
+        if ((Test-Path $rgSrc) -and -not (Test-Path $rgDst)) {
+            Copy-Item $rgSrc $rgDst -Force
+            Write-Host "[vendor] Staged rg.exe" -ForegroundColor Cyan
         }
         # Add to session PATH so Get-Command finds them
         $env:Path = "$managedTools;$env:Path"
@@ -1517,7 +1519,7 @@ function Test-Node {
 }
 
 function Update-ProcessPathForPackages {
-    # Make freshly-installed shims (rg.exe, ffmpeg.exe) visible to Get-Command in
+    # Make freshly-installed shims (rg.exe) visible to Get-Command in
     # THIS process without spawning a new shell, by folding the persisted
     # User+Machine hives plus winget's alias-shim directory into $env:Path.
     # Called after every package-manager attempt (winget/choco/scoop): previously

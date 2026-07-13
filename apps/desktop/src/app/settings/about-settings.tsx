@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { BrandMark } from '@/components/brand-mark'
 import { Button } from '@/components/ui/button'
 import { type Translations, useI18n } from '@/i18n'
-import { CheckCircle2, ExternalLink, Loader2, RefreshCw, Sparkles } from '@/lib/icons'
+import { CheckCircle2, Loader2, RefreshCw, Sparkles } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import {
   $desktopVersion,
@@ -19,8 +19,6 @@ import {
 
 import { ListRow, SectionHeading, SettingsContent } from './primitives'
 import { UninstallSection } from './uninstall-section'
-
-const RELEASE_NOTES_URL = 'https://github.com/blank-knight/QIJI-agent/releases'
 
 function relativeTime(ms: number | undefined, a: Translations['settings']['about']) {
   if (!ms) {
@@ -151,21 +149,6 @@ export function AboutSettings() {
                 </Button>
               </>
             )}
-
-            <Button asChild className="ml-auto" size="sm" variant="text">
-              <a
-                href={RELEASE_NOTES_URL}
-                onClick={event => {
-                  event.preventDefault()
-                  void window.hermesDesktop?.openExternal?.(RELEASE_NOTES_URL)
-                }}
-                rel="noreferrer"
-                target="_blank"
-              >
-                <ExternalLink className="size-3" />
-                {a.releaseNotes}
-              </a>
-            </Button>
           </div>
         </div>
 

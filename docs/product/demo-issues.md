@@ -230,6 +230,12 @@ electron/main.cjs 的启动流程：
 ### 正式版前必须解决
 
 9. [ ] 小白一键安装方案落地（方案A 或 B）
+10. [ ] **设置指南链接待定** — `web_server.py` 中 5 处 `docs_url` 指向 `www.aicps.vip`（微信、Email、API server、webhook、通用消息文档），品牌化时从 `hermes-agent.nousresearch.com` 批量替换而来。需确认最终文档站域名后统一替换。
+    - `web_server.py:4454` — 通用消息文档（Email 等）
+    - `web_server.py:4521` — 微信设置指南
+    - `web_server.py:4552` — API server 文档
+    - `web_server.py:4565` — webhook 文档
+    - `web_server.py:5701` — Nous provider（原 portal.nousresearch.com）
 10. [ ] Playwright + Chromium 自动安装
 11. [ ] LLM API 预配置（方案A：奇计统一API / 方案B：用户填Key）
 12. [ ] 中文界面（当前部分中文，需要全汉化）

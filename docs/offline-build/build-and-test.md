@@ -151,7 +151,7 @@ foreach ($f in @("prepare-offline.ps1","install.ps1")) {
 }
 ```
 
-### 第3步：重新生成 vendor（★坑11）
+### 第3步：重新生成 vendor（★坑11、坑16）
 
 > 原理见上方 [核心概念：vendor 与离线安装](#核心概念vendor-与离线安装)。
 
@@ -174,11 +174,30 @@ cd C:\Users\84673\qiji-fork
 ```
 
 **验证 vendor 源码是品牌化的（不是上游原版）：**
+
 ```powershell
 Select-String "Run Hermes|Run QiJi" "C:\Users\84673\qiji-fork\apps\desktop\build\vendor\hermes-agent\hermes_cli\web_server.py"
 ```
 输出应为 "Run QiJi"。如果输出 "Run Hermes"，说明 vendor 源码是上游原版——检查 prepare-offline.ps1 是否从 fork 复制（看输出行 `[5/8] Repository source (from fork)`）。
 
+**验证 vendor 瘦身全局清理生效（★坑16）：**
+
+```bash
+# 从 WSL 验证 .map 文件已被排除
+find /mnt/c/Users/84673/qiji-fork/apps/desktop/build/vendor/nm -name "*.map" -type f | wc -l
+# 应输出 0
+```
+
+如果输出 > 0，说明 vendor 是旧的（未使用 2026-07-09 修复后的 prepare-offline.ps1），需要删掉 vendor 重新生成。
+
+**验证 ffmpeg 已被排除（2026-07-09）：**
+
+```bash
+# ffmpeg.exe 不应在 vendor 中
+ls /mnt/c/Users/84673/qiji-fork/apps/desktop/build/vendor/tools/ffmpeg.exe 2>/dev/null || echo "ffmpeg correctly excluded"
+```
+
+应输出 "ffmpeg correctly excluded"。如果 ffmpeg.exe 存在，说明 vendor 是旧的。
 ### 第4步：清 Vite 缓存 + 设置 commit hash
 
 ```powershell

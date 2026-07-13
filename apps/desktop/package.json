@@ -138,6 +138,7 @@
     "appId": "com.qiji.desktop",
     "productName": "Qiji",
     "executableName": "Qiji",
+    "compression": null,
     "protocols": [
       {
         "name": "Qiji",
