@@ -57,8 +57,36 @@ function output(success, data, message = '') {
 
 // ========== 浏览器管理 ==========
 
+// Find the bundled Chromium executable. Playwright looks in
+// %LOCALAPPDATA%\ms-playwright\ by default (populated by install.ps1),
+// but we also check the vendor directory as a fallback so the skill
+// never triggers an online download.
+function findBundledChromium() {
+  const path = require('path');
+  const fs = require('fs');
+  const candidates = [
+    // install.ps1 stages vendor/chromium -> ms-playwright
+    path.join(process.env.LOCALAPPDATA || '', 'ms-playwright'),
+    // vendor dir in the app install location (fallback)
+    path.join(process.env.LOCALAPPDATA || '', 'hermes', 'vendor', 'chromium'),
+  ];
+  for (const base of candidates) {
+    if (!fs.existsSync(base)) continue;
+    // Look for chromium-XXXX/chrome-win64/chrome.exe
+    const dirs = fs.readdirSync(base).filter(d => d.startsWith('chromium-'));
+    for (const d of dirs) {
+      const exe = path.join(base, d, 'chrome-win64', 'chrome.exe');
+      if (fs.existsSync(exe)) return exe;
+    }
+  }
+  return null; // let Playwright use its default lookup
+}
+
 async function createBrowser() {
-  const browser = await chromium.launch({ headless: CONFIG.headless });
+  const launchOpts = { headless: CONFIG.headless };
+  const exe = findBundledChromium();
+  if (exe) launchOpts.executablePath = exe;
+  const browser = await chromium.launch(launchOpts);
   const context = await browser.newContext({
     viewport: { width: 1280, height: 800 },
     locale: 'zh-CN',

@@ -123,6 +123,21 @@ class Launcher
         }
         string appDir = Path.GetDirectoryName(appExe);
 
+        // ---- Extract uninstall.exe (embedded resource) ----
+        foreach (var name in asm.GetManifestResourceNames())
+        {
+            if (name.EndsWith("uninstall.exe"))
+            {
+                using (var stream = asm.GetManifestResourceStream(name))
+                using (var outFs = File.Create(Path.Combine(appDir, "uninstall.exe")))
+                {
+                    stream.CopyTo(outFs);
+                }
+                Console.WriteLine("卸载程序已安装");
+                break;
+            }
+        }
+
         // ---- Create desktop shortcut ----
         Console.WriteLine("创建桌面快捷方式...");
         CreateShortcut(
@@ -145,27 +160,13 @@ class Launcher
         {
             key.SetValue("DisplayName", "奇计");
             key.SetValue("DisplayIcon", appExe + ", 0");
-            key.SetValue("UninstallString", "cmd /c \"" + Path.Combine(appDir, "uninstall.bat") + "\"");
+            key.SetValue("UninstallString", Path.Combine(appDir, "uninstall.exe"));
             key.SetValue("InstallLocation", appDir);
             key.SetValue("DisplayVersion", "0.17.0");
             key.SetValue("Publisher", "奇计");
             key.SetValue("NoModify", 1, RegistryValueKind.DWord);
             key.SetValue("NoRepair", 1, RegistryValueKind.DWord);
         }
-
-        // ---- Generate uninstall.bat ----
-        string uninstallBat = "@echo off\r\n" +
-            "chcp 65001 >nul 2>&1\r\n" +
-            "title 卸载奇计\r\n" +
-            "echo.\r\necho  正在卸载奇计...\r\n" +
-            "taskkill /im Qiji.exe /f >nul 2>&1\r\n" +
-            "timeout /t 2 /nobreak >nul 2>&1\r\n" +
-            "rd /s /q \"" + appDir + "\" 2>nul\r\n" +
-            "rd /s /q \"%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\奇计\" 2>nul\r\n" +
-            "del /q \"%USERPROFILE%\\Desktop\\奇计.lnk\" 2>nul\r\n" +
-            "reg delete \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Qiji\" /f >nul 2>&1\r\n" +
-            "echo.\r\necho  卸载完成。\r\npause\r\n";
-        File.WriteAllText(Path.Combine(appDir, "uninstall.bat"), uninstallBat);
 
         // ---- Done ----
         Console.WriteLine();
@@ -176,17 +177,12 @@ class Launcher
         Console.WriteLine("安装路径:  " + appDir);
         Console.WriteLine("桌面快捷方式: 奇计");
         Console.WriteLine("开始菜单: 奇计");
-        Console.WriteLine("卸载: 控制面板 或 运行 uninstall.bat");
+        Console.WriteLine("卸载: 控制面板 或 运行 uninstall.exe");
         Console.WriteLine();
         Console.WriteLine("首次启动需要初始化后端环境，请耐心等待 1-2 分钟。");
         Console.WriteLine();
-        Console.Write("立即启动奇计? (Y/N): ");
-        var key2 = Console.ReadKey();
-        if (key2.Key == ConsoleKey.Y)
-        {
-            Process.Start(appExe);
-        }
-        Console.WriteLine();
+        Console.WriteLine("正在启动奇计...");
+        Process.Start(appExe);
     }
 
     static void CreateShortcut(string shortcutPath, string targetPath, string workingDir)

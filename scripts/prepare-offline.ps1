@@ -80,6 +80,30 @@ if (Test-Path $repoSource) {
     # Exclude build/dist/release to avoid recursive vendor nesting and bloat.
     # node_modules at any level is excluded by name match.
     robocopy $repoSource $vendorRepo /E /XJ /XD ".git" "venv" "node_modules" "__pycache__" "build" "dist" "release" ".venv" /NJH /NJS /NFL /NDL /NP | Out-Null
+
+    # Pre-install npm dependencies for skills that have their own package.json.
+    # Without this, skills like qiji-geo will try to `npm install` at runtime
+    # (requiring network access), defeating the purpose of the offline package.
+    $managedNode = Join-Path $HermesHome "node\node.exe"
+    $managedNpm = Join-Path $HermesHome "node\npx.cmd"
+    if (-not (Test-Path $managedNode)) { $managedNode = "node" }
+    if (-not (Test-Path $managedNpm)) { $managedNpm = "npx" }
+
+    Get-ChildItem (Join-Path $vendorRepo "skills") -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+        $skillPkg = Join-Path $_.FullName "package.json"
+        $skillNm  = Join-Path $_.FullName "node_modules"
+        if ((Test-Path $skillPkg) -and -not (Test-Path $skillNm)) {
+            Write-Host "  Pre-installing npm deps for skill: $($_.Name) ..." -ForegroundColor DarkGray
+            Push-Location $_.FullName
+            try {
+                & $managedNode (Join-Path $HermesHome "node\node_modules\npm\bin\npm-cli.js") install --omit=dev 2>&1 | Out-Host
+            } catch {
+                Write-Host "  WARNING: npm install failed for $($_.Name)" -ForegroundColor Yellow
+            }
+            Pop-Location
+        }
+    }
+
     Write-Host "[5/8] Repository source (from fork) ✅" -ForegroundColor Cyan
 } elseif (Test-Path $installDir) {
     # Fallback: use installed Hermes Agent source

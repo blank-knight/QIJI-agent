@@ -24,7 +24,7 @@ const { execSync } = require('child_process')
 const fs = require('fs')
 const path = require('path')
 
-const ROOT = path.resolve(__dirname, '..', '..')
+const ROOT = path.resolve(__dirname, '..')
 const RELEASE = path.join(ROOT, 'release')
 const INSTALLER = __dirname
 
@@ -38,7 +38,9 @@ const winUnpacked = path.join(RELEASE, 'win-unpacked')
 const sevenZip = path.join(RELEASE, '7zr.exe')
 const payload = path.join(RELEASE, 'qiji-portable.7z')
 const launcherSrc = path.join(INSTALLER, 'launcher3.cs')
+const uninstallSrc = path.join(INSTALLER, 'uninstall.cs')
 const manifest = path.join(INSTALLER, 'app.manifest')
+const uninstallExe = path.join(RELEASE, 'uninstall.exe')
 const launcherExe = path.join(RELEASE, 'launcher3.exe')
 const output = path.join(RELEASE, `${APP_NAME}-${VERSION}-Setup.exe`)
 
@@ -66,15 +68,22 @@ execSync(`"${sevenZip}" a -t7z -mx=5 -mmt=on "${payload}" "${winUnpacked}\\*"`, 
 const payloadSize = (fs.statSync(payload).size / 1024 / 1024).toFixed(1)
 console.log(`  Payload: ${payloadSize} MB`)
 
+// ---- Compile uninstall.exe ----
+step(3, 'Compiling uninstall.exe ...')
+if (fs.existsSync(uninstallExe)) fs.unlinkSync(uninstallExe)
+execSync(`"${CSC}" /nologo /optimize /target:exe /out:"${uninstallExe}" "${uninstallSrc}"`, { stdio: 'inherit' })
+const uninstallSize = (fs.statSync(uninstallExe).size / 1024).toFixed(1)
+console.log(`  uninstall.exe: ${uninstallSize} KB`)
+
 // ---- Compile launcher3.exe ----
-step(3, 'Compiling launcher3.exe (admin manifest + embedded 7zr.exe) ...')
+step(4, 'Compiling launcher3.exe (admin manifest + embedded 7zr.exe + uninstall.exe) ...')
 if (fs.existsSync(launcherExe)) fs.unlinkSync(launcherExe)
-execSync(`"${CSC}" /nologo /optimize /target:exe /win32manifest:"${manifest}" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /resource:"${sevenZip}" /out:"${launcherExe}" "${launcherSrc}"`, { stdio: 'inherit' })
+execSync(`"${CSC}" /nologo /optimize /target:exe /win32manifest:"${manifest}" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /resource:"${sevenZip}" /resource:"${uninstallExe}" /out:"${launcherExe}" "${launcherSrc}"`, { stdio: 'inherit' })
 const launcherSize = (fs.statSync(launcherExe).size / 1024).toFixed(1)
 console.log(`  launcher3.exe: ${launcherSize} KB`)
 
 // ---- Concatenate ----
-step(4, 'Concatenating launcher3.exe + qiji-portable.7z ...')
+step(5, 'Concatenating launcher3.exe + qiji-portable.7z ...')
 if (fs.existsSync(output)) fs.unlinkSync(output)
 const launcherBuf = fs.readFileSync(launcherExe)
 const payloadBuf = fs.readFileSync(payload)
@@ -85,7 +94,7 @@ console.log(`  Output: ${output}`)
 console.log(`  Size: ${outputSize} MB`)
 
 // ---- Verify ----
-step(5, 'Verifying embedded 7z archive ...')
+step(6, 'Verifying embedded 7z archive ...')
 try {
   execSync(`"${sevenZip}" t "${output}"`, { stdio: 'inherit', timeout: 30000 })
   console.log('\n  Verification: PASSED')
