@@ -219,7 +219,7 @@ subprocess.run(["powershell.exe", "-NoProfile", "-Command", ps_script], ...)
 ## 凭证
 
 从 localStorage 的 `savedLoginData` 提取（LevelDB 格式，解析困难）：
-- **用户名**: 4000761588
+- **用户名**: 用户的奇计账号
 - **api_url**: http://www.aijiqiren.vip
 - **udid**: 需要从 app 界面获取（授权码）
 - **uid**: 需要从远程 API 登录后获取
@@ -228,7 +228,7 @@ subprocess.run(["powershell.exe", "-NoProfile", "-Command", ps_script], ...)
 ```bash
 export GEO_UDID="授权码"
 export GEO_UID="用户ID"
-export GEO_USERNAME="4000761588"
+export GEO_USERNAME="你的奇计账号"
 ```
 
 ## ASAR 提取方法

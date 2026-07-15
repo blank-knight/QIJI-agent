@@ -36,13 +36,15 @@ version: 2.0.0
 
 ## 凭证配置
 
+⚠️ **用户必须配置自己的奇计账号，skill 不内置任何凭证。**
+
 ### 网页端（geo.heikexia.cc）
 
-在 `~/.hermes/.env` 中设置（或使用默认测试账号）：
+用户在 `~/.hermes/.env` 中设置自己的奇计平台账号：
 
 ```
-GEO_USERNAME=4000761588
-GEO_PASSWORD=4000761588
+GEO_USERNAME=用户自己的账号
+GEO_PASSWORD=用户自己的密码
 ```
 
 ### 桌面客户端（auth helper）
@@ -50,7 +52,7 @@ GEO_PASSWORD=4000761588
 ```bash
 export GEO_UDID="授权码"      # 必需，从客户端登录界面获取
 export GEO_UID="用户ID"       # 远程 API 登录后返回
-export GEO_USERNAME="4000761588"  # 默认
+export GEO_USERNAME="用户自己的账号"  # 同网页端账号
 ```
 
 ⚠️ udid 无法自动提取（LevelDB block 压缩问题，见已知限制 #5），需用户手动提供。
@@ -499,7 +501,7 @@ python3 scripts/geo-client.py platforms  # 支持的平台
 ```bash
 export GEO_UDID="授权码"      # 必需
 export GEO_UID="用户ID"       # 可选
-export GEO_USERNAME="4000761588"  # 默认
+export GEO_USERNAME="你的奇计账号"  # 必需
 ```
 
 ### 双 API 架构（关键）
@@ -540,7 +542,7 @@ export GEO_USERNAME="4000761588"  # 默认
 2. **rights iframe 偶发未加载**：已修复。`getFrame()` 改为 async + 重试（15次，500ms间隔），等待 iframe 出现且内容非空后才返回。
 3. **report 解析**：无实际诊断数据可测，空列表返回正确但表格解析逻辑未经实数据验证。
 4. **表格分页**：Bootstrap Table 默认只返回第一页（通常10条），翻页未处理。
-5. **udid/uid 无法自动提取**：Chromium localStorage 存在 LevelDB 中，SSTable block 压缩会把 JSON 值打碎（实测 `savedLoginData` 被截断为 `{"username":"4000761588","password":` + 二进制碎片）。**不要浪费时间手动解析 LevelDB**——直接问用户要授权码。
+5. **udid/uid 无法自动提取**：Chromium localStorage 存在 LevelDB 中，SSTable block 压缩会把 JSON 值打碎（实测 savedLoginData 被截断为用户名密码碎片 + 二进制）。**不要浪费时间手动解析 LevelDB**——直接问用户要授权码。
 6. **ai_push/push 余额依赖**：任务启动成功（返回 task_id）但实际执行报"网络异常"时，检查 rights 命令返回的剩余点数。透支状态下任务无法执行，充值后才能恢复。这不是 skill 的 bug，是平台余额机制。
 7. **SEO 命令菜单名未验证**：`seo-sites`/`seo-columns`/`seo-tasks` 的菜单名（"站点管理"/"栏目列表"/"发布任务"）是推断的。E2E 测试时这些页面返回"暂无"——可能是空数据，也可能是菜单名不匹配。首次实际使用时需确认。
 8. **SEO publish 表单结构（2026-07-06 截图验证，代码已更新）**：实际表单有 **7 个必填字段**，代码已按截图重写：
@@ -634,7 +636,7 @@ for (const line of text.split('\n')) {
 | 表格解析错位 | 第一列可能是序号或checkbox，用 `/^\d+$/` 检测并 slice |
 | `--headless` 不生效 | **CONFIG.headless 硬编码 false，parseArgs 的 params 没传进去**。已在主入口加 `if (params.headless) CONFIG.headless = true`。如果新命令也不走无头，检查 createBrowser 前是否有这行 |
 | Flask API 全 404 | 端点可能走远程服务器(8.138.58.181)而非本地 Flask。POST `{}` 测：500=路由存在(bad body)，404=路由不存在。详见 `references/auth-helper-client.md` |
-| udid/uid 获取 | ⚠️ **不要尝试从 Chromium LevelDB 提取**——SSTable block 压缩会打碎 JSON 值，提取不可靠。直接问用户要授权码。获取 uid 的正确方法：`curl -X POST http://8.138.58.181/api/zhushou/login -H 'Content-Type: application/json' -d '{"username":"4000761588","password":"4000761588","udid":"14357","instanceCount":1}'`，返回 JSON 的 `data.uid` |
+| udid/uid 获取 | ⚠️ **不要尝试从 Chromium LevelDB 提取**——SSTable block 压缩会打碎 JSON 值，提取不可靠。直接问用户要授权码。获取 uid 的正确方法：`curl -X POST http://8.138.58.181/api/zhushou/login -H 'Content-Type: application/json' -d '{"username":"你的账号","password":"你的密码","udid":"授权码","instanceCount":1}'`，返回 JSON 的 `data.uid` |
 | WSL 连不上 Flask:5000 | localhost forwarding 被安全软件拦截。必须用 PowerShell 代理（`geo-client.py` 已内置 `_ps_request()`） |
 | 客户端 logs 命令 404 | AI 发布任务用 `/api/ai_logs/{task_id}`，社媒发布用 `/api/logs/{task_id}`。`geo-client.py logs` 命令已自动尝试两个端点 |
 | 任务启动后立即被杀 | ⚠️ **绝对不要用 POST /api/stop 探测 Flask 是否在线**——这会杀掉正在运行的任务。`geo-client.py` 的 `check_flask()` 曾犯此错：每个命令开头调用 check_flask → POST /api/stop → 任何刚启动的任务 4 秒内被杀。已修复为 GET 探测（无副作用） |

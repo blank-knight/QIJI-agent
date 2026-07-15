@@ -22,8 +22,8 @@ const path = require('path');
 
 const CONFIG = {
   url: 'https://geo.heikexia.cc',
-  username: process.env.GEO_USERNAME || '4000761588',
-  password: process.env.GEO_PASSWORD || '4000761588',
+  username: process.env.GEO_USERNAME || '',
+  password: process.env.GEO_PASSWORD || '',
   headless: false,
   timeout: 30000,
 };

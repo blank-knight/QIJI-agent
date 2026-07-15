@@ -13,8 +13,8 @@ cd ~/.hermes/skills/qiji-geo && npm install
 
 环境变量（~/.hermes/.env）：
 ```
-GEO_USERNAME=4000761588
-GEO_PASSWORD=4000761588
+GEO_USERNAME=你的奇计账号
+GEO_PASSWORD=你的奇计密码
 GEO_UDID=授权码        # 桌面客户端用，从客户端登录界面获取
 GEO_UID=用户ID         # 远程 API 登录后返回
 ```

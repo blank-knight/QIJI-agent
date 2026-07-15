@@ -68,7 +68,7 @@ DOM 解析失败时回退到 innerText 策略（详见 SKILL.md 的"Bootstrap Ta
 
 **根因：** Chromium 把 localStorage 存在 LevelDB 里。SSTable block 压缩会把 JSON 值打碎：
 ```
-{"username":"4000761588","password":  ← 到这里就断了，后面是二进制碎片
+{"username":"用户账号","password":  ← 到这里就断了，后面是二进制碎片
 ```
 
 **修复：** 不要浪费时间解析 LevelDB。直接问用户要授权码。
@@ -77,7 +77,7 @@ DOM 解析失败时回退到 innerText 策略（详见 SKILL.md 的"Bootstrap Ta
 ```bash
 curl -X POST http://8.138.58.181/api/zhushou/login \
   -H 'Content-Type: application/json' \
-  -d '{"username":"4000761588","password":"4000761588","udid":"授权码","instanceCount":1}'
+  -d '{"username":"你的账号","password":"你的密码","udid":"授权码","instanceCount":1}'
 # 返回 JSON 的 data.uid
 ```
 

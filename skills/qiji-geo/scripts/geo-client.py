@@ -47,8 +47,8 @@ CLIENT_DIR = r"D:\GEO cli\auth helper"
 # 凭证（从 localStorage 提取，或环境变量覆盖）
 GEO_UDID = os.environ.get("GEO_UDID", "")
 GEO_UID = os.environ.get("GEO_UID", "")
-GEO_USERNAME = os.environ.get("GEO_USERNAME", "4000761588")
-GEO_PASSWORD = os.environ.get("GEO_PASSWORD", "4000761588")
+GEO_USERNAME = os.environ.get("GEO_USERNAME", "")
+GEO_PASSWORD = os.environ.get("GEO_PASSWORD", "")
 
 # 运行时缓存：从远程 API 获取的完整配置
 _runtime_config = {}
@@ -779,7 +779,7 @@ def main():
         print(f"\n环境变量:")
         print(f"  GEO_UDID    授权码（必需）")
         print(f"  GEO_UID     用户ID")
-        print(f"  GEO_USERNAME 用户名（默认 4000761588）")
+        print(f"  GEO_USERNAME 用户名（必需）")
         sys.exit(1)
 
     cmd = sys.argv[1]
