@@ -286,7 +286,7 @@ async function getReports(page) {
 
   // Bootstrap Table 解析：去掉空列和序号列
   let rows = await frame.evaluate(() => {
-    const trs = document.querySelectorAll('table tbody tr, .fixed-table-body tbody tr');
+    const trs = document.querySelectorAll('table tbody tr');
     return Array.from(trs).map(tr => {
       let tds = Array.from(tr.querySelectorAll('td'));
       tds = tds.map(td => td.textContent.trim());
@@ -337,7 +337,7 @@ async function getKeywords(page) {
 
   // Bootstrap Table 解析：去掉空列和序号列
   let rows = await frame.evaluate(() => {
-    const trs = document.querySelectorAll('table tbody tr, .fixed-table-body tbody tr');
+    const trs = document.querySelectorAll('table tbody tr');
     return Array.from(trs).map(tr => {
       let tds = Array.from(tr.querySelectorAll('td'));
       // 去掉空列（checkbox等）
@@ -386,7 +386,7 @@ async function parseTable(page, menu, submenu, columnNames) {
 
   // 策略 A：DOM 解析
   let rows = await frame.evaluate((cols) => {
-    const trs = document.querySelectorAll('table tbody tr, .fixed-table-body tbody tr');
+    const trs = document.querySelectorAll('table tbody tr');
     return Array.from(trs).map(tr => {
       let tds = Array.from(tr.querySelectorAll('td')).map(td => td.textContent.trim());
       // 去掉前导的序号列和 checkbox 列（可能有多个）
@@ -567,7 +567,7 @@ async function getArticles(page) {
   if (!frame) return { error: 'iframe未加载' };
 
   let rows = await frame.evaluate(() => {
-    const trs = document.querySelectorAll('table tbody tr, .fixed-table-body tbody tr');
+    const trs = document.querySelectorAll('table tbody tr');
     return Array.from(trs).map(tr => {
       let tds = Array.from(tr.querySelectorAll('td'));
       tds = tds.map(td => td.textContent.trim());

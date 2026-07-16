@@ -40,9 +40,25 @@ FLASK_BASE = f"http://127.0.0.1:{FLASK_PORT}"
 # 远程服务器（管理类 API）
 REMOTE_BASE = "http://8.138.58.181"
 
-# 客户端路径
-CLIENT_EXE = r"D:\GEO cli\auth helper\auth helper.exe"
-CLIENT_DIR = r"D:\GEO cli\auth helper"
+# 客户端路径（可通过环境变量覆盖，否则自动搜索常见位置）
+def _find_client_exe():
+    """搜索 auth helper.exe 的常见安装位置"""
+    env_path = os.environ.get("GEO_CLIENT_EXE", "")
+    if env_path and os.path.isfile(env_path):
+        return env_path
+    candidates = [
+        r"D:\GEO cli\auth helper\auth helper.exe",
+        r"D:\geozg\auth helper\auth helper.exe",
+        r"C:\geozg\auth helper\auth helper.exe",
+    ]
+    for p in candidates:
+        if os.path.isfile(p):
+            return p
+    # 最后回退到默认值（远程后端场景可能不需要本地 exe）
+    return r"D:\GEO cli\auth helper\auth helper.exe"
+
+CLIENT_EXE = _find_client_exe()
+CLIENT_DIR = os.path.dirname(CLIENT_EXE)
 
 # 凭证（从 localStorage 提取，或环境变量覆盖）
 GEO_UDID = os.environ.get("GEO_UDID", "")
@@ -193,10 +209,9 @@ def cmd_status():
     print(f"Flask API (端口 {FLASK_PORT}): {'✅ 运行中' if flask_ok else '❌ 未运行'}")
 
     if flask_ok:
-        # 2. 尝试获取 push 状态
-        code, data = http_post(f"{FLASK_BASE}/api/stop", timeout=3)
-        if code == 200 and isinstance(data, dict):
-            print(f"  最近操作: {data.get('msg', '?')}")
+        # ⚠️ 不要用 POST /api/stop 探测——会杀掉正在运行的任务！
+        # 用 GET 探测即可确认 Flask 在线
+        print(f"  (用 start/stop 命令控制任务)")
 
     # 3. 检查 auth helper 进程
     result = subprocess.run(
@@ -274,6 +289,15 @@ def cmd_push():
     cfg = _resolve_credentials()
     uid = GEO_UID or cfg.get("uid", "")
     api_url = cfg.get("api_url", "")
+
+    if not uid:
+        print("❌ 无法获取 UID，不能启动发布任务")
+        print("   解决方法：设置 GEO_UDID 环境变量，或直接 export GEO_UID")
+        return False
+
+    if not GEO_UDID:
+        print("❌ 未设置 GEO_UDID（授权码），不能启动发布任务")
+        return False
 
     # 构建 push 请求体
     body = {
@@ -365,6 +389,15 @@ def cmd_ai_push():
     cfg = _resolve_credentials()
     uid = GEO_UID or cfg.get("uid", "")
     api_url = cfg.get("api_url", "")
+
+    if not uid:
+        print("❌ 无法获取 UID，不能启动 AI 发布任务")
+        print("   解决方法：设置 GEO_UDID 环境变量，或直接 export GEO_UID")
+        return False
+
+    if not GEO_UDID:
+        print("❌ 未设置 GEO_UDID（授权码），不能启动 AI 发布任务")
+        return False
 
     # Parameters must match the client's Vue component exactly
     # Source: app.fd1c1ddf.js → startAiPushTask({uid,udid,model_type,my_headless,...})
