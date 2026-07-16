@@ -625,7 +625,7 @@ for (const line of text.split('\n')) {
 | 环境变量未设置 | ⚠️ **首次使用时最常见的问题。** Agent 自动检测 GEO_UDID/USERNAME/PASSWORD 是否缺失，缺失时一次性向用户要齐（账号+密码+授权码），写入 `~/.hermes/.env`。GEO_UID 自动调远程 API 获取，不需要用户提供 |
 | 客户端路径不对 | 代码自动搜索 `D:\GEO cli\`、`D:\geozg\`、`C:\geozg\`。都找不到时 Agent 用 `powershell.exe Get-ChildItem -Recurse` 全盘搜 `auth helper.exe`，找到后设环境变量 `GEO_CLIENT_EXE` 永久保存 |
 | Python 找不到（Windows） | Windows 10 的 `python3` 可能指向 Microsoft Store。Agent 直接用 Hermes 自带 Python：`C:\Users\<用户名>\AppData\Local\hermes\hermes-agent\venv\Scripts\python.exe`，不依赖系统 Python |
-| Playwright 未安装 | Agent 自动在 skill 目录执行 `npm install`。离线包应已预装 node_modules，如缺失说明打包时遗漏 |
+| Playwright 未安装 | 离线包已预装 node_modules（prepare-offline.ps1 打包时自动 `npm install`）。如果报缺失，说明装的是旧版离线包——用最新代码重新编译即可。开发环境手动执行 `cd ~/.hermes/skills/qiji-geo && npm install` |
 | 网页端首次导航超时 | 首次加载 CDN 慢。Agent 自动重试一次，通常第二次成功 |
 | `page.waitForTimeout: Target page...has been closed` | 页面导航时 waitForTimeout 崩溃。goHome/clickMenu 内已加 try-catch 兜底，若新代码也遇到，同样用 `try { await page.waitForTimeout(N); } catch {}` 包裹 |
 | iframe 未加载 | `getFrame()` 已改为 async + 重试(15次/500ms间隔)，等待内容非空才返回。若仍报错，检查 `addtabs=1` 选择器是否匹配（菜单选择器可能变动，见 `references/platform-selectors.md`） |
