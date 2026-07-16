@@ -626,10 +626,14 @@ for (const line of text.split('\n')) {
 
 | 问题 | 解决 |
 |------|------|
-| 登录失败 | 检查 GEO_USERNAME/GEO_PASSWORD 环境变量 |
+| 登录失败 | 检查 GEO_USERNAME/GEO_PASSWORD 环境变量是否设置。引导用户在 `~/.hermes/.env` 中配置自己的奇计账号，或执行 `export GEO_USERNAME=xxx GEO_PASSWORD=xxx` |
+| 环境变量未设置 | ⚠️ **首次使用时最常见的问题。** 所有 GEO 命令依赖 GEO_UDID（授权码）和 GEO_USERNAME。引导用户：(1) 从奇计网页端登录获取账号 (2) 从客户端登录界面获取授权码 (3) 写入 `~/.hermes/.env` 永久生效，或每次 `export` |
+| 客户端路径不对 | 代码已改为自动搜索 `D:\GEO cli\`、`D:\geozg\`、`C:\geozg\`。如果客户端装在其他位置，设环境变量 `GEO_CLIENT_EXE=完整路径\auth helper.exe` |
+| Python 找不到（Windows） | Windows 10 的 `python3` 可能指向 Microsoft Store 安装引导程序。引导用户用 Hermes 自带 Python：`C:\Users\<用户名>\AppData\Local\hermes\hermes-agent\venv\Scripts\python.exe`，或先激活 venv |
+| Playwright 未安装 | `cd ~/.hermes/skills/qiji-geo && npm install`。离线包应已预装 node_modules，如缺失说明打包时遗漏 |
+| 网页端首次导航超时 | 首次加载 CDN 资源慢。先 `curl -s -o /dev/null -w "%{http_code}" https://geo.heikexia.cc` 确认可达，再重试一次 |
 | `page.waitForTimeout: Target page...has been closed` | 页面导航时 waitForTimeout 崩溃。goHome/clickMenu 内已加 try-catch 兜底，若新代码也遇到，同样用 `try { await page.waitForTimeout(N); } catch {}` 包裹 |
 | iframe 未加载 | `getFrame()` 已改为 async + 重试(15次/500ms间隔)，等待内容非空才返回。若仍报错，检查 `addtabs=1` 选择器是否匹配（菜单选择器可能变动，见 `references/platform-selectors.md`） |
-| Playwright 未安装 | `cd ~/.hermes/skills/qiji-geo && npm install` |
 | 网络超时 | 确认能访问 geo.heikexia.cc，可能需要代理 |
 | 表格解析全 undefined | Bootstrap Table 序号列偏移，见上方策略 A |
 | 关键词列对调 | 第一列是序号不是关键词，用 `tds.slice(1)` 跳过 |
@@ -642,3 +646,6 @@ for (const line of text.split('\n')) {
 | 任务启动后立即被杀 | ⚠️ **绝对不要用 POST /api/stop 探测 Flask 是否在线**——这会杀掉正在运行的任务。`geo-client.py` 的 `check_flask()` 曾犯此错：每个命令开头调用 check_flask → POST /api/stop → 任何刚启动的任务 4 秒内被杀。已修复为 GET 探测（无副作用） |
 | ai_push 任务启动但不弹浏览器 | ai_push 需要完整请求体（9个字段），不能只传 `{udid, uid}`。关键字段：`my_headless: false`（不传则可能走无头模式，浏览器不出现）。完整字段见 `references/auth-helper-client.md` |
 | geo-cli 可视化模式下浏览器窗口不出现 | **Windows ConPTY 子进程抑制 GUI 窗口**：奇计后端通过 pywinpty/ConPTY 启动终端命令，进程链是 后端→ConPTY shell→node→Playwright Chromium。即使 `headless: false`，ConPTY 环境可能阻止 GUI 窗口弹出。**已添加的缓解措施**：(1) `--start-maximized` 强制最大化 (2) `slowMo: 500ms` 可视化模式操作间隔 (3) `--disable-background-timer-throttling` 等反后台节流参数 (4) `console.error` 打印 headless 值用于调试。如果仍然不显示，可能需要改用系统已安装的 Chrome/Edge（通过 `channel: 'chrome'` 或 `executablePath`）而非 Playwright 内置 Chromium |
+| vision 识图不可用 | 当前 Hermes 实例的 config.yaml 中可能未配置 vision provider。引导用户执行 `hermes config set providers.vision <provider> <model>` 或编辑 `~/.hermes/config.yaml`。临时替代：直接用浏览器工具操作网页端，或手动询问用户截图内容 |
+| 子 agent 声称完成但实际没做 | ⚠️ **子 agent 返回的是 SELF-REPORT，不是事实。** 子 agent 在工具不可用（如 vision 未配置）时不会报错，而是找替代路径并声称完成。关键操作（启动发布、修改配置）必须自己再查一遍实际状态。传给子 agent 的 context 应标注 `⚠️ vision 工具不可用，请跳过识图步骤，直接操作网页端` |
+| Qiji.exe 启动弹窗 | 0.17.0 版本启动时可能弹出公告/协议窗口。引导用户手动关闭弹窗，或直接用旧版 auth helper（通过 geo-client.py start 控制），不影响 Flask API 功能 |
