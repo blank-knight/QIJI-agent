@@ -1856,6 +1856,9 @@ export function ChatBar({
       disabled={disabled}
       hasComposerPayload={hasComposerPayload}
       onDictate={dictate}
+      onSelectSkill={async (command) => {
+        await onSubmit(command)
+      }}
       onSteer={steerDraft}
       state={state}
       voiceStatus={voiceStatus}

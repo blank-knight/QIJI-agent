@@ -20,8 +20,27 @@ const path = require('path');
 
 // ========== 配置 ==========
 
+// 自动获取网页端地址：优先读环境变量 GEO_URL，没有则调 geo-client.py 获取
+function resolveGeoUrl() {
+  if (process.env.GEO_URL) return process.env.GEO_URL;
+  try {
+    const { execSync } = require('child_process');
+    const pyExe = process.env.GEO_PYTHON || 'python3';
+    const scriptDir = __dirname;
+    const result = execSync(`${pyExe} "${path.join(scriptDir, 'geo-client.py')}" get-web-url`, {
+      timeout: 15000,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim();
+    if (result && result.startsWith('http')) return result;
+  } catch (e) {
+    // 自动获取失败，用默认值
+  }
+  return 'https://geo.heikexia.cc';
+}
+
 const CONFIG = {
-  url: 'https://geo.heikexia.cc',
+  url: resolveGeoUrl(),
   username: process.env.GEO_USERNAME || '',
   password: process.env.GEO_PASSWORD || '',
   headless: false,

@@ -1546,7 +1546,7 @@ function runGit(args, options = {}) {
       IS_WINDOWS ? ['-c', 'windows.appendAtomically=false', ...args] : args,
       hiddenWindowsChildOptions({
         cwd: options.cwd,
-        env: { ...process.env, ...(options.env || {}), GIT_TERMINAL_PROMPT: '0' },
+        env: { ...process.env, ...(options.env || {}), GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never', GIT_HTTP_AUTHORIZATION: '' },
         stdio: ['ignore', 'pipe', 'pipe']
       })
     )

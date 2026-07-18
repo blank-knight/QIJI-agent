@@ -37,8 +37,8 @@ FLASK_PORT = os.environ.get("GEO_CLIENT_PORT", "5000")
 # (WSL↔Windows 的 localhost forwarding 被防火墙拦截，必须用 PowerShell 代理)
 FLASK_BASE = f"http://127.0.0.1:{FLASK_PORT}"
 
-# 远程服务器（管理类 API）
-REMOTE_BASE = "http://8.138.58.181"
+# 远程服务器（管理类 API）— 可通过环境变量覆盖，每个下级客户有不同的地址
+REMOTE_BASE = os.environ.get("GEO_API_URL") or "http://8.138.58.181"
 
 # 客户端路径（可通过环境变量覆盖，否则自动搜索常见位置）
 def _find_client_exe():
@@ -785,6 +785,18 @@ def cmd_ai_auth(*args):
 # 主入口
 # ============================================================
 
+def cmd_get_web_url():
+    """获取网页端地址（自动从远程 API 获取，无需用户手动提供）"""
+    cfg = _resolve_credentials()
+    api_url = cfg.get("api_url", "")
+    if api_url:
+        # 输出纯 URL，方便 geo-cli.js 读取
+        print(api_url)
+        return True
+    else:
+        print("ERROR: 无法从远程 API 获取网页端地址", file=sys.stderr)
+        return False
+
 COMMANDS = {
     "status": ("检查客户端状态", cmd_status),
     "start": ("启动客户端", cmd_start),
@@ -800,6 +812,7 @@ COMMANDS = {
     "account-status": ("查看全平台授权状态（社媒16+AI 8）", cmd_account_status),
     "media-login": ("社媒平台授权登录（可视化）", cmd_media_login),
     "ai-auth": ("AI平台认证（可视化，可指定平台）", cmd_ai_auth),
+    "get-web-url": ("获取网页端地址（自动获取）", cmd_get_web_url),
 }
 
 def main():

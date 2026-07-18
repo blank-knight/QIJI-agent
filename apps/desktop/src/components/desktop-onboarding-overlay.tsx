@@ -66,6 +66,15 @@ export interface ApiKeyOption {
 
 const API_KEY_OPTIONS: ApiKeyOption[] = [
   {
+    id: 'qiji-relay',
+    name: '奇计中转站（推荐）',
+    description: '使用奇计官方中转站，开箱即用，无需翻墙',
+    envKey: 'OPENAI_API_KEY',
+    docsUrl: 'https://www.aicps.vip',
+    placeholder: 'sk-...',
+    short: '奇计中转站'
+  },
+  {
     id: 'openrouter',
     name: 'OpenRouter',
     envKey: 'OPENROUTER_API_KEY',
@@ -91,9 +100,9 @@ const API_KEY_OPTIONS: ApiKeyOption[] = [
   },
   {
     id: 'local',
-    name: 'Local / custom endpoint',
+    name: '其他自定义 API (Local / custom endpoint)',
     envKey: 'OPENAI_BASE_URL',
-    docsUrl: 'https://github.com/blank-knight/QIJI-agent#配置',
+    docsUrl: 'https://www.aicps.vip',
     placeholder: 'http://127.0.0.1:8000/v1'
   }
 ]
@@ -705,6 +714,7 @@ export function ApiKeyForm({
   }
 
   const isLocal = option.envKey === 'OPENAI_BASE_URL'
+  const isQijiRelay = option.id === 'qiji-relay'
   const alreadySet = isSet?.(option.envKey) ?? false
   // When set, surface the backend's redacted value (e.g. "sk-12…wxyz") as the
   // placeholder so users can eyeball that the right key is in place.
@@ -722,6 +732,16 @@ export function ApiKeyForm({
 
     setSaving(true)
     setError(null)
+    // Qiji relay: user enters API key, we auto-set base_url via custom endpoint
+    if (isQijiRelay) {
+      const QIJI_BASE_URL = 'https://www.aicps.vip'
+      const result = await onSave('OPENAI_BASE_URL', QIJI_BASE_URL, option.name, value)
+      if (!result.ok) {
+        setError(result.message ?? '配置失败')
+      }
+      setSaving(false)
+      return
+    }
     const result = await onSave(option.envKey, value, option.name, isLocal ? localKey : undefined)
 
     if (result.ok) {
@@ -754,15 +774,15 @@ export function ApiKeyForm({
           <button
             className={cn(
               'rounded-2xl border bg-background/60 p-3 text-left transition hover:bg-accent/50',
-              option.envKey === o.envKey ? 'border-primary ring-2 ring-primary/20' : 'border-transparent'
+              option.id === o.id ? 'border-primary ring-2 ring-primary/20' : 'border-transparent'
             )}
-            key={o.envKey}
+            key={o.id}
             onClick={() => pick(o)}
             type="button"
           >
             <div className="flex items-center justify-between gap-2">
               <span className="text-sm font-medium">{o.name}</span>
-              {isSet?.(o.envKey) ? <Check className="size-3.5 text-muted-foreground" /> : null}
+              {o.id !== 'qiji-relay' && isSet?.(o.envKey) ? <Check className="size-3.5 text-muted-foreground" /> : null}
             </div>
             {(t.onboarding.apiKeyOptions[o.id]?.short ?? o.short) ? (
               <p className="mt-1 text-xs text-muted-foreground">{t.onboarding.apiKeyOptions[o.id]?.short ?? o.short}</p>

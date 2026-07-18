@@ -1,6 +1,58 @@
 
 ---
 
+## 坑17：Playwright JS 库未打包导致离线包触发在线下载（2026-07-13）
+
+**严重度：★★★★☆（离线安装后 GEO skill 不可用，触发 689MB 在线下载）**
+
+**现象：** 离线包安装后运行 GEO skill，`require('playwright')` 失败，触发 `npm install` + `npx playwright install chromium`，又下载了 689MB Chromium 到 `%LOCALAPPDATA%\ms-playwright\`。
+
+**根因：** vendor/chromium/（420MB）打包了浏览器二进制，但 Playwright 的 JS 库（npm 包）没装进 skill 目录的 node_modules。skill 的 package.json 声明了 `"playwright": "^1.61.0"` 依赖，但 node_modules 不存在。
+
+**修复：**
+
+1. 编译时预装 `npm install` 到 `vendor/hermes-agent/skills/qiji-geo/node_modules/`
+2. geo-cli.js 新增 `findBundledChromium()` 函数，优先查找打包的 Chromium
+
+**教训：** 离线包里每个有 `package.json` 的 skill 都要检查 node_modules 是否预装。光打包二进制不够，JS 库也是必需的。
+
+---
+
+## 坑18：uninstall.bat 自杀导致卸载窗口闪退（2026-07-13）
+
+**严重度：★★★☆☆（卸载窗口一闪而过，用户以为没卸载干净）**
+
+**现象：** 控制面板点卸载，cmd 窗口闪一下就消失，安装目录没删干净。
+
+**根因：** uninstall.bat 放在安装目录内，`rd /s /q "%APP_DIR%"` 删安装目录时把 bat 自身也删了。cmd 正在执行 bat 文件，文件被删后 cmd 立即中断，后续的清理注册表、删快捷方式等步骤全没执行。
+
+**修复：** bat 启动时先 `copy` 自身到 `%TEMP%`，然后从 temp 重新启动（`start cmd /c`），安装路径通过 `%1` 参数传入。新进程在 temp 目录运行，安全删除安装目录不受影响。
+
+```bat
+if "%~1"=="" (
+    copy /y "%~f0" "%TEMP%\qiji_uninstall.bat" >nul 2>&1
+    start "卸载奇计" cmd /c "%TEMP%\qiji_uninstall.bat" "%~dp0"
+    exit /b
+)
+set "APP_DIR=%~1"
+```
+
+**教训：** 不要让脚本删除自身所在的目录。自删除场景必须先重定位到临时目录。
+
+---
+
+## 坑19：build-installer.js 路径解析多上一层（2026-07-13）
+
+**严重度：★★☆☆☆（打包脚本报 win-unpacked not found）**
+
+**现象：** 运行 `node build-installer.js` 报 `ERROR: release\win-unpacked not found`。
+
+**根因：** `ROOT = path.resolve(__dirname, '..', '..')` 多上了一层。installer/ 在 `apps/desktop/installer/`，ROOT 应该是 `apps/desktop/`（上一层），不是 `apps/`（上两层）。
+
+**修复：** 改为 `ROOT = path.resolve(__dirname, '..')`。同时因为 package.json 有 `"type": "module"`，`require()` 在 .js 里不可用，需要用 .cjs 扩展名。
+
+---
+
 ## 坑16：vendor 瘦身全局清理可靠性问题（NTFS 超时）
 
 **严重度：★★★☆☆（installer 体积不降、文件数不减）**

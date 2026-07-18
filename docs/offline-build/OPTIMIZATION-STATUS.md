@@ -1,7 +1,7 @@
 # 奇计离线包优化状态
 
-> 最后更新：2026-07-09  
-> 当前版本：Qiji-0.17.0-win-x64.exe（776MB）
+> 最后更新：2026-07-13  
+> 当前版本：Qiji-0.17.0-Setup.exe（653.7 MB，launcher3 方案）
 
 ---
 
@@ -102,6 +102,36 @@
 
 ---
 
+### 7. Playwright 离线修复（2026-07-13）
+
+**问题：** 离线包打包了 Chromium 浏览器二进制（vendor/chromium/，420MB），但 Playwright 的 JS 库（npm 包）没打进 skill 目录的 node_modules。skill 运行时 `require('playwright')` 失败 → 触发在线 `npm install` + `npx playwright install chromium`，又下载了一份 689MB 的 Chromium 到 `%LOCALAPPDATA%\ms-playwright\`。
+
+**修复（两处）：**
+
+1. **预装 node_modules：** 编译时把 `playwright` + `playwright-core` 预装到 `vendor/hermes-agent/skills/qiji-geo/node_modules/`，一起打包。`require('playwright')` 直接命中，不触发在线下载。
+
+2. **findBundledChromium() 函数：** geo-cli.js 新增浏览器路径查找逻辑，优先使用打包的 vendor/chromium（通过 install.ps1 staging 到 `%LOCALAPPDATA%\ms-playwright\`），不再依赖 Playwright 默认的在线下载行为。
+
+**效果：** GEO skill 完全离线可用，不再触发任何在线下载。节省 689MB 重复下载。
+
+**实施文件：**
+- `skills/qiji-geo/scripts/geo-cli.js` — `findBundledChromium()` 函数（L63-88）
+- `skills/qiji-geo/node_modules/` — 预装的 playwright + playwright-core
+
+---
+
+### 8. launcher3 安装器优化（2026-07-13）
+
+**改动：**
+
+1. **安装后自动启动：** 去掉了 Y/N 确认提示，安装完成后直接启动 Qiji.exe。
+
+2. **卸载窗口闪退修复：** uninstall.bat 在安装目录内，`rd /s /q` 删安装目录时把 bat 自身也删了，导致 cmd 中断、窗口一闪而过。修复：bat 先复制自身到 `%TEMP%`，从 temp 重新启动（安装路径通过参数传入），再安全删除安装目录。
+
+**实施文件：** `apps/desktop/installer/launcher3.cs`
+
+---
+
 ## 📊 优化效果对比
 
 ### 安装时间
@@ -118,11 +148,13 @@
 
 ### 体积
 
-| 指标 | 优化前 | 优化后 | 变化 |
-|------|--------|--------|------|
-| vendor 原始 | 2.3GB | 2.0GB | -0.3GB |
-| NSIS 压缩后 | 775MB | 776MB | +1MB（可忽略） |
-| 文件数 | 99,184 | ~65,000 | -34,184 |
+| 指标 | NSIS 方案 | launcher3 方案 | 变化 |
+|------|-----------|---------------|------|
+| vendor 原始 | 2.0GB | 2.0GB | - |
+| 安装包大小 | 776MB | 653.7MB | -122MB |
+| 文件数 | ~80K | 80,760 | - |
+
+> launcher3 方案用 7z 压缩 + 自定义安装器（C#），比 NSIS 多打了 playwright node_modules，但总体积更小。
 
 ---
 

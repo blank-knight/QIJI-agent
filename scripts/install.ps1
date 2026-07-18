@@ -1560,10 +1560,25 @@ function Install-SystemPackages {
     $needRipgrep = $false
     $needFfmpeg = $false
 
+    # --- Vendor-mode shortcut: check HermesHome tools/rg.exe first ---
+    # The uv stage already copies vendor rg.exe there and adds it to PATH,
+    # but each install stage runs in a SEPARATE PowerShell process, so the
+    # PATH change from the uv stage does not carry over. Check the file
+    # directly instead of relying on Get-Command.
+    $managedTools = Join-Path $HermesHome "tools"
+    $vendorRg = Join-Path $managedTools "rg.exe"
+
     Write-Info "Checking ripgrep (fast file search)..."
     if (Get-Command rg -ErrorAction SilentlyContinue) {
         $version = rg --version | Select-Object -First 1
         Write-Success "$version found"
+        $script:HasRipgrep = $true
+    } elseif (Test-Path $vendorRg) {
+        # rg.exe was staged by vendor but isn't on this process's PATH.
+        # Add it so the backend inherits it via $HermesHome\tools.
+        $env:Path = "$managedTools;$env:Path"
+        $version = & $vendorRg --version | Select-Object -First 1
+        Write-Success "$version found (vendor)"
         $script:HasRipgrep = $true
     } else {
         $needRipgrep = $true
@@ -1575,6 +1590,23 @@ function Install-SystemPackages {
         $script:HasFfmpeg = $true
     } else {
         $needFfmpeg = $true
+    }
+
+    # Vendor mode: ffmpeg is intentionally excluded from vendor (217MB).
+    # In offline/vendor installs, winget will almost certainly fail (no
+    # network or restricted winget source) and waste several minutes on
+    # timeout. Skip winget entirely and warn the user instead.
+    if ($needRipgrep -and -not $needFfmpeg) {
+        # Only ripgrep missing (rare in vendor mode) — try package managers
+    } elseif ($needFfmpeg -and $VendorDir) {
+        # Vendor mode + ffmpeg missing → skip winget, just warn
+        if ($needRipgrep) {
+            Write-Host "[!] ripgrep not installed (file search will use findstr fallback)" -ForegroundColor Yellow
+        }
+        Write-Host "[!] ffmpeg not installed (TTS voice messages will be limited)" -ForegroundColor Yellow
+        Write-Host "[!]   Install manually: winget install Gyan.FFmpeg" -ForegroundColor Yellow
+        Write-Host "[!]   Or download from: https://ffmpeg.org/download.html" -ForegroundColor Yellow
+        return
     }
 
     if (-not $needRipgrep -and -not $needFfmpeg) { return }

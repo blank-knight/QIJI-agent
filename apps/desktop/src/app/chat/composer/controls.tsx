@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 
 import type { ConversationStatus } from './hooks/use-voice-conversation'
 import { ModelPill } from './model-pill'
+import { SkillPicker } from './skill-picker'
 import type { ChatBarState, VoiceStatus } from './types'
 
 export const ICON_BTN = 'size-(--composer-control-size) shrink-0 rounded-md'
@@ -50,6 +51,7 @@ export function ComposerControls({
   state,
   voiceStatus,
   onDictate,
+  onSelectSkill,
   onSteer
 }: {
   busy: boolean
@@ -63,6 +65,7 @@ export function ComposerControls({
   state: ChatBarState
   voiceStatus: VoiceStatus
   onDictate: () => void
+  onSelectSkill?: (command: string) => void
   onSteer: () => void
 }) {
   const { t } = useI18n()
@@ -86,6 +89,7 @@ export function ComposerControls({
   return (
     <div className="ml-auto flex shrink-0 items-center gap-(--composer-control-gap)">
       <ModelPill compact={compactModelPill} disabled={disabled} model={state.model} />
+      {onSelectSkill && <SkillPicker disabled={disabled} onSelect={onSelectSkill} />}
       {/* While the agent runs and the user is typing, steer takes over the mic's
           slot rather than crowding the row with an extra button. */}
       {canSteer ? (
