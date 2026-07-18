@@ -7237,12 +7237,16 @@ if (!_gotSingleInstanceLock) {
   app.on('second-instance', (_event, argv) => {
     const url = _extractDeepLink(argv)
     if (url) handleDeepLink(url)
-    else if (mainWindow) {
-      // On Windows/Linux the window may be hidden (minimize-to-tray).
-      // restore() alone doesn't un-hide it — explicitly show first.
-      if (!mainWindow.isVisible()) mainWindow.show()
-      if (mainWindow.isMinimized()) mainWindow.restore()
-      mainWindow.focus()
+    // 无论窗口处于什么状态（隐藏/最小化/已销毁），点击桌面图标都必须弹出窗口。
+    // 之前的 bug：窗口 hide 后 mainWindow 对象还在但可能渲染进程已卡死，
+    // 或者窗口已被 destroy 但 mainWindow 引用未清空 → show() 静默失败。
+    else {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        focusWindow(mainWindow)
+      } else {
+        // 窗口已销毁或不存在 → 重建主窗口
+        createWindow()
+      }
     }
   })
 }
@@ -7303,9 +7307,11 @@ app.whenReady().then(() => {
           if (mainWindow.isVisible()) {
             mainWindow.hide()
           } else {
-            mainWindow.show()
-            mainWindow.focus()
+            focusWindow(mainWindow)
           }
+        } else {
+          // 窗口已销毁 → 重建
+          createWindow()
         }
       })
     }

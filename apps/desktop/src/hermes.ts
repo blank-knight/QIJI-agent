@@ -479,7 +479,10 @@ export function getMemoryProviderOAuthStatus(provider: string): Promise<MemoryPr
 export function getSkills(): Promise<SkillInfo[]> {
   return window.hermesDesktop.api<SkillInfo[]>({
     ...profileScoped(),
-    path: '/api/skills'
+    path: '/api/skills',
+    // Skills 扫描需要读取每个 SKILL.md 文件，奇计内置大量 skill，
+    // 后端冷启动时 15s 默认超时不够。给 45s 让冷启动有足够时间。
+    timeoutMs: 45_000
   })
 }
 

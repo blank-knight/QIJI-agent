@@ -26,7 +26,7 @@ import { CREDENTIAL_CONTROL_CLASS } from '../settings/credential-key-ui'
 import { ListRow } from '../settings/primitives'
 import type { SetStatusbarItemGroup } from '../shell/statusbar-controls'
 
-import { PlatformAvatar } from './platform-icon'
+import { PlatformAvatar, getPlatformDisplayName } from './platform-icon'
 
 interface MessagingViewProps extends React.ComponentProps<'section'> {
   setStatusbarItemGroup?: SetStatusbarItemGroup
@@ -96,8 +96,10 @@ function fieldCopy(field: MessagingEnvVarInfo, m: Translations['messaging']) {
 }
 
 export function MessagingView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...props }: MessagingViewProps) {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const m = t.messaging
+  // 平台名称本地化辅助：通知消息里也用中文名
+  const platformName = (p: MessagingPlatformInfo) => getPlatformDisplayName(p.id, p.name, locale)
   // Both save/toggle toasts offer the same one-click restart.
   const restartGatewayAction = { label: t.commandCenter.restartGateway, onClick: () => void runGatewayRestart() }
   const [platforms, setPlatforms] = useState<MessagingPlatformInfo[] | null>(null)
@@ -173,11 +175,12 @@ export function MessagingView({ setStatusbarItemGroup: _setStatusbarItemGroup, .
       return platforms
     }
 
-    return platforms.filter(platform =>
-      [platform.id, platform.name, platform.description, platform.state]
+    return platforms.filter(platform => {
+      const localizedName = getPlatformDisplayName(platform.id, platform.name, 'zh')
+      return [platform.id, platform.name, localizedName, platform.description, platform.state]
         .filter(Boolean)
         .some(value => String(value).toLowerCase().includes(q))
-    )
+    })
   }, [platforms, query])
 
   async function handleToggle(platform: MessagingPlatformInfo, enabled: boolean) {
@@ -199,12 +202,12 @@ export function MessagingView({ setStatusbarItemGroup: _setStatusbarItemGroup, .
       )
       notify({
         kind: 'success',
-        title: enabled ? m.platformEnabled(platform.name) : m.platformDisabled(platform.name),
+        title: enabled ? m.platformEnabled(platformName(platform)) : m.platformDisabled(platformName(platform)),
         message: m.restartToApply,
         action: restartGatewayAction
       })
     } catch (err) {
-      notifyError(err, m.failedUpdate(platform.name))
+      notifyError(err, m.failedUpdate(platformName(platform)))
     } finally {
       setSaving(null)
     }
@@ -225,12 +228,12 @@ export function MessagingView({ setStatusbarItemGroup: _setStatusbarItemGroup, .
       await refreshPlatforms()
       notify({
         kind: 'success',
-        title: m.setupSaved(platform.name),
+        title: m.setupSaved(platformName(platform)),
         message: m.restartToReconnect,
         action: restartGatewayAction
       })
     } catch (err) {
-      notifyError(err, m.failedSave(platform.name))
+      notifyError(err, m.failedSave(platformName(platform)))
     } finally {
       setSaving(null)
     }
@@ -249,7 +252,7 @@ export function MessagingView({ setStatusbarItemGroup: _setStatusbarItemGroup, .
         }
       }))
       await refreshPlatforms()
-      notify({ kind: 'success', title: m.keyCleared(key), message: m.setupUpdated(platform.name) })
+      notify({ kind: 'success', title: m.keyCleared(key), message: m.setupUpdated(platformName(platform)) })
     } catch (err) {
       notifyError(err, m.failedClear(key))
     } finally {
@@ -319,6 +322,8 @@ function PlatformRow({
   onSelect: () => void
   platform: MessagingPlatformInfo
 }) {
+  const { locale } = useI18n()
+  const displayName = getPlatformDisplayName(platform.id, platform.name, locale)
   return (
     <button
       className={cn(
@@ -330,9 +335,9 @@ function PlatformRow({
       onClick={onSelect}
       type="button"
     >
-      <PlatformAvatar platformId={platform.id} platformName={platform.name} />
+      <PlatformAvatar platformId={platform.id} platformName={displayName} />
       <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-        <span className="truncate text-[length:var(--conversation-text-font-size)] font-normal">{platform.name}</span>
+        <span className="truncate text-[length:var(--conversation-text-font-size)] font-normal">{displayName}</span>
         <StatusDot tone={stateTone(platform)} />
       </span>
     </button>
@@ -357,7 +362,9 @@ function PlatformDetail({
   saving: string | null
 }) {
   const { t } = useI18n()
+  const { locale } = useI18n()
   const m = t.messaging
+  const displayName = getPlatformDisplayName(platform.id, platform.name, locale)
   const [showAdvanced, setShowAdvanced] = useState(false)
 
   const hasEdits = Object.keys(trimEdits(edits)).length > 0
@@ -372,9 +379,9 @@ function PlatformDetail({
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-2xl space-y-5 px-5 py-4">
           <header className="flex items-start gap-3">
-            <PlatformAvatar platformId={platform.id} platformName={platform.name} />
+            <PlatformAvatar platformId={platform.id} platformName={displayName} />
             <div className="min-w-0 flex-1">
-              <h3 className="text-[0.9375rem] font-semibold tracking-tight">{platform.name}</h3>
+              <h3 className="text-[0.9375rem] font-semibold tracking-tight">{displayName}</h3>
               <p className="mt-1 text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height) text-(--ui-text-tertiary)">
                 {platform.description}
               </p>
@@ -483,7 +490,7 @@ function PlatformDetail({
       <footer className="bg-(--ui-chat-surface-background) px-5 py-2.5">
         <div className="mx-auto flex max-w-2xl flex-wrap items-center gap-2">
           <Switch
-            aria-label={platform.enabled ? m.disableAria(platform.name) : m.enableAria(platform.name)}
+            aria-label={platform.enabled ? m.disableAria(displayName) : m.enableAria(displayName)}
             checked={platform.enabled}
             disabled={saving === `enabled:${platform.id}`}
             onCheckedChange={onToggle}

@@ -34,6 +34,49 @@ interface PlatformIconSpec {
   monogram?: string
 }
 
+// 中文环境下的平台名称映射。
+// 后端 API 返回的 platform.name 是英文品牌名（如 "DingTalk"），
+// 这里提供中文译名，在中文环境下替换显示。
+const PLATFORM_NAMES_ZH: Record<string, string> = {
+  telegram: 'Telegram',
+  discord: 'Discord',
+  slack: 'Slack',
+  mattermost: 'Mattermost',
+  matrix: 'Matrix',
+  signal: 'Signal',
+  whatsapp: 'WhatsApp',
+  bluebubbles: 'BlueBubbles',
+  homeassistant: 'Home Assistant',
+  email: '邮件',
+  sms: '短信',
+  webhook: 'Webhook',
+  api_server: 'API 服务器',
+  weixin: '微信',
+  wecom: '企业微信',
+  qqbot: 'QQ 机器人',
+  qq: 'QQ',
+  dingtalk: '钉钉',
+  feishu: '飞书',
+  lark: '飞书',
+  yuanbao: '元宝',
+  bilibili: '哔哩哔哩'
+}
+
+/**
+ * 根据当前 locale 返回平台的本地化名称。
+ * 中文环境下使用 PLATFORM_NAMES_ZH 映射，其他环境返回原始名称。
+ */
+export function getPlatformDisplayName(
+  platformId: string,
+  fallbackName: string,
+  locale: string
+): string {
+  if (locale === 'zh' || locale === 'zh-hant') {
+    return PLATFORM_NAMES_ZH[platformId] || fallbackName
+  }
+  return fallbackName
+}
+
 const PLATFORM_ICONS: Record<string, PlatformIconSpec> = {
   telegram: { Icon: SiTelegram, color: '#26A5E4', kind: 'brand' },
   discord: { Icon: SiDiscord, color: '#5865F2', kind: 'brand' },
