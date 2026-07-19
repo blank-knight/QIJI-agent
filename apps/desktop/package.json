@@ -30,6 +30,8 @@
     "dist:win": "npm run build && npm run builder -- --win",
     "dist:win:msi": "npm run build && npm run builder -- --win msi",
     "dist:win:nsis": "npm run build && npm run builder -- --win nsis",
+"dist:win:dir": "npm run build && npm run builder -- --win --config.win.target=dir",
+"dist:win:sfx": "npm run dist:win:dir && cd installer && node build-installer.cjs",
     "dist:linux": "npm run build && npm run builder -- --linux AppImage deb rpm",
     "test:desktop": "node scripts/test-desktop.mjs",
     "test:desktop:all": "node scripts/test-desktop.mjs all",

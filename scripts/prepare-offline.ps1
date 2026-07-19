@@ -140,7 +140,9 @@ if (Test-Path (Join-Path $venvPath "Scripts\python.exe")) {
 
     if ($pythonStore -and (Test-Path $pythonStore)) {
         $vendorPython = Join-Path $VendorDir "python"
-        Copy-Item $pythonStore $vendorPython -Recurse -Force
+        # Use robocopy instead of Copy-Item: handles long paths (>260 chars)
+        # that are common in deep site-packages/__pycache__ structures.
+        & robocopy $pythonStore $vendorPython /E /NJH /NJS /NFL /NDL /NP /R:1 /W:1 | Out-Null
         Write-Host "[6a/8] Python interpreter ✅" -ForegroundColor Cyan
     } else {
         Write-Host "[6a/8] Python interpreter ❌ — uv Python store not found!" -ForegroundColor Red
@@ -154,14 +156,8 @@ if (Test-Path (Join-Path $venvPath "Scripts\python.exe")) {
     $sitePackages = Join-Path $venvPath "Lib\site-packages"
     if (Test-Path $sitePackages) {
         $vendorSP = Join-Path $VendorDir "site-packages"
-        Copy-Item $sitePackages $vendorSP -Recurse -Force
-
-        # Strip __pycache__ directories and .pyc files — Python generates them
-        # automatically on first run. This saves ~30-50 MB and thousands of files.
-        Get-ChildItem $vendorSP -Recurse -Directory -Filter "__pycache__" -EA SilentlyContinue |
-            ForEach-Object { Remove-Item $_.FullName -Recurse -Force -EA SilentlyContinue }
-        Get-ChildItem $vendorSP -Recurse -Filter "*.pyc" -EA SilentlyContinue |
-            ForEach-Object { Remove-Item $_.FullName -Force -EA SilentlyContinue }
+        # Use robocopy for long path compatibility (same reason as python above).
+        & robocopy $sitePackages $vendorSP /E /NJH /NJS /NFL /NDL /NP /R:1 /W:1 /XF *.pyc /XD __pycache__ | Out-Null
 
         $spFiles = (Get-ChildItem $vendorSP -Recurse -File -EA SilentlyContinue).Count
         $spSize = [math]::Round((Get-ChildItem $vendorSP -Recurse -File -EA SilentlyContinue | Measure-Object Length -Sum).Sum / 1MB)
@@ -185,7 +181,12 @@ if (Test-Path (Join-Path $venvPath "Scripts\python.exe")) {
 $nmPath = Join-Path $installDir "node_modules"
 if (Test-Path $nmPath) {
     $vendorNM = Join-Path $VendorDir "nm"
-    if (Test-Path $vendorNM) { Remove-Item $vendorNM -Recurse -Force }
+    if (Test-Path $vendorNM) {
+        # Clear read-only attributes (jsdom and other packages set them)
+        # then remove. Using Get-ChildItem -Force handles hidden/RO files.
+        Get-ChildItem $vendorNM -Recurse -Force | ForEach-Object { $_.Attributes = "Normal" }
+        Remove-Item $vendorNM -Recurse -Force -ErrorAction SilentlyContinue
+    }
     New-Item -ItemType Directory -Force -Path $vendorNM | Out-Null
 
     # Robocopy with inline file/dir exclusions — folds old 10-step global cleanup

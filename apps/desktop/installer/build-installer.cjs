@@ -6,8 +6,12 @@
  *   node build-installer.js
  * 
  * 前置条件：
- *   1. apps/desktop/release/win-unpacked/ 已存在（npm run dist:win:nsis 产物）
+ *   1. apps/desktop/release/win-unpacked/ 已存在（npm run dist:win:dir 产物）
  *   2. apps/desktop/release/7zr.exe 已存在（从 https://www.7-zip.org/a/7zr.exe 下载）
+ *
+ * 一键编译：
+ *   npm run dist:win:sfx
+ * （= tsc+vite build → electron-builder --dir → build-installer.cjs）
  * 
  * 产物：
  *   apps/desktop/release/Qiji-0.17.0-Setup.exe（~649MB）
@@ -51,7 +55,7 @@ function step(n, msg) { console.log(`\n[${n}] ${msg}`) }
 // ---- Pre-flight ----
 step(1, 'Pre-flight checks')
 if (!fs.existsSync(winUnpacked)) {
-  console.error(`ERROR: ${winUnpacked} not found. Run "npm run dist:win:nsis" first.`)
+  console.error(`ERROR: ${winUnpacked} not found. Run "npm run dist:win:dir" first.`)
   process.exit(1)
 }
 if (!fs.existsSync(sevenZip)) {

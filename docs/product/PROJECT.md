@@ -57,3 +57,5 @@
 - [ ] 干净 Windows 机器上验证完整首装 + 更新流程
 - [ ] Gitee 同步后验证国内用户更新流程
 - [ ] GEO skill `articles`/`titles` 列偏移修复
+- [ ] **TTS 国内用户 fallback**：edge-tts 连续失败时自动切到 Piper 本地 TTS（模型约 60MB，支持中文，绕过 ffmpeg 依赖）
+- [x] **GEO 网址自动获取**：geo-cli.js 启动时自动调 geo-client.py 的 `get-web-url`，从远程 API 获取 `api_url`，无需用户手动提供

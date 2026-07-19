@@ -93,10 +93,6 @@ logger = logging.getLogger(__name__)
 HERMES_HOME = get_hermes_home()
 SKILLS_DIR = HERMES_HOME / "skills"
 
-# _find_all_skills 的 TTL 缓存（mtime-based）。key = (skip_disabled, 目录 mtime 元组)。
-# 清除时机：skill 写入/删除/重命名时目录 mtime 变化 → 自动失效。
-_find_all_skills_cache: dict = {}
-
 # Anthropic-recommended limits for progressive disclosure efficiency
 MAX_NAME_LENGTH = 64
 MAX_DESCRIPTION_LENGTH = 1024
@@ -616,28 +612,6 @@ def _find_all_skills(*, skip_disabled: bool = False) -> List[Dict[str, Any]]:
     """
     from agent.skill_utils import get_external_skills_dirs, iter_skill_index_files
 
-    # ── 缓存：避免每次 /api/skills 都全量扫描文件系统 ──────────────────
-    # 奇计内置大量 skill，全量扫描需要逐个读取 SKILL.md（每个 4000 字符），
-    # 冷启动时 dashboard 连续调用导致 15s 超时。缓存以 skill 目录的 mtime
-    # 为 key——只有目录结构变化才重新扫描，内容变化不影响（mtime 不够精确
-    # 但对 skill 列表够用，skill 内容更新有 _clear_skills_prompt_cache 处理）。
-    cache_key_parts = []
-    dirs_to_scan = []
-    if SKILLS_DIR.exists():
-        dirs_to_scan.append(SKILLS_DIR)
-    dirs_to_scan.extend(get_external_skills_dirs())
-
-    for d in dirs_to_scan:
-        try:
-            cache_key_parts.append(f"{d}:{d.stat().st_mtime_ns}")
-        except OSError:
-            cache_key_parts.append(str(d))
-
-    cache_key = (skip_disabled, tuple(cache_key_parts))
-    cached = _find_all_skills_cache.get(cache_key)
-    if cached is not None:
-        return [dict(s) for s in cached]  # 返回副本，避免调用方修改缓存
-
     skills = []
     seen_names: set = set()
 
@@ -645,6 +619,11 @@ def _find_all_skills(*, skip_disabled: bool = False) -> List[Dict[str, Any]]:
     disabled = set() if skip_disabled else _get_disabled_skill_names()
 
     # Scan local dir first, then external dirs (local takes precedence)
+    dirs_to_scan = []
+    if SKILLS_DIR.exists():
+        dirs_to_scan.append(SKILLS_DIR)
+    dirs_to_scan.extend(get_external_skills_dirs())
+
     for scan_dir in dirs_to_scan:
         for skill_md in iter_skill_index_files(scan_dir, "SKILL.md"):
             if any(part in _EXCLUDED_SKILL_DIRS for part in skill_md.parts):
@@ -696,9 +675,6 @@ def _find_all_skills(*, skip_disabled: bool = False) -> List[Dict[str, Any]]:
                     "Skipping skill at %s: failed to parse: %s", skill_md, e, exc_info=True
                 )
                 continue
-
-    # 写入缓存
-    _find_all_skills_cache[cache_key] = [dict(s) for s in skills]
 
     return skills
 
