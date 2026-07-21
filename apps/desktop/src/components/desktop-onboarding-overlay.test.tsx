@@ -80,23 +80,6 @@ describe('onboarding Picker', () => {
     expect(screen.queryByText('Recommended')).toBeNull()
   })
 
-  it('offers "choose later" on first run and persists the skip', () => {
-    setProviders([provider('nous', 'Nous Portal')])
-    render(<Picker ctx={ctx} />)
-
-    const skip = screen.getByRole('button', { name: "I'll choose a provider later" })
-
-    fireEvent.click(skip)
-
-    expect($desktopOnboarding.get().firstRunSkipped).toBe(true)
-    expect(window.localStorage.getItem('hermes-onboarding-skipped-v1')).toBe('1')
-  })
-
-  it('hides "choose later" in manual (add-provider) mode', () => {
-    setProviders([provider('nous', 'Nous Portal')])
-    $desktopOnboarding.set({ ...$desktopOnboarding.get(), manual: true })
-    render(<Picker ctx={ctx} />)
-
-    expect(screen.queryByRole('button', { name: "I'll choose a provider later" })).toBeNull()
-  })
+  // "Choose later" 已移除 — 用户必须配置好 provider 才能进入主界面。
+  // 引导不可跳过，所以不再有相关测试。
 })

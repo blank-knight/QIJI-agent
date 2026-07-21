@@ -154,7 +154,7 @@ const INITIAL: DesktopOnboardingState = {
   providers: null,
   reason: null,
   requested: false,
-  firstRunSkipped: readCachedSkipped(),
+  firstRunSkipped: false,
   manual: false,
   localEndpoint: false
 }
@@ -486,7 +486,8 @@ export function completeDesktopOnboarding() {
 // which marks the app actually configured.
 export function dismissFirstRunOnboarding() {
   clearPoll()
-  writeCachedSkipped(true)
+  // 不持久化 skip — 下次启动时如果后端仍无 provider，引导会重新出现。
+  // 用户说的对：只要没配好，每次都该提示。
   patch({ firstRunSkipped: true, requested: false, manual: false, localEndpoint: false, flow: { status: 'idle' } })
 }
 

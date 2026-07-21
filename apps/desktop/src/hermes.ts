@@ -313,14 +313,17 @@ export function getLogs(params: {
 export function getHermesConfig(): Promise<HermesConfig> {
   return window.hermesDesktop.api<HermesConfig>({
     ...profileScoped(),
-    path: '/api/config'
+    path: '/api/config',
+    // 后端冷启动时 load_config() 首次读取较慢，给 45s 让冷启动有足够时间。
+    timeoutMs: 45_000
   })
 }
 
 export function getHermesConfigRecord(): Promise<HermesConfigRecord> {
   return window.hermesDesktop.api<HermesConfigRecord>({
     ...profileScoped(),
-    path: '/api/config'
+    path: '/api/config',
+    timeoutMs: 45_000
   })
 }
 

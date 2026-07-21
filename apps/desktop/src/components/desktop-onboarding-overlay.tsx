@@ -283,9 +283,8 @@ export function DesktopOnboardingOverlay({ enabled, onCompleted, requestGateway 
     return null
   }
 
-  // The user chose "I'll choose a provider later" on first run. Stay out of the
-  // way on every subsequent launch — they re-enter via Settings → Providers
-  // (manual mode), which sets manual=true and bypasses this gate.
+  // "稍后选择"：用户点过后在当前 session 不再弹出，但下次启动会重新检查。
+  // 不持久化到 localStorage，所以重启后引导会回来。
   if (onboarding.firstRunSkipped && !onboarding.manual) {
     return null
   }
@@ -490,6 +489,7 @@ export function Picker({ ctx }: { ctx: OnboardingContext }) {
     <div className="grid gap-2">
       <div className="grid max-h-[60dvh] gap-2 overflow-y-auto p-1">
         {featured ? <FeaturedProviderRow onSelect={select} provider={featured} /> : null}
+        {featured ? <RelayInlineForm ctx={ctx} /> : null}
         {showRest ? (
           <>
             {rest.map(p => (
@@ -512,10 +512,21 @@ export function Picker({ ctx }: { ctx: OnboardingContext }) {
         </Button>
       ) : null}
       <div className="flex items-center justify-between gap-3 pt-1">
-        {/* First run only: let the user defer the choice and land in the app.
-            In manual mode the overlay already has a close affordance, so the
-            "choose later" escape would be redundant — hide it. */}
-        {manual ? <span /> : <ChooseLaterLink />}
+        {/* 引导不可跳过 — 用户必须配置好 provider 才能进入主界面。
+            manual 模式（已配置后从设置页打开）才有关闭按钮。 */}
+        {manual ? (
+          <Button
+            className="font-medium"
+            onClick={closeManualOnboarding}
+            size="xs"
+            type="button"
+            variant="text"
+          >
+            {t.common.close}
+          </Button>
+        ) : (
+          <ChooseLaterLink />
+        )}
         <Button
           className="-mr-2 font-medium"
           onClick={() => setOnboardingMode('apikey')}
@@ -526,6 +537,64 @@ export function Picker({ ctx }: { ctx: OnboardingContext }) {
           {t.onboarding.haveApiKey}
         </Button>
       </div>
+    </div>
+  )
+}
+
+// Inline relay config form shown directly under the Nous Portal featured card.
+// The portal card links users to aicps.vip to register and get an API key;
+// this form lets them paste it immediately without hunting for where to go.
+function RelayInlineForm({ ctx }: { ctx: OnboardingContext }) {
+  const { t } = useI18n()
+  const [baseUrl, setBaseUrl] = useState('https://www.aicps.vip')
+  const [apiKey, setApiKey] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<null | string>(null)
+
+  const canSave = apiKey.trim().length >= 1
+
+  const submit = async () => {
+    if (!canSave || saving) return
+    setSaving(true)
+    setError(null)
+    const url = baseUrl.trim() || 'https://www.aicps.vip'
+    const result = await saveOnboardingApiKey('OPENAI_BASE_URL', url, '奇计中转站', ctx, apiKey.trim())
+    if (!result.ok) {
+      setError(result.message ?? '配置失败')
+    }
+    setSaving(false)
+  }
+
+  return (
+    <div className="grid gap-2 rounded-[8px] border border-(--ui-stroke-tertiary) bg-background/60 p-3">
+      <p className="text-xs leading-5 text-muted-foreground">
+        已有中转站密钥？在上方注册后，将地址和密钥填入下方直接配置：
+      </p>
+      <label className="text-xs text-muted-foreground">中转站地址</label>
+      <Input
+        autoComplete="off"
+        className="font-mono"
+        onChange={e => setBaseUrl(e.target.value)}
+        onKeyDown={e => e.key === 'Enter' && void submit()}
+        placeholder="https://www.aicps.vip"
+        type="text"
+        value={baseUrl}
+      />
+      <label className="text-xs text-muted-foreground">API 密钥</label>
+      <Input
+        autoComplete="off"
+        className="font-mono"
+        onChange={e => setApiKey(e.target.value)}
+        onKeyDown={e => e.key === 'Enter' && void submit()}
+        placeholder="sk-..."
+        type="password"
+        value={apiKey}
+      />
+      {error ? <p className="text-xs text-destructive">{error}</p> : null}
+      <Button disabled={!canSave || saving} onClick={() => void submit()} size="sm">
+        {saving ? <Loader2 className="animate-spin" /> : <KeyRound />}
+        {saving ? t.onboarding.connecting : t.common.connect}
+      </Button>
     </div>
   )
 }
@@ -715,6 +784,12 @@ export function ApiKeyForm({
 
   const isLocal = option.envKey === 'OPENAI_BASE_URL'
   const isQijiRelay = option.id === 'qiji-relay'
+  // Qiji relay also needs a visible, editable base URL field (defaults to
+  // aicps.vip). We reuse the `localKey` slot for the API key and the `value`
+  // slot for the base URL so the existing isLocal-style two-field rendering
+  // kicks in.
+  const showsBaseUrl = isLocal || isQijiRelay
+  const [relayBaseUrl, setRelayBaseUrl] = useState('https://www.aicps.vip')
   const alreadySet = isSet?.(option.envKey) ?? false
   // When set, surface the backend's redacted value (e.g. "sk-12…wxyz") as the
   // placeholder so users can eyeball that the right key is in place.
@@ -732,10 +807,12 @@ export function ApiKeyForm({
 
     setSaving(true)
     setError(null)
-    // Qiji relay: user enters API key, we auto-set base_url via custom endpoint
+    // Qiji relay: user enters base URL (default aicps.vip, editable) + API key.
+    // We write OPENAI_BASE_URL with the URL, and pass the API key as the
+    // optional `apiKey` arg so onSave can also persist OPENAI_API_KEY.
     if (isQijiRelay) {
-      const QIJI_BASE_URL = 'https://www.aicps.vip'
-      const result = await onSave('OPENAI_BASE_URL', QIJI_BASE_URL, option.name, value)
+      const baseUrl = relayBaseUrl.trim() || 'https://www.aicps.vip'
+      const result = await onSave('OPENAI_BASE_URL', baseUrl, option.name, value)
       if (!result.ok) {
         setError(result.message ?? '配置失败')
       }
@@ -796,29 +873,45 @@ export function ApiKeyForm({
           <p className="text-sm leading-6 text-muted-foreground">{optionDescription}</p>
           {option.docsUrl ? <DocsLink href={option.docsUrl}>{t.onboarding.getKey}</DocsLink> : null}
         </div>
+        {showsBaseUrl ? (
+          <label className="text-xs text-muted-foreground">
+            {isQijiRelay ? '中转站地址' : '端点地址'}
+          </label>
+        ) : null}
         <Input
           autoComplete="off"
-          autoFocus
+          autoFocus={!isQijiRelay}
           className="font-mono"
-          onChange={e => setValue(e.target.value)}
+          onChange={e => (isQijiRelay ? setRelayBaseUrl(e.target.value) : setValue(e.target.value))}
           onKeyDown={e => e.key === 'Enter' && void submit()}
           placeholder={
-            currentRedacted ??
-            (alreadySet ? t.onboarding.replaceCurrent : option.placeholder || t.onboarding.pasteApiKey)
+            isQijiRelay
+              ? 'https://www.aicps.vip'
+              : currentRedacted ??
+                (alreadySet ? t.onboarding.replaceCurrent : option.placeholder || t.onboarding.pasteApiKey)
           }
-          type={isLocal ? 'text' : 'password'}
-          value={value}
+          type={showsBaseUrl ? 'text' : 'password'}
+          value={isQijiRelay ? relayBaseUrl : value}
         />
-        {isLocal ? (
-          <Input
-            autoComplete="off"
-            className="font-mono"
-            onChange={e => setLocalKey(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && void submit()}
-            placeholder={t.onboarding.localApiKeyPlaceholder}
-            type="password"
-            value={localKey}
-          />
+        {showsBaseUrl ? (
+          <>
+            <label className="text-xs text-muted-foreground">
+              {isQijiRelay ? 'API 密钥' : 'API 密钥'}
+            </label>
+            <Input
+              autoComplete="off"
+              className="font-mono"
+              onChange={e => (isQijiRelay ? setValue(e.target.value) : setLocalKey(e.target.value))}
+              onKeyDown={e => e.key === 'Enter' && void submit()}
+              placeholder={
+                isQijiRelay
+                  ? 'sk-...（中转站 API 密钥）'
+                  : t.onboarding.localApiKeyPlaceholder
+              }
+              type="password"
+              value={isQijiRelay ? value : localKey}
+            />
+          </>
         ) : null}
         {error ? <p className="text-xs text-destructive">{error}</p> : null}
       </div>
