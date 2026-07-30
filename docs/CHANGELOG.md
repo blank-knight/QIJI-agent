@@ -11,9 +11,10 @@
 - **第2层 is_custom_key 控制设置入口：** 设置导航按 `is_custom_key` 过滤 model/providers/keys 三个入口（`settings/index.tsx`）。composer 模型选择器 `is_custom_key=0` 时只读（`model-pill.tsx`）。controller 按 `is_custom_key` 控制 ModelPickerOverlay/ModelVisibilityOverlay。
 - **第3层 额度闭环：** 关于页显示账户信息 + 剩余额度（`about-settings.tsx`）。新增 `lib/quota-report.ts`（上报 token 用量）。`use-message-stream.ts` 接入用量上报（`payload.usage`）。发消息前 `score<=0` 拦截（`use-prompt-actions.ts`）。
 - **i18n 兜底：** 初始 locale 跟随系统语言（`navigator.language`），config 读取失败时也用系统语言兜底，不再硬编码回落到 en。
+- **安装器 launcher3 改造：** (1) 改纯 Panel + Resize 事件居中（取代 TableLayoutPanel/FlowLayoutPanel，解决左对齐问题）。(2) 安装完成后直接启动客户端+退出安装程序（不显示完成页），加 `_installDone` 标志位解决 OnFormClosing 拦截退出。(3) 安装中可取消——点击取消→Kill 7z 解压进程→清理已解压文件→显示"重新安装"按钮。(4) 取消后按钮和进度条状态正确重置（`_btnCancel.Enabled` 在 ShowPage case 2 恢复）。(5) 安装页布局：标题"正在安装"紧贴进度条上方，状态信息（解压文件等）放进度条左下角，百分比放右下角。
 - **方案文档：** 确认 token 30 天有效期、存储方式（token/mode/is_custom_key→localStorage，score→内存，api_key→不存 renderer 推 gateway env）、登录页 UI（含注册/忘记密码外链）、score=0 聊天时拦截、额度显示放关于页。
-- **待定：** 后端基地址（4.1）服务器未定，暂时占位 `http://8.138.58.181`。
-- **涉及文件：** `lib/backend.ts`(新), `store/auth.ts`(新), `components/login-overlay.tsx`(新), `lib/quota-report.ts`(新), `store/onboarding.ts`, `app/desktop-controller.tsx`, `app/settings/index.tsx`, `app/chat/composer/model-pill.tsx`, `app/settings/about-settings.tsx`, `app/session/hooks/use-message-stream.ts`, `app/session/hooks/use-prompt-actions.ts`, `i18n/context.tsx`, `i18n/languages.ts`, `docs/backend-integration-plan.md`
+- **待定：** 后端基地址服务器未定，暂时占位 `http://8.138.58.181`。
+- **涉及文件：** `lib/backend.ts`(新), `store/auth.ts`(新), `components/login-overlay.tsx`(新), `lib/quota-report.ts`(新), `store/onboarding.ts`, `app/desktop-controller.tsx`, `app/settings/index.tsx`, `app/chat/composer/model-pill.tsx`, `app/settings/about-settings.tsx`, `app/session/hooks/use-message-stream.ts`, `app/session/hooks/use-prompt-actions.ts`, `i18n/context.tsx`, `i18n/languages.ts`, `installer/launcher3.cs`, `docs/backend-integration-plan.md`
 
 ## 2026-07-26 自定义端点检测 + 启动进度条 + 更新检测修复
 

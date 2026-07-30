@@ -28,11 +28,11 @@ class Launcher
     // ── Constants ───────────────────────────────────────────────────
     const string APP_NAME = "奇计";
     const string APP_VERSION = "0.17.0";
-    static readonly Color BRAND_COLOR = Color.FromArgb(88, 101, 242);
-    static readonly Color BG_COLOR = Color.FromArgb(30, 30, 35);
-    static readonly Color CARD_COLOR = Color.FromArgb(40, 40, 48);
-    static readonly Color TEXT_PRIMARY = Color.FromArgb(235, 235, 240);
-    static readonly Color TEXT_SECONDARY = Color.FromArgb(160, 160, 170);
+    static readonly Color BRAND_COLOR = Color.FromArgb(60, 100, 230);
+    static readonly Color BG_COLOR = Color.FromArgb(255, 255, 255);
+    static readonly Color CARD_COLOR = Color.FromArgb(240, 240, 245);
+    static readonly Color TEXT_PRIMARY = Color.FromArgb(30, 30, 35);
+    static readonly Color TEXT_SECONDARY = Color.FromArgb(120, 120, 130);
 
     // ── Install state ───────────────────────────────────────────────
     static string s_exePath = Assembly.GetExecutingAssembly().Location;
@@ -82,6 +82,9 @@ class Launcher
     // ─────────────────────────────────────────────────────────────────
     //  安装逻辑（在后台线程跑）
     // ─────────────────────────────────────────────────────────────────
+    static bool s_cancelRequested = false;
+    static Process s_sevenZipProc = null;
+
     static void PerformInstall(string installDir, InstallProgressReporter reporter)
     {
         s_installDir = installDir;
@@ -103,11 +106,17 @@ class Launcher
 
         if (exitCode != 0)
         {
+            if (exitCode == -2 || s_cancelRequested)
+            {
+                reporter(-2, "安装已取消");
+                return;
+            }
             reporter(-1, "解压失败 (代码 " + exitCode + ")");
             return;
         }
 
         // 3. 清理临时
+        if (s_cancelRequested) { reporter(-2, "安装已取消"); return; }
         reporter(86, "正在清理临时文件...");
         try { Directory.Delete(s_tempDir, true); } catch { }
 
@@ -234,6 +243,7 @@ class Launcher
         };
 
         var proc = new Process { StartInfo = psi, EnableRaisingEvents = true };
+        s_sevenZipProc = proc;
         proc.Start();
 
         // 实时读取 stdout 解析百分比
@@ -241,6 +251,12 @@ class Launcher
         string line;
         while ((line = proc.StandardOutput.ReadLine()) != null)
         {
+            if (s_cancelRequested)
+            {
+                try { proc.Kill(); } catch { }
+                proc.WaitForExit();
+                return -2;
+            }
             line = line.Trim();
             if (line.Length > 0 && line[0] >= '0' && line[0] <= '9')
             {
@@ -253,6 +269,7 @@ class Launcher
             }
         }
         proc.WaitForExit();
+        s_sevenZipProc = null;
         return proc.ExitCode;
     }
 
@@ -300,22 +317,27 @@ class Launcher
     class WizardForm : Form
     {
         // 4 个页面面板
-        Panel _welcomePage, _dirPage, _installPage, _donePage;
+        Panel _welcomePage, _dirPage, _installPage;
+        Panel _donePage;
         Button _btnNext, _btnBack, _btnCancel;
         int _currentPage = 0;
 
         // 目录选择
         TextBox _dirTextBox;
-
         // 安装进度
+        Label _statusLabel, _installTitle;
         ProgressBar _progressBar;
         Label _progressLabel;
-        Label _statusLabel;
         bool _installFailed = false;
+        bool _installDone = false;
+        bool _cancelRequested = false;  // 用户请求取消安装
 
         // 完成页
         CheckBox _chkLaunch;
         CheckBox _chkDesktop;
+
+        // 按钮栏高度
+        const int BTN_PANEL_HEIGHT = 50;
 
         public WizardForm()
         {
@@ -331,17 +353,26 @@ class Launcher
         void SetupWindow()
         {
             Text = APP_NAME + " 安装程序";
-            Size = new Size(520, 400);
-            MinimumSize = new Size(520, 400);
-            MaximumSize = new Size(520, 400);
+            Size = new Size(520, 440);
+            MinimumSize = new Size(520, 440);
+            MaximumSize = new Size(520, 440);
             StartPosition = FormStartPosition.CenterScreen;
             BackColor = BG_COLOR;
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             MinimizeBox = false;
 
-            // 图标 (用默认，因为没有 ico 资源)
-            try { Icon = SystemIcons.Application; } catch { }
+            // 从嵌入资源加载窗口图标
+            try
+            {
+                var asm = Assembly.GetExecutingAssembly();
+                using (var stream = asm.GetManifestResourceStream("icon.ico"))
+                {
+                    if (stream != null)
+                        Icon = new Icon(stream);
+                }
+            }
+            catch { }
         }
 
         // ── 欢迎页 ──────────────────────────────────────────────
@@ -350,68 +381,59 @@ class Launcher
             _welcomePage = new Panel
             {
                 Dock = DockStyle.Fill,
-                BackColor = BG_COLOR,
-                Padding = new Padding(40)
+                BackColor = BG_COLOR
             };
+
+            PictureBox logoBox = null;
+            try
+            {
+                var asm = Assembly.GetExecutingAssembly();
+                var stream = asm.GetManifestResourceStream("icon.ico");
+                if (stream != null)
+                {
+                    var bmp = new Bitmap(stream);
+                    logoBox = new PictureBox
+                    {
+                        Image = bmp,
+                        SizeMode = PictureBoxSizeMode.Zoom,
+                        Size = new Size(56, 56)
+                    };
+                    _welcomePage.Controls.Add(logoBox);
+                }
+            }
+            catch { }
 
             var title = new Label
             {
-                Text = APP_NAME,
-                Font = new Font("Microsoft YaHei", 28, FontStyle.Bold),
+                Text = APP_NAME + " 安装",
+                Font = new Font("Microsoft YaHei", 20, FontStyle.Bold),
                 ForeColor = TEXT_PRIMARY,
-                AutoSize = false,
-                TextAlign = ContentAlignment.MiddleCenter,
-                Dock = DockStyle.Top,
-                Height = 60
-            };
-
-            var logoBox = new Panel
-            {
-                Dock = DockStyle.Top,
-                Height = 80,
-                BackColor = CARD_COLOR
-            };
-            logoBox.Paint += (s, e) =>
-            {
-                var g = e.Graphics;
-                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                int sz = 48;
-                int x = (logoBox.Width - sz) / 2;
-                int y = (logoBox.Height - sz) / 2;
-                using (var brush = new SolidBrush(BRAND_COLOR))
-                {
-                    g.FillRectangle(brush, x, y, sz, sz);
-                }
-                var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-                g.DrawString("奇", new Font("Microsoft YaHei", 20, FontStyle.Bold), Brushes.White, new RectangleF(x, y, sz, sz), sf);
-            };
-
-            var subtitle = new Label
-            {
-                Text = "版本 " + APP_VERSION,
-                Font = new Font("Microsoft YaHei", 11),
-                ForeColor = TEXT_SECONDARY,
-                AutoSize = false,
-                TextAlign = ContentAlignment.MiddleCenter,
-                Dock = DockStyle.Top,
-                Height = 30
+                AutoSize = true
             };
 
             var desc = new Label
             {
-                Text = "\n\n本向导将引导您完成" + APP_NAME + "的安装。\n\n请关闭其他正在运行的程序，\n然后点击「下一步」继续。",
+                Text = "点击「下一步」开始安装",
                 Font = new Font("Microsoft YaHei", 10),
                 ForeColor = TEXT_SECONDARY,
-                AutoSize = false,
-                TextAlign = ContentAlignment.MiddleCenter,
-                Dock = DockStyle.Fill
+                AutoSize = true
             };
 
-            // 从下到上添加
-            _welcomePage.Controls.Add(desc);
-            _welcomePage.Controls.Add(subtitle);
-            _welcomePage.Controls.Add(logoBox);
             _welcomePage.Controls.Add(title);
+            _welcomePage.Controls.Add(desc);
+
+            _welcomePage.Resize += (s, e) =>
+            {
+                int cx = _welcomePage.ClientSize.Width / 2;
+                int cy = _welcomePage.ClientSize.Height / 2;
+                // logo 居中，在垂直中心上方 55px
+                if (logoBox != null)
+                    logoBox.Location = new Point(cx - 28, cy - 95);
+                // title 在 logo 下方
+                title.Location = new Point(cx - title.PreferredWidth / 2, cy - 32);
+                // desc 在 title 下方
+                desc.Location = new Point(cx - desc.PreferredWidth / 2, cy + 4);
+            };
         }
 
         // ── 目录选择页 ──────────────────────────────────────────
@@ -420,31 +442,29 @@ class Launcher
             _dirPage = new Panel
             {
                 Dock = DockStyle.Fill,
-                BackColor = BG_COLOR,
-                Padding = new Padding(40, 30, 40, 40)
+                BackColor = BG_COLOR
             };
+
+            const int INPUT_W = 320;
+            const int BROWSE_W = 90;
+            const int ROW_W = INPUT_W + 10 + BROWSE_W; // 420
 
             var title = new Label
             {
                 Text = "选择安装位置",
                 Font = new Font("Microsoft YaHei", 16, FontStyle.Bold),
                 ForeColor = TEXT_PRIMARY,
-                AutoSize = false,
-                Dock = DockStyle.Top,
-                Height = 40
+                AutoSize = true
             };
 
             var hint = new Label
             {
-                Text = APP_NAME + " 将安装到以下目录。点击「安装」开始。",
+                Text = APP_NAME + " 将安装到以下目录，点击「安装」开始",
                 Font = new Font("Microsoft YaHei", 9),
                 ForeColor = TEXT_SECONDARY,
-                AutoSize = false,
-                Dock = DockStyle.Top,
-                Height = 30
+                AutoSize = true
             };
 
-            // 路径输入框
             string defaultPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "Programs", "Qiji");
@@ -452,24 +472,21 @@ class Launcher
             _dirTextBox = new TextBox
             {
                 Text = defaultPath,
-                Font = new Font("Consolas", 10),
+                Font = new Font("Microsoft YaHei", 11),
                 BackColor = CARD_COLOR,
                 ForeColor = TEXT_PRIMARY,
                 BorderStyle = BorderStyle.FixedSingle,
-                Dock = DockStyle.Top,
-                Height = 32
+                Width = INPUT_W
             };
 
             var browseBtn = new Button
             {
                 Text = "浏览...",
-                Font = new Font("Microsoft YaHei", 9),
+                Font = new Font("Microsoft YaHei", 10),
                 BackColor = CARD_COLOR,
                 ForeColor = TEXT_PRIMARY,
                 FlatStyle = FlatStyle.Flat,
-                Dock = DockStyle.Top,
-                Height = 30,
-                TextAlign = ContentAlignment.MiddleCenter
+                Width = BROWSE_W
             };
             browseBtn.FlatAppearance.BorderColor = TEXT_SECONDARY;
             browseBtn.Click += (s, e) =>
@@ -483,16 +500,25 @@ class Launcher
                     _dirTextBox.Text = dlg.SelectedPath;
             };
 
-            // 用一个间距 panel
-            var spacer1 = new Panel { Dock = DockStyle.Top, Height = 15 };
-            var spacer2 = new Panel { Dock = DockStyle.Top, Height = 10 };
-
-            _dirPage.Controls.Add(spacer2);
-            _dirPage.Controls.Add(browseBtn);
-            _dirPage.Controls.Add(_dirTextBox);
-            _dirPage.Controls.Add(spacer1);
-            _dirPage.Controls.Add(hint);
             _dirPage.Controls.Add(title);
+            _dirPage.Controls.Add(hint);
+            _dirPage.Controls.Add(_dirTextBox);
+            _dirPage.Controls.Add(browseBtn);
+
+            _dirPage.Resize += (s, e) =>
+            {
+                int cx = _dirPage.ClientSize.Width / 2;
+                int cy = _dirPage.ClientSize.Height / 2;
+                int inputLeft = cx - ROW_W / 2;
+
+                title.Location = new Point(cx - title.PreferredWidth / 2, cy - 95);
+                hint.Location = new Point(cx - hint.PreferredWidth / 2, cy - 62);
+                int inputTop = cy - 30;
+                _dirTextBox.Location = new Point(inputLeft, inputTop);
+                // browseBtn 与输入框等高
+                browseBtn.Height = _dirTextBox.Height;
+                browseBtn.Location = new Point(inputLeft + INPUT_W + 10, inputTop);
+            };
         }
 
         // ── 安装进度页 ──────────────────────────────────────────
@@ -501,18 +527,17 @@ class Launcher
             _installPage = new Panel
             {
                 Dock = DockStyle.Fill,
-                BackColor = BG_COLOR,
-                Padding = new Padding(40, 30, 40, 40)
+                BackColor = BG_COLOR
             };
 
-            var title = new Label
+            const int BAR_W = 420;
+
+            _installTitle = new Label
             {
                 Text = "正在安装",
                 Font = new Font("Microsoft YaHei", 16, FontStyle.Bold),
                 ForeColor = TEXT_PRIMARY,
-                AutoSize = false,
-                Dock = DockStyle.Top,
-                Height = 40
+                AutoSize = true
             };
 
             _statusLabel = new Label
@@ -520,12 +545,8 @@ class Launcher
                 Text = "准备中...",
                 Font = new Font("Microsoft YaHei", 10),
                 ForeColor = TEXT_SECONDARY,
-                AutoSize = false,
-                Dock = DockStyle.Top,
-                Height = 25
+                AutoSize = true
             };
-
-            var progSpacer = new Panel { Dock = DockStyle.Top, Height = 10 };
 
             _progressBar = new ProgressBar
             {
@@ -533,7 +554,7 @@ class Launcher
                 Maximum = 100,
                 Value = 0,
                 Height = 24,
-                Dock = DockStyle.Top,
+                Width = BAR_W,
                 Style = ProgressBarStyle.Continuous
             };
 
@@ -542,17 +563,28 @@ class Launcher
                 Text = "0%",
                 Font = new Font("Microsoft YaHei", 10),
                 ForeColor = TEXT_PRIMARY,
-                AutoSize = false,
-                Dock = DockStyle.Top,
-                Height = 25,
-                TextAlign = ContentAlignment.MiddleCenter
+                AutoSize = true
             };
 
-            _installPage.Controls.Add(_progressLabel);
-            _installPage.Controls.Add(progSpacer);
-            _installPage.Controls.Add(_progressBar);
+            _installPage.Controls.Add(_installTitle);
             _installPage.Controls.Add(_statusLabel);
-            _installPage.Controls.Add(title);
+            _installPage.Controls.Add(_progressBar);
+            _installPage.Controls.Add(_progressLabel);
+
+            _installPage.Resize += (s, e) =>
+            {
+                int cx = _installPage.ClientSize.Width / 2;
+                int cy = _installPage.ClientSize.Height / 2;
+                int barLeft = cx - BAR_W / 2;
+
+                // "正在安装" 紧贴进度条上方（间距12px）
+                _installTitle.Location = new Point(cx - _installTitle.PreferredWidth / 2, cy - 50);
+                _progressBar.Location = new Point(barLeft, cy - 10);
+                // 百分比在进度条右下
+                _progressLabel.Location = new Point(barLeft + BAR_W - _progressLabel.PreferredWidth, cy + 18);
+                // 状态信息在进度条左下，与进度条左对齐
+                _statusLabel.Location = new Point(barLeft, cy + 18);
+            };
         }
 
         // ── 完成页 ──────────────────────────────────────────────
@@ -620,7 +652,7 @@ class Launcher
             {
                 Dock = DockStyle.Bottom,
                 Height = 50,
-                BackColor = Color.FromArgb(25, 25, 30),
+                BackColor = Color.FromArgb(245, 245, 248),
                 Padding = new Padding(20, 10, 20, 10)
             };
 
@@ -638,10 +670,24 @@ class Launcher
             _btnCancel.Location = new Point(btnPanel.Width - 100, 9);
             _btnCancel.Click += (s, e) =>
             {
-                if (_currentPage == 2)
+                if (_currentPage == 2 && !_installDone && !_installFailed)
                 {
-                    // 安装中不允许取消
-                    MessageBox.Show("安装进行中，请稍候...", APP_NAME, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    // 安装中 → 请求取消
+                    var result = MessageBox.Show(
+                        "确定要取消安装吗？已解压的文件将被清理。",
+                        APP_NAME, MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                    if (result == DialogResult.Yes)
+                    {
+                        _cancelRequested = true;
+                        s_cancelRequested = true;
+                        _btnCancel.Enabled = false;
+                        _statusLabel.Text = "正在取消...";
+                        // 立即 Kill 7z 进程，打断阻塞的 ReadLine
+                        if (s_sevenZipProc != null)
+                        {
+                            try { s_sevenZipProc.Kill(); } catch { }
+                        }
+                    }
                     return;
                 }
                 Application.Exit();
@@ -685,7 +731,14 @@ class Launcher
                 _btnNext.Location = new Point(btnPanel.Width - 190, 9);
             };
 
+            // 注意 WinForms Dock z-order：后 Add 的控件先占据空间。
+            // 顺序必须是：先加 DockStyle.Bottom 的按钮栏，再加 DockStyle.Fill 的页面，
+            // 这样页面才会填充按钮栏以上的全部区域。
             Controls.Add(btnPanel);
+            Controls.Add(_welcomePage);
+            Controls.Add(_dirPage);
+            Controls.Add(_installPage);
+            Controls.Add(_donePage);
         }
 
         void OnNextClick()
@@ -719,6 +772,19 @@ class Launcher
                 ShowPage(2);
                 StartInstall(dir);
             }
+            else if (_currentPage == 2 && _cancelRequested)
+            {
+                // 取消后重新安装
+                _cancelRequested = false;
+                s_cancelRequested = false;
+                _progressBar.Value = 0;
+                _progressLabel.Text = "0%";
+                _btnNext.Enabled = false;
+                _btnBack.Enabled = false;
+                _btnCancel.Enabled = true;
+                _btnNext.Text = "安装中...";
+                StartInstall(_dirTextBox.Text.Trim());
+            }
             else if (_currentPage == 3)
             {
                 // 完成
@@ -729,6 +795,8 @@ class Launcher
         void StartInstall(string installDir)
         {
             _installFailed = false;
+            _cancelRequested = false;
+            s_cancelRequested = false;
 
             var thread = new Thread(() =>
             {
@@ -736,17 +804,29 @@ class Launcher
                 {
                     PerformInstall(installDir, (percent, status) =>
                     {
+                        // 检查取消
+                        if (_cancelRequested) return;
+
                         // 回到 UI 线程更新
                         if (IsDisposed) return;
                         BeginInvoke((MethodInvoker)delegate
                         {
                             if (percent < 0)
                             {
-                                // 错误
-                                _installFailed = true;
-                                _statusLabel.Text = status;
-                                _statusLabel.ForeColor = Color.FromArgb(220, 80, 80);
-                                _progressBar.Style = ProgressBarStyle.Blocks;
+                                if (percent == -2)
+                                {
+                                    // 取消
+                                    _installFailed = false;
+                                    _cancelRequested = true;
+                                }
+                                else
+                                {
+                                    // 错误
+                                    _installFailed = true;
+                                    _statusLabel.Text = status;
+                                    _statusLabel.ForeColor = Color.FromArgb(220, 80, 80);
+                                    _progressBar.Style = ProgressBarStyle.Blocks;
+                                }
                             }
                             else
                             {
@@ -757,12 +837,33 @@ class Launcher
                         });
                     });
 
-                    if (!_installFailed)
+                    // 安装被取消
+                    if (_cancelRequested)
                     {
-                        // 安装成功 → 跳到完成页
+                        // 清理已解压的文件
+                        try { if (Directory.Exists(installDir)) Directory.Delete(installDir, true); } catch { }
+
                         BeginInvoke((MethodInvoker)delegate
                         {
-                            ShowPage(3);
+                            _progressBar.Value = 0;
+                            _progressLabel.Text = "0%";
+                            _statusLabel.Text = "";
+                            _btnNext.Enabled = true;
+                            _btnNext.Text = "重新安装";
+                            _btnBack.Enabled = true;
+                            _btnBack.Text = "上一步";
+                        });
+                        return;
+                    }
+
+                    if (!_installFailed)
+                    {
+                        // 安装成功 → 启动应用 + 退出安装程序
+                        _installDone = true;
+                        BeginInvoke((MethodInvoker)delegate
+                        {
+                            LaunchApp(s_installDir);
+                            Application.Exit();
                         });
                     }
                     else
@@ -826,7 +927,7 @@ class Launcher
                     _btnBack.Enabled = false;
                     _btnNext.Enabled = false;
                     _btnNext.Text = "安装中...";
-                    _btnCancel.Enabled = false;
+                    _btnCancel.Enabled = true;
                     break;
 
                 case 3: // 完成
@@ -848,7 +949,8 @@ class Launcher
         // 窗口关闭时清理
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
-            if (_currentPage == 2 && !_installFailed)
+            // 安装进行中（且未完成）时不允许关闭
+            if (_currentPage == 2 && !_installFailed && !_installDone && !_cancelRequested)
             {
                 e.Cancel = true;
                 return;

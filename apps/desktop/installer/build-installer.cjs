@@ -84,9 +84,21 @@ console.log(`  uninstall.exe: ${uninstallSize} KB`)
 // launcher3.cs calls AllocConsole() at startup to show install progress,
 // then FreeConsole() + Environment.Exit(0) before launching Qiji so the
 // console window closes immediately instead of lingering as a parent of Qiji.
-step(4, 'Compiling launcher3.exe (admin manifest + embedded 7zr.exe + uninstall.exe) ...')
+// icon.ico embedded as Win32 icon resource + runtime resource for PictureBox loading
+const iconIco = path.join(INSTALLER, 'icon.ico')
+
+step(4, 'Compiling launcher3.exe (admin manifest + icon + embedded 7zr.exe + uninstall.exe) ...')
 if (fs.existsSync(launcherExe)) fs.unlinkSync(launcherExe)
-execSync(`"${CSC}" /nologo /optimize /target:winexe /win32manifest:"${manifest}" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /resource:"${sevenZip}" /resource:"${uninstallExe}" /out:"${launcherExe}" "${launcherSrc}"`, { stdio: 'inherit' })
+try {
+  execSync(`"${CSC}" /nologo /optimize /target:winexe /win32icon:"${iconIco}" /win32manifest:"${manifest}" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /resource:"${sevenZip}" /resource:"${uninstallExe}" /resource:"${iconIco},icon.ico" /out:"${launcherExe}" "${launcherSrc}"`, { stdio: 'pipe' })
+} catch (e) {
+  // csc may write progress to stderr even on success (exit 0);
+  // only fail if the exe wasn't actually produced
+  if (!fs.existsSync(launcherExe)) {
+    console.error(e.stderr ? e.stderr.toString() : e.message)
+    process.exit(1)
+  }
+}
 const launcherSize = (fs.statSync(launcherExe).size / 1024).toFixed(1)
 console.log(`  launcher3.exe: ${launcherSize} KB`)
 
