@@ -5,6 +5,16 @@
 
 ---
 
+## 2026-07-30 后端联动改造（登录页 + 额度 + 设置入口隐藏）
+
+- **第1层 认证基础设施：** 新增 `lib/backend.ts`（基地址常量 + `backendFetch()` 401 拦截器 + API 类型定义）、`store/auth.ts`（auth store：token/is_custom_key/score/mode + login/clearAuth/devSkipLogin）、`components/login-overlay.tsx`（全屏登录覆盖层：username + password + 注册/忘记密码外链 + 开发模式跳过按钮）。禁用引导页（`store/onboarding.ts` INITIAL 永远 configured=true）。`desktop-controller.tsx` 挂载登录页 + 401 handler + gateway 就绪后补推 api_key。
+- **第2层 is_custom_key 控制设置入口：** 设置导航按 `is_custom_key` 过滤 model/providers/keys 三个入口（`settings/index.tsx`）。composer 模型选择器 `is_custom_key=0` 时只读（`model-pill.tsx`）。controller 按 `is_custom_key` 控制 ModelPickerOverlay/ModelVisibilityOverlay。
+- **第3层 额度闭环：** 关于页显示账户信息 + 剩余额度（`about-settings.tsx`）。新增 `lib/quota-report.ts`（上报 token 用量）。`use-message-stream.ts` 接入用量上报（`payload.usage`）。发消息前 `score<=0` 拦截（`use-prompt-actions.ts`）。
+- **i18n 兜底：** 初始 locale 跟随系统语言（`navigator.language`），config 读取失败时也用系统语言兜底，不再硬编码回落到 en。
+- **方案文档：** 确认 token 30 天有效期、存储方式（token/mode/is_custom_key→localStorage，score→内存，api_key→不存 renderer 推 gateway env）、登录页 UI（含注册/忘记密码外链）、score=0 聊天时拦截、额度显示放关于页。
+- **待定：** 后端基地址（4.1）服务器未定，暂时占位 `http://8.138.58.181`。
+- **涉及文件：** `lib/backend.ts`(新), `store/auth.ts`(新), `components/login-overlay.tsx`(新), `lib/quota-report.ts`(新), `store/onboarding.ts`, `app/desktop-controller.tsx`, `app/settings/index.tsx`, `app/chat/composer/model-pill.tsx`, `app/settings/about-settings.tsx`, `app/session/hooks/use-message-stream.ts`, `app/session/hooks/use-prompt-actions.ts`, `i18n/context.tsx`, `i18n/languages.ts`, `docs/backend-integration-plan.md`
+
 ## 2026-07-26 自定义端点检测 + 启动进度条 + 更新检测修复
 
 - **自定义端点"未配置"bug（第3次复现）：** onboarding 把 API key 写到 `model.api_key`，但设置页面只去 `providers[slug].api_key` 找，永远找不到。之前 7/24(commit 430145c93) 和 7/25(commit 7d5f574cb) 已修过，改为只检查 `base_url` 存在性——被上游合并引入的 `hasApiKey` 检查覆盖导致复现。修复：恢复 `hasEndpoint = Boolean(baseUrl)`，同时后端 `_normalize_config_for_web` 增加 `model_has_api_key` 布尔值（不泄露 key 明文）。
