@@ -111,7 +111,7 @@ function Harness({
       cancelRun: actions.cancelRun,
       restoreToMessage: actions.restoreToMessage,
       steerPrompt: actions.steerPrompt,
-      submitText: actions.submitText
+      submitText: (text, options) => actions.submitText(text, options).then(r => r ?? false)
     })
   }, [actions.cancelRun, actions.restoreToMessage, actions.steerPrompt, actions.submitText, onReady])
 

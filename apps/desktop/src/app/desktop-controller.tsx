@@ -1154,7 +1154,7 @@ export function DesktopController() {
       onRestoreToMessage={restoreToMessage}
       onRetryResume={sessionId => void resumeSession(sessionId, true)}
       onSteer={steerPrompt}
-      onSubmit={submitText}
+      onSubmit={async (text, options) => (await submitText(text, options)) ?? false}
       onThreadMessagesChange={handleThreadMessagesChange}
       onToggleSelectedPin={toggleSelectedPin}
       onTranscribeAudio={transcribeVoiceAudio}

@@ -2063,19 +2063,21 @@ def _check_unavailable_skill(command_name: str) -> str | None:
         for skills_dir in get_all_skills_dirs():
             if not skills_dir.exists():
                 continue
-            for skill_md in skills_dir.rglob("SKILL.md"):
-                if is_excluded_skill_path(skill_md):
-                    continue
-                slug, declared_name = _skill_slug_from_frontmatter(skill_md)
-                if not slug or not declared_name:
-                    continue
-                # disabled is keyed by the declared frontmatter name (what
-                # skills.disabled / skills.platform_disabled store).
-                if slug == normalized and declared_name in disabled:
-                    return (
-                        f"The **{command_name}** skill is installed but disabled.\n"
-                        f"Enable it with: `hermes skills config`"
-                    )
+            # 同时查找 SKILL.md 和加密的 SKILL.md.enc
+            for pattern in ("SKILL.md", "SKILL.md.enc"):
+                for skill_md in skills_dir.rglob(pattern):
+                    if is_excluded_skill_path(skill_md):
+                        continue
+                    slug, declared_name = _skill_slug_from_frontmatter(skill_md)
+                    if not slug or not declared_name:
+                        continue
+                    # disabled is keyed by the declared frontmatter name (what
+                    # skills.disabled / skills.platform_disabled store).
+                    if slug == normalized and declared_name in disabled:
+                        return (
+                            f"The **{command_name}** skill is installed but disabled.\n"
+                            f"Enable it with: `hermes skills config`"
+                        )
 
         # Check optional skills (shipped with repo but not installed)
         from hermes_constants import get_optional_skills_dir

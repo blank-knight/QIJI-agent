@@ -77,6 +77,7 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Dict, Any, List, Optional, Set, Tuple
 
 from tools.registry import registry, tool_error
+from tools.skill_crypto import decrypt_file, resolve_enc_path
 from hermes_cli.config import cfg_get
 from utils import env_var_enabled
 from agent.skill_utils import (
@@ -632,7 +633,10 @@ def _find_all_skills(*, skip_disabled: bool = False) -> List[Dict[str, Any]]:
             skill_dir = skill_md.parent
 
             try:
-                content = skill_md.read_text(encoding="utf-8")[:4000]
+                content = decrypt_file(skill_md)
+                if content is None:
+                    continue
+                content = content[:4000]
                 frontmatter, body = _parse_frontmatter(content)
 
                 if not skill_matches_platform(frontmatter):
@@ -779,7 +783,9 @@ def _serve_plugin_skill(
         )
 
     try:
-        content = skill_md.read_text(encoding="utf-8")
+        content = decrypt_file(skill_md)
+        if content is None:
+            raise RuntimeError("解密失败")
     except Exception as e:
         return json.dumps(
             {"success": False, "error": f"Failed to read skill '{namespace}:{bare}': {e}"},
@@ -1023,12 +1029,14 @@ def skill_view(
             # Strategy 1: direct path (e.g., "mlops/axolotl" or bare "axolotl"
             # at the top of the dir).
             direct_path = search_dir / name
+            _skill_md = direct_path / "SKILL.md"
+            _skill_md_enc = direct_path / "SKILL.md.enc"
             if (
                 not _is_skill_support_path(direct_path)
                 and direct_path.is_dir()
-                and (direct_path / "SKILL.md").exists()
+                and (_skill_md.exists() or _skill_md_enc.exists())
             ):
-                _record(direct_path, direct_path / "SKILL.md")
+                _record(direct_path, _skill_md_enc if not _skill_md.exists() else _skill_md)
             elif direct_path.with_suffix(".md").exists() and not _is_skill_support_path(
                 direct_path.with_suffix(".md")
             ):
@@ -1039,12 +1047,14 @@ def skill_view(
             # tries the on-disk path "myplugin/explore").
             if local_category_name:
                 categorized_path = search_dir / local_category_name
+                _cat_md = categorized_path / "SKILL.md"
+                _cat_md_enc = categorized_path / "SKILL.md.enc"
                 if (
                     not _is_skill_support_path(categorized_path)
                     and categorized_path.is_dir()
-                    and (categorized_path / "SKILL.md").exists()
+                    and (_cat_md.exists() or _cat_md_enc.exists())
                 ):
-                    _record(categorized_path, categorized_path / "SKILL.md")
+                    _record(categorized_path, _cat_md_enc if not _cat_md.exists() else _cat_md)
                 elif categorized_path.with_suffix(
                     ".md"
                 ).exists() and not _is_skill_support_path(
@@ -1062,7 +1072,9 @@ def skill_view(
                     _record(found_skill_md.parent, found_skill_md)
                     continue
                 try:
-                    fm_content = found_skill_md.read_text(encoding="utf-8")
+                    fm_content = decrypt_file(found_skill_md)
+                    if fm_content is None:
+                        fm_content = ""
                     fm, _ = _parse_frontmatter(fm_content)
                 except Exception:
                     fm = {}
@@ -1120,7 +1132,9 @@ def skill_view(
 
         # Read the file once — reused for platform check and main content below
         try:
-            content = skill_md.read_text(encoding="utf-8")
+            content = decrypt_file(skill_md)
+            if content is None:
+                raise RuntimeError("解密失败")
         except Exception as e:
             return json.dumps(
                 {
@@ -1263,9 +1277,21 @@ def skill_view(
                     ensure_ascii=False,
                 )
 
-            # Read the file content
+            # Read the file content (支持加密文件)
+            resolved_target = resolve_enc_path(target_file)
+            if not resolved_target.exists():
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": f"File '{file_path}' not found in skill '{name}'.",
+                        "hint": "Use one of the available file paths listed above",
+                    },
+                    ensure_ascii=False,
+                )
             try:
-                content = target_file.read_text(encoding="utf-8")
+                content = decrypt_file(resolved_target)
+                if content is None:
+                    raise UnicodeDecodeError("utf-8", b"", 0, 1, "解密失败或非文本文件")
             except UnicodeDecodeError:
                 # Binary file - return info about it instead
                 return json.dumps(

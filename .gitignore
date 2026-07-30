@@ -14,6 +14,11 @@ __pycache__/
 .env.production.local
 .env.development
 .env.test
+
+# Skill 加密密钥片段（编译时自动生成，勿提交）
+gateway/_skill_key.py
+agent/_skill_key.py
+tools/_skill_key.py
 .hermes-docker/
 .notebooklm-home/
 .notebooklm-cli-venv/

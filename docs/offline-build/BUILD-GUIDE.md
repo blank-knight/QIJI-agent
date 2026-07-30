@@ -249,6 +249,34 @@ $env:GITHUB_SHA = git rev-parse HEAD
 Write-Host "GITHUB_SHA: $env:GITHUB_SHA" -ForegroundColor Cyan
 ```
 
+### 第 4.5 步：加密 Skill 文件（可选）
+
+> 如果不想加密 skill，跳过此步。加密后用户在磁盘上无法直接查看 skill 内容。
+
+```powershell
+cd C:\qiji-fork
+
+# 设置加密口令（自己记住，每次编译要用同一个）
+$env:SKILL_ENCRYPTION_KEY = "你的加密口令"
+
+# 加密指定 skill 目录（用 Python venv）
+& "$env:LOCALAPPDATA\hermes\hermes-agent\venv\Scripts\python.exe" scripts\encrypt-skills.py --skills-dir skills\qiji-geo
+```
+
+加密后：
+- `skills/qiji-geo/SKILL.md` → `SKILL.md.enc`（原文件删除）
+- `scripts/*.js` → `scripts/*.js.enc`（同上）
+- `references/*.md` → `references/*.md.enc`（同上）
+- 密钥拆 3 段散落到 `gateway/_skill_key.py`、`agent/_skill_key.py`、`tools/_skill_key.py`
+
+> ⚠️ **口令必须每次编译用同一个。** 口令不同会生成不同密钥，之前的加密文件无法解密。
+>
+> ⚠️ **加密必须在 vendor 生成之后、编译之前做。** vendor 生成时会拷贝仓库源码到 vendor 目录，编译时 vendor 里的加密文件会一起打进安装包。
+>
+> ⚠️ **密钥片段文件不要提交 git。** 已加入 `.gitignore`（`gateway/_skill_key.py`、`agent/_skill_key.py`、`tools/_skill_key.py`）。
+>
+> 💡 如果 cryptography 库缺失，先装：`pip install cryptography`
+
 ### 第 5 步：编译
 ### 第 5 步：编译（7z SFX 方案）
 
@@ -507,10 +535,13 @@ Remove-Item $env:TEMP\*.blockmap -ErrorAction SilentlyContinue
 ```powershell
 # build.ps1 — 奇计离线包一键编译（7z SFX 方案）
 # 用法: 在仓库根目录运行 .\build.ps1
-# 可选参数: -SkipVendor（跳过 vendor 生成，仅改了前端时用）
+# 可选参数:
+#   -SkipVendor  跳过 vendor 生成（仅改了前端时用）
+#   -EncryptSkill  加密 skill 文件（需要 $env:SKILL_ENCRYPTION_KEY 已设置）
 
 param(
-    [switch]$SkipVendor
+    [switch]$SkipVendor,
+    [switch]$EncryptSkill
 )
 
 $ErrorActionPreference = "Stop"
@@ -520,7 +551,7 @@ $hermesHome = "$env:LOCALAPPDATA\hermes"
 Write-Host "`n=== 奇计离线包编译（7z SFX）===" -ForegroundColor Green
 
 # 第 1 步：修复 ps1 编码
-Write-Host "`n[1/4] 修复 PowerShell 脚本编码..." -ForegroundColor Cyan
+Write-Host "`n[1/5] 修复 PowerShell 脚本编码..." -ForegroundColor Cyan
 foreach ($f in @("prepare-offline.ps1","install.ps1")) {
     $path = Join-Path $repoRoot "scripts\$f"
     if (Test-Path $path) {
@@ -533,25 +564,38 @@ foreach ($f in @("prepare-offline.ps1","install.ps1")) {
 
 # 第 2 步：生成 vendor
 if (-not $SkipVendor) {
-    Write-Host "`n[2/4] 生成 vendor..." -ForegroundColor Cyan
+    Write-Host "`n[2/5] 生成 vendor..." -ForegroundColor Cyan
     $vendorDir = Join-Path $repoRoot "apps\desktop\build\vendor"
     if (Test-Path $vendorDir) { Remove-Item -Recurse -Force $vendorDir }
     & (Join-Path $repoRoot "scripts\prepare-offline.ps1") `
         -HermesHome $hermesHome `
         -VendorDir $vendorDir
 } else {
-    Write-Host "`n[2/4] 跳过 vendor 生成（-SkipVendor）" -ForegroundColor Yellow
+    Write-Host "`n[2/5] 跳过 vendor 生成（-SkipVendor）" -ForegroundColor Yellow
 }
 
-# 第 3 步：清缓存 + 设 SHA
-Write-Host "`n[3/4] 清缓存 + 设置 commit hash..." -ForegroundColor Cyan
+# 第 3 步：加密 Skill 文件（可选）
+if ($EncryptSkill) {
+    Write-Host "`n[3/5] 加密 Skill 文件..." -ForegroundColor Cyan
+    if (-not $env:SKILL_ENCRYPTION_KEY) {
+        Write-Host "❌ SKILL_ENCRYPTION_KEY 未设置，跳过加密" -ForegroundColor Red
+    } else {
+        $python = Join-Path $hermesHome "hermes-agent\venv\Scripts\python.exe"
+        & $python (Join-Path $repoRoot "scripts\encrypt-skills.py") --skills-dir (Join-Path $repoRoot "skills\qiji-geo")
+    }
+} else {
+    Write-Host "`n[3/5] 跳过 Skill 加密" -ForegroundColor Yellow
+}
+
+# 第 4 步：清缓存 + 设 SHA
+Write-Host "`n[4/5] 清缓存 + 设置 commit hash..." -ForegroundColor Cyan
 $desktopDir = Join-Path $repoRoot "apps\desktop"
 $viteCache = Join-Path $desktopDir "node_modules\.vite"
 if (Test-Path $viteCache) { Remove-Item -Recurse -Force $viteCache }
 $env:GITHUB_SHA = git -C $repoRoot rev-parse HEAD
 
-# 第 4 步：编译（7z SFX）
-Write-Host "`n[4/4] 编译（7z SFX 打包）..." -ForegroundColor Cyan
+# 第 5 步：编译（7z SFX）
+Write-Host "`n[5/5] 编译（7z SFX 打包）..." -ForegroundColor Cyan
 Push-Location $desktopDir
 npm run dist:win:sfx
 $exitCode = $LASTEXITCODE
@@ -571,9 +615,13 @@ if ($exitCode -eq 0) {
 **用法：**
 
 ```powershell
-# 完整编译（含 vendor 生成）
+# 完整编译（含 vendor 生成，不加密 skill）
 .\build.ps1
 
 # 只改了前端，跳过 vendor
 .\build.ps1 -SkipVendor
+
+# 完整编译 + 加密 skill
+$env:SKILL_ENCRYPTION_KEY = "你的口令"
+.\build.ps1 -EncryptSkill
 ```

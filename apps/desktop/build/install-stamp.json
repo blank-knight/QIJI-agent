@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "commit": "4fdc0a49c7689387512fc034bcbf921acf5d1af9",
-  "branch": "main",
-  "builtAt": "2026-07-26T00:57:07.253Z",
+  "commit": "2e523110ea49e39980456692494090eb1bf2f54e",
+  "branch": "feat/backend-integration",
+  "builtAt": "2026-07-30T08:44:51.862Z",
   "dirty": true,
   "source": "local"
 }

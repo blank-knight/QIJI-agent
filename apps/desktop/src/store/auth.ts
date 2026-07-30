@@ -20,11 +20,13 @@ export interface AuthState {
   score: number
   /** 登录时间戳（ms），用于判断 30 天过期 */
   loginAt: number | null
+  /** 后端下发的 api_key（is_custom_key=0 时服务端代理用） */
+  apiKey: string | null
 }
 
 function readPersisted(): AuthState {
   if (typeof window === 'undefined') {
-    return { token: null, username: null, isCustomKey: false, mode: 'trial', score: 0, loginAt: null }
+    return { token: null, username: null, isCustomKey: false, mode: 'trial', score: 0, loginAt: null, apiKey: null }
   }
 
   try {
@@ -34,10 +36,11 @@ function readPersisted(): AuthState {
       isCustomKey: window.localStorage.getItem(AUTH_IS_CUSTOM_KEY) === '1',
       mode: (window.localStorage.getItem(AUTH_MODE_KEY) as 'trial' | 'formal') ?? 'trial',
       score: 0, // 不持久化，每次启动后由 quota 查询刷新
-      loginAt: Number(window.localStorage.getItem(AUTH_LOGIN_AT_KEY)) || null
+      loginAt: Number(window.localStorage.getItem(AUTH_LOGIN_AT_KEY)) || null,
+      apiKey: null // 不持久化，每次 login 后从后端拿
     }
   } catch {
-    return { token: null, username: null, isCustomKey: false, mode: 'trial', score: 0, loginAt: null }
+    return { token: null, username: null, isCustomKey: false, mode: 'trial', score: 0, loginAt: null, apiKey: null }
   }
 }
 
@@ -106,7 +109,8 @@ export async function login(username: string, password: string): Promise<LoginRe
     isCustomKey: data.is_custom_key === 1,
     mode: data.mode,
     score: data.score,
-    loginAt: Date.now()
+    loginAt: Date.now(),
+    apiKey: data.api_key
   }
 
   persist(next)

@@ -704,7 +704,7 @@ def iter_skill_index_files(skills_dir: Path, filename: str):
     """
     matches = []
     for root, dirs, files in os.walk(skills_dir, followlinks=True):
-        has_skill_md = "SKILL.md" in files
+        has_skill_md = "SKILL.md" in files or "SKILL.md.enc" in files
         dirs[:] = [
             d
             for d in dirs
@@ -713,6 +713,8 @@ def iter_skill_index_files(skills_dir: Path, filename: str):
         ]
         if filename in files:
             matches.append(Path(root) / filename)
+        elif f"{filename}.enc" in files:
+            matches.append(Path(root) / f"{filename}.enc")
     for path in sorted(matches, key=lambda p: str(p.relative_to(skills_dir))):
         yield path
 
