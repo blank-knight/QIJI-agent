@@ -147,14 +147,17 @@ function writeCachedSkipped(value: boolean) {
   }
 }
 
+// 奇计后端联动改造：引导页（让用户自己选 provider 填 key）永不弹。
+// 登录后由后端下发 api_key，自动配进 gateway，不再需要用户手动配。
+// is_custom_key=1 的用户仍可通过设置页手动配置，但不再走 onboarding overlay。
 const INITIAL: DesktopOnboardingState = {
-  configured: readCachedConfigured(),
+  configured: true, // 永远视为已配置，永不弹引导页
   flow: { status: 'idle' },
   mode: 'oauth',
   providers: null,
   reason: null,
   requested: false,
-  firstRunSkipped: false,
+  firstRunSkipped: true, // 永远视为已跳过，永不拦用户
   manual: false,
   localEndpoint: false
 }

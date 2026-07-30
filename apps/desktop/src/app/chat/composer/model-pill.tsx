@@ -10,6 +10,7 @@ import { useI18n } from '@/i18n'
 import { ChevronDown } from '@/lib/icons'
 import { formatModelStatusLabel } from '@/lib/model-status-label'
 import { cn } from '@/lib/utils'
+import { $auth } from '@/store/auth'
 import {
   $currentFastMode,
   $currentModel,
@@ -44,6 +45,7 @@ export function ModelPill({
   const currentProvider = useStore($currentProvider)
   const fastMode = useStore($currentFastMode)
   const reasoningEffort = useStore($currentReasoningEffort)
+  const { isCustomKey } = useStore($auth)
   const [open, setOpen] = useState(false)
 
   // The model resolves a beat after the gateway/session comes up. Rather than
@@ -72,6 +74,20 @@ export function ModelPill({
     : PILL
 
   const title = currentProvider ? copy.modelTitle(currentProvider, currentModel || copy.modelNone) : copy.switchModel
+
+  // 奇计后端联动：is_custom_key=0 时模型由后端下发，用户不能手动切换。
+  // 渲染只读标签，不弹下拉菜单，不打开 picker。
+  if (!isCustomKey) {
+    return (
+      <div className={cn(PILL, 'cursor-default pointer-events-none')}>
+        {currentModel.trim() ? (
+          <span className="truncate">{formatModelStatusLabel(currentModel, { fastMode, reasoningEffort })}</span>
+        ) : (
+          <GlyphSpinner className="opacity-50" spinner="braille" />
+        )}
+      </div>
+    )
+  }
 
   if (!model.modelMenuContent) {
     return (

@@ -40,6 +40,7 @@ import {
 import { resetSessionBackground } from '@/store/composer-status'
 import { clearPreviewArtifacts } from '@/store/preview-status'
 import { clearNotifications, notify, notifyError } from '@/store/notifications'
+import { $auth } from '@/store/auth'
 import { requestDesktopOnboarding } from '@/store/onboarding'
 import { setPetScale } from '@/store/pet-gallery'
 import { $activeGatewayProfile, $newChatProfile, ensureGatewayProfile, normalizeProfileKey } from '@/store/profile'
@@ -552,6 +553,20 @@ export function usePromptActions({
 
   const submitPromptText = useCallback(
     async (rawText: string, options?: SubmitTextOptions) => {
+      // 奇计后端联动：额度不足时拦截发送，不发起 LLM 调用
+      const { score } = $auth.get()
+
+      if (score <= 0) {
+        notify({
+          kind: 'warning',
+          title: '额度不足',
+          message: '剩余额度已耗尽，请联系代理充值',
+          durationMs: 0
+        })
+
+        return
+      }
+
       const visibleText = rawText.trim()
       const usingComposerAttachments = !options?.attachments
       const attachments = options?.attachments ?? $composerAttachments.get()

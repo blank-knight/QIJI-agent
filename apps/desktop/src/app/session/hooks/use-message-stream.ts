@@ -27,6 +27,7 @@ import {
 import { triggerHaptic } from '@/lib/haptics'
 import { isProviderSetupErrorMessage } from '@/lib/provider-setup-errors'
 import { parseTodos } from '@/lib/todos'
+import { reportUsage } from '@/lib/quota-report'
 import { setClarifyRequest } from '@/store/clarify'
 import { setSessionCompacting } from '@/store/compaction'
 import { refreshBackgroundProcesses } from '@/store/composer-status'
@@ -922,6 +923,15 @@ export function useMessageStream({
 
         if (payload?.usage) {
           setCurrentUsage(current => ({ ...current, ...payload.usage }))
+
+          // 奇计后端联动：上报 token 用量到后端计扣 score
+          const usage = payload.usage as { input_tokens?: number; output_tokens?: number }
+          const model = payload.model || payload.provider || ''
+          void reportUsage(
+            String(model),
+            Number(usage.input_tokens ?? 0),
+            Number(usage.output_tokens ?? 0)
+          ).catch(() => undefined)
         }
       } else if (event.type === 'tool.start' || event.type === 'tool.progress' || event.type === 'tool.generating') {
         if (!sessionId) {

@@ -1,4 +1,5 @@
 import { IconDownload, IconRefresh, IconUpload } from '@tabler/icons-react'
+import { useStore } from '@nanostores/react'
 import { useRef } from 'react'
 
 import { Tip } from '@/components/ui/tooltip'
@@ -7,6 +8,7 @@ import { useI18n } from '@/i18n'
 import { triggerHaptic } from '@/lib/haptics'
 import { Archive, Bell, Globe, Info, KeyRound, Settings2, Sparkles, Wrench, Zap } from '@/lib/icons'
 import { notifyError } from '@/store/notifications'
+import { $auth } from '@/store/auth'
 
 import { useRouteEnumParam } from '../hooks/use-route-enum-param'
 import { OverlayIconButton } from '../overlays/overlay-chrome'
@@ -38,7 +40,14 @@ const SETTINGS_VIEWS: readonly SettingsViewId[] = [
 
 export function SettingsView({ gateway, onClose, onConfigSaved, onMainModelChanged }: SettingsPageProps) {
   const { t } = useI18n()
-  const [activeView, setActiveView] = useRouteEnumParam('tab', SETTINGS_VIEWS, 'config:model' as SettingsViewId)
+  // 奇计后端联动：is_custom_key=0 时隐藏模型/提供方/密钥三个入口
+  const { isCustomKey } = useStore($auth)
+  // 非自定义 key 用户隐藏的设置项（model 配置段 + providers + keys）
+  const hiddenSections = isCustomKey ? [] : ['model']
+  const hiddenViews = isCustomKey ? new Set<string>() : new Set(['config:model', 'providers', 'keys'])
+  const visibleSections = SECTIONS.filter(s => !hiddenSections.includes(s.id))
+  const fallbackView = isCustomKey ? ('config:model' as SettingsViewId) : ('config:chat' as SettingsViewId)
+  const [activeView, setActiveView] = useRouteEnumParam('tab', SETTINGS_VIEWS, fallbackView)
   // Providers subnav (Accounts vs API keys) lives in its own param so each
   // sub-view is deep-linkable and survives a refresh.
   const [providerView, setProviderView] = useRouteEnumParam<ProviderView>('pview', PROVIDER_VIEWS, 'accounts')
@@ -90,7 +99,7 @@ export function SettingsView({ gateway, onClose, onConfigSaved, onMainModelChang
     <OverlayView closeLabel={t.settings.closeSettings} onClose={onClose}>
       <OverlaySplitLayout>
         <OverlaySidebar>
-          {SECTIONS.map(s => {
+          {visibleSections.map(s => {
             const view = `config:${s.id}` as SettingsViewId
 
             return (
@@ -110,29 +119,33 @@ export function SettingsView({ gateway, onClose, onConfigSaved, onMainModelChang
             onClick={() => setActiveView('notifications')}
           />
           <div className="my-2 h-px bg-border/30" />
-          <OverlayNavItem
-            active={activeView === 'providers'}
-            icon={Zap}
-            label={t.settings.nav.providers}
-            onClick={() => setActiveView('providers')}
-          />
-          {activeView === 'providers' && (
-            <div className="ml-3.5 flex flex-col gap-0.5 pl-1.5">
+          {!hiddenViews.has('providers') && (
+            <>
               <OverlayNavItem
-                active={providerView === 'accounts'}
-                icon={Sparkles}
-                label={t.settings.nav.providerAccounts}
-                nested
-                onClick={() => openProviderView('accounts')}
+                active={activeView === 'providers'}
+                icon={Zap}
+                label={t.settings.nav.providers}
+                onClick={() => setActiveView('providers')}
               />
-              <OverlayNavItem
-                active={providerView === 'keys'}
-                icon={KeyRound}
-                label={t.settings.nav.providerApiKeys}
-                nested
-                onClick={() => openProviderView('keys')}
-              />
-            </div>
+              {activeView === 'providers' && (
+                <div className="ml-3.5 flex flex-col gap-0.5 pl-1.5">
+                  <OverlayNavItem
+                    active={providerView === 'accounts'}
+                    icon={Sparkles}
+                    label={t.settings.nav.providerAccounts}
+                    nested
+                    onClick={() => openProviderView('accounts')}
+                  />
+                  <OverlayNavItem
+                    active={providerView === 'keys'}
+                    icon={KeyRound}
+                    label={t.settings.nav.providerApiKeys}
+                    nested
+                    onClick={() => openProviderView('keys')}
+                  />
+                </div>
+              )}
+            </>
           )}
           <OverlayNavItem
             active={activeView === 'gateway'}
@@ -140,29 +153,33 @@ export function SettingsView({ gateway, onClose, onConfigSaved, onMainModelChang
             label={t.settings.nav.gateway}
             onClick={() => setActiveView('gateway')}
           />
-          <OverlayNavItem
-            active={activeView === 'keys'}
-            icon={KeyRound}
-            label={t.settings.nav.apiKeys}
-            onClick={() => setActiveView('keys')}
-          />
-          {activeView === 'keys' && (
-            <div className="ml-3.5 flex flex-col gap-0.5 pl-1.5">
+          {!hiddenViews.has('keys') && (
+            <>
               <OverlayNavItem
-                active={keysView === 'tools'}
-                icon={Wrench}
-                label={t.settings.nav.keysTools}
-                nested
-                onClick={() => openKeysView('tools')}
+                active={activeView === 'keys'}
+                icon={KeyRound}
+                label={t.settings.nav.apiKeys}
+                onClick={() => setActiveView('keys')}
               />
-              <OverlayNavItem
-                active={keysView === 'settings'}
-                icon={Settings2}
-                label={t.settings.nav.keysSettings}
-                nested
-                onClick={() => openKeysView('settings')}
-              />
-            </div>
+              {activeView === 'keys' && (
+                <div className="ml-3.5 flex flex-col gap-0.5 pl-1.5">
+                  <OverlayNavItem
+                    active={keysView === 'tools'}
+                    icon={Wrench}
+                    label={t.settings.nav.keysTools}
+                    nested
+                    onClick={() => openKeysView('tools')}
+                  />
+                  <OverlayNavItem
+                    active={keysView === 'settings'}
+                    icon={Settings2}
+                    label={t.settings.nav.keysSettings}
+                    nested
+                    onClick={() => openKeysView('settings')}
+                  />
+                </div>
+              )}
+            </>
           )}
           <OverlayNavItem
             active={activeView === 'mcp'}

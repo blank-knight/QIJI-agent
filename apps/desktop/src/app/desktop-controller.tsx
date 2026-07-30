@@ -7,6 +7,7 @@ import { BootFailureOverlay } from '@/components/boot-failure-overlay'
 import { DesktopInstallOverlay } from '@/components/desktop-install-overlay'
 import { DesktopOnboardingOverlay } from '@/components/desktop-onboarding-overlay'
 import { GatewayConnectingOverlay } from '@/components/gateway-connecting-overlay'
+import { LoginOverlay } from '@/components/login-overlay'
 import { Pane, PaneMain } from '@/components/pane-shell'
 import { RemoteDisplayBanner } from '@/components/remote-display-banner'
 import { useMediaQuery } from '@/hooks/use-media-query'
@@ -14,6 +15,8 @@ import { useSkinCommand } from '@/themes/use-skin-command'
 
 import { formatRefValue } from '../components/assistant-ui/directive-text'
 import { getCronJobs, getSessionMessages, listAllProfileSessions, type SessionInfo, triggerCronJob } from '../hermes'
+import { setEnvVar } from '@/hermes'
+import { setUnauthorizedHandler } from '@/lib/backend'
 import { type ChatMessage, chatMessageText, preserveLocalAssistantErrors, toChatMessages } from '../lib/chat-messages'
 import { storedSessionIdForNotification } from '../lib/session-ids'
 import {
@@ -43,6 +46,7 @@ import {
 import { respondToApprovalAction } from '../store/native-notifications'
 import { setPetActivity } from '../store/pet'
 import { setPetOverlayOpenAppHandler, setPetOverlaySubmitHandler } from '../store/pet-overlay'
+import { $auth, isAuthenticated, isTokenExpired } from '../store/auth'
 import { $filePreviewTarget, $previewTarget, closeActiveRightRailTab } from '../store/preview'
 import {
   $activeGatewayProfile,
@@ -268,9 +272,32 @@ export function DesktopController() {
 
   const { connectionRef, gatewayRef, requestGateway } = useGatewayRequest()
 
+  const authState = useStore($auth)
+  // 是否需要显示登录页：未登录或 token 过期（不依赖 gatewayState，登录调后端 HTTP）
+  const needLogin = !isAuthenticated() || isTokenExpired()
+
   useEffect(() => {
     window.hermesDesktop?.setPreviewShortcutActive?.(Boolean(chatOpen && (filePreviewTarget || previewTarget)))
   }, [chatOpen, filePreviewTarget, previewTarget])
+
+  // 注册 401 处理器：后端请求 token 失效时，清 auth store（auth 订阅会触发登录覆盖层）
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      // auth store 的 clearAuth() 已由 backendFetch 调用，这里只需触发重渲染
+      // needLogin 由 $auth 订阅驱动，会自动变为 true
+    })
+
+    return () => setUnauthorizedHandler(null)
+  }, [])
+
+  // gateway ready 后补推 api_key（兜底：登录时 gateway 可能还没连上）
+  useEffect(() => {
+    if (gatewayState !== 'open' || !authState.apiKey || needLogin) {
+      return
+    }
+
+    void setEnvVar('OPENAI_API_KEY', authState.apiKey).catch(() => undefined)
+  }, [gatewayState, authState.apiKey, needLogin])
 
   useEffect(() => {
     startUpdatePoller()
@@ -1008,6 +1035,16 @@ export function DesktopController() {
 
   const overlays = (
     <>
+      {/* 登录覆盖层：未登录/token 过期时显示，顶层遮罩，不依赖 gatewayState */}
+      {!isSecondaryWindow() && needLogin && (
+        <LoginOverlay
+          onLoggedIn={() => {
+            void refreshHermesConfig()
+            void refreshCurrentModel()
+            void queryClient.invalidateQueries({ queryKey: ['model-options'] })
+          }}
+        />
+      )}
       <RemoteDisplayBanner />
       {!isSecondaryWindow() && <DesktopInstallOverlay />}
       {!isSecondaryWindow() && (
@@ -1021,9 +1058,13 @@ export function DesktopController() {
           requestGateway={requestGateway}
         />
       )}
-      <ModelPickerOverlay gateway={gatewayRef.current || undefined} onSelect={selectModel} />
+      {authState.isCustomKey && (
+        <ModelPickerOverlay gateway={gatewayRef.current || undefined} onSelect={selectModel} />
+      )}
       <SessionPickerOverlay onResume={resumeSession} />
-      <ModelVisibilityOverlay gateway={gatewayRef.current || undefined} onOpenProviders={openProviderSettings} />
+      {authState.isCustomKey && (
+        <ModelVisibilityOverlay gateway={gatewayRef.current || undefined} onOpenProviders={openProviderSettings} />
+      )}
       <UpdatesOverlay />
       <GatewayConnectingOverlay />
       <BootFailureOverlay />

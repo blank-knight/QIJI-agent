@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { type Translations, useI18n } from '@/i18n'
 import { CheckCircle2, Loader2, RefreshCw, Sparkles } from '@/lib/icons'
 import { cn } from '@/lib/utils'
+import { $auth } from '@/store/auth'
 import {
   $desktopVersion,
   $updateApply,
@@ -49,6 +50,7 @@ export function AboutSettings() {
   const status = useStore($updateStatus)
   const apply = useStore($updateApply)
   const checking = useStore($updateChecking)
+  const authState = useStore($auth)
   const [justChecked, setJustChecked] = useState(false)
 
   // The version atom is loaded once at app boot, which makes About show a
@@ -103,6 +105,21 @@ export function AboutSettings() {
       </div>
 
       <div className="mx-auto mt-4 w-full max-w-2xl">
+        {/* 奇计后端联动：额度显示（被动查看，放关于页深处） */}
+        <SectionHeading icon={Sparkles} title="账户信息" />
+        <div className="mb-4 rounded-xl border border-border/70 bg-muted/20 px-4 py-3 text-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">剩余额度</span>
+            <span className={cn('font-medium', authState.score <= 0 && 'text-destructive')}>
+              {authState.score}
+            </span>
+          </div>
+          <div className="mt-1.5 flex items-center justify-between text-xs text-muted-foreground">
+            <span>账号模式</span>
+            <span>{authState.mode === 'formal' ? '正式' : '体验'}</span>
+          </div>
+        </div>
+
         <SectionHeading icon={RefreshCw} title={a.updates} />
 
         <div

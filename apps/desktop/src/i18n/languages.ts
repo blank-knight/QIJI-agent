@@ -84,3 +84,15 @@ export function isSupportedLocaleValue(value: unknown): boolean {
 export function localeConfigValue(locale: Locale): string {
   return LOCALE_OPTIONS.find(item => item.id === locale)?.configValue ?? DEFAULT_LOCALE
 }
+
+/**
+ * 从浏览器/系统语言设置推断 locale（兜底用，不依赖 gateway config）。
+ * navigator.language 返回如 "zh-CN"、"en-US"、"ja-JP"。
+ */
+export function detectSystemLocale(): Locale {
+  if (typeof navigator === 'undefined' || !navigator.language) {
+    return DEFAULT_LOCALE
+  }
+
+  return normalizeLocale(navigator.language)
+}

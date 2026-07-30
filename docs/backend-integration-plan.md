@@ -26,15 +26,22 @@
 
 ### 2.2 引导页和设置页
 
-**所有桌面端用户默认行为：**
-- 去掉引导页（onboarding overlay），不管什么情况都不弹
-- 设置里隐藏所有能配第三方 key 的地方
-- 设置里隐藏所有能显示/选择大模型的地方
+**默认全部隐藏，只有后端明确授权才显示。**
 
-**唯一例外：**
-- 后端返回 `is_custom_key=1` 的用户，才显示 key 配置和模型选择
+**引导页（OnboardingOverlay）：** 永不弹（不管 is_custom_key 是什么值）
 
-不是"根据 is_custom_key 决定是否跳过引导页"，而是默认全部隐藏，只有后端明确授权才显示。
+**设置页隐藏 3 个入口（is_custom_key=0 时）：**
+| 入口 | 组件 | 隐藏理由 |
+|------|------|---------|
+| 设置 → 模型 | `model-settings.tsx` | 选默认模型/reasoning/service tier |
+| 设置 → 提供方 | `providers-settings.tsx` | 加/删 provider、OAuth 连接 |
+| 设置 → 密钥 | `keys-settings.tsx` | 直接填 env var 形式的 key |
+
+**模型选择器（composer 内）：** is_custom_key=0 时也隐藏，不能手动切模型。
+
+**唯一例外：** 后端返回 `is_custom_key=1` 的用户，以上 4 项全部正常显示，跟现在一样。
+
+实现要点：设置页导航是数据驱动的（[settings/index.tsx](file:///c:/Users/GBJ-1094/Desktop/code/QIJI-agent/apps/desktop/src/app/settings/index.tsx) 的 `SETTINGS_VIEWS` 数组 + `SECTIONS`），按 `is_custom_key` 过滤即可，不用改各组件内部。
 
 ### 2.3 登录界面位置
 
@@ -47,7 +54,7 @@
 ```
 桌面端启动
   → Electron main 进程启动 gateway（后台并行）
-  → 同时检查本地有没有存有效登录 token（未过 7 天保质期）
+  → 同时检查本地有没有存有效登录 token（未过 30 天保质期）
       ├ 有 token → 跳过登录页，直接进主界面
       │   └ 启动时用存的 api_key 自动配好 LLM
       └ 没 token → 显示登录页（覆盖层，比所有东西都顶层）
@@ -80,6 +87,13 @@
 - 登录 token = 通行证，有 7 天保质期，用于调后端 API 的鉴权
 - LLM token = 文本计量单位，每次调 LLM 消耗，后端用 score 计量
 
+**边界情况：代理链全无 key**
+- 后端沿代理链往上找 key，理论上存在"一路都没 key"的可能
+- 客户端处理：登录成功后检查 `api_key` 是否为空（`null` / `""`）
+  - 空 → 不进主界面，提示"当前账号未配置 AI 服务，请联系代理/上级开通"
+  - 非空 → 正常 `setEnvVar` 配进 gateway，进主界面
+- 注意：需跟后端确认登录响应在"无 key"时是返回 `code:1 + api_key:""` 还是 `code:0` 拒绝登录，两种情况客户端都要兜住
+
 ### 2.6 用户体验流程
 
 ```
@@ -95,39 +109,48 @@
 
 ---
 
-## 三、需要改的文件
+## 三、需要改的文件（任务清单）
+
+> 按依赖顺序排列。每层做完才能做下一层。✅ = 决策已定，可直接动手。
 
 ### 第 1 层：认证基础设施（后面所有东西都依赖它）
 
-| 文件 | 改什么 |
-|------|--------|
-| 新建 `store/auth.ts` | 管理登录状态（token、user_info、is_custom_key、score） |
-| 新建登录页组件 | username + password 输入框 + 登录按钮 |
-| 新建后端 API 调用层 | 调后端 `/api/client/v1/auth/login` 等 |
-| 修改 `app/desktop-controller.tsx` | 未登录时显示登录页（顶层覆盖层），已登录显示主界面 |
+| # | 文件 | 改什么 | 决策 |
+|---|------|--------|------|
+| 1.1 | 新建 `lib/backend.ts` | 导出 `BACKEND_BASE_URL`（占位 `http://8.138.58.181`，等 4.1 定了改一行）；导出 `backendFetch()` 包装所有后端请求，自动带 `Authorization: Bearer <token>`，**统一拦截 401 → 清 auth store → 触发登录覆盖层** | 4.2 ✅ 4.4 ✅ |
+| 1.2 | 新建 `store/auth.ts` | nanostores atom 管理：`token` / `username` / `is_custom_key` / `mode` / `score` / `loginAt`（时间戳）。持久化到 localStorage（token+loginAt+is_custom_key+mode），score 只存内存。导出 `login(username,password)` / `logout()` / `isAuthenticated()` / `isTokenExpired()`（读 loginAt + 30 天判断） | 4.2 ✅ |
+| 1.3 | 新建 `components/login-overlay.tsx` | 顶层覆盖层。username + password + 登录按钮 + 错误提示。底部「注册账号」「忘记密码」两个 `window.open()` 外链。调 `store/auth.ts` 的 `login()`，成功后 `setEnvVar('OPENAI_API_KEY', api_key)` 把 key 推进 gateway，然后关覆盖层 | 4.3 ✅ |
+| 1.4 | 改 `app/desktop-controller.tsx` | overlays 栈里加 `<LoginOverlay>`，门控：`!isAuthenticated() \|\| isTokenExpired()` 时显示。**不依赖 gatewayState**（登录调的是后端 HTTP，不走 gateway）。登录页与 gateway 启动并行 | 2.4 ✅ |
+| 1.5 | 改 `store/onboarding.ts` | `INITIAL.configured` 永远置 `true`，`firstRunSkipped` 永远置 `true` → 引导页永不弹。保留 gatewayState 门控逻辑（给登录页用） | 2.2 ✅ |
 
-### 第 2 层：去掉引导页 + 自动配 key
+### 第 2 层：按 is_custom_key 隐藏设置入口
 
-| 文件 | 改什么 |
-|------|--------|
-| `store/onboarding.ts` (906行) | 永远不弹引导页，自动用后端 key 配好 LLM |
-| `app/settings/model-settings.tsx` (666行) | is_custom_key=0 时隐藏模型选择/Key 输入 |
-| `app/settings/providers-settings.tsx` (623行) | is_custom_key=0 时隐藏整个配置入口 |
-| 可能还有 `app/settings/keys-settings.tsx` | is_custom_key=0 时隐藏 |
+| # | 文件 | 改什么 | 决策 |
+|---|------|--------|------|
+| 2.1 | 改 `app/settings/index.tsx` | `SETTINGS_VIEWS` 和 `SECTIONS` 按 `is_custom_key` 过滤：`=0` 时移除 `config:model`、`providers`、`keys` 三个入口。导航是数据驱动的，不用改组件内部 | 2.2 ✅ |
+| 2.2 | 改 `app/chat/composer/model-pill.tsx` | `is_custom_key=0` 时不渲染 ModelPill（或渲染成只读标签，不可点击） | 2.2 ✅ |
+| 2.3 | 改 `app/desktop-controller.tsx` | `is_custom_key=0` 时不挂载 `ModelPickerOverlay` / `ModelVisibilityOverlay` | 2.2 ✅ |
 
 ### 第 3 层：额度显示 + Token 上报
 
-| 文件 | 改什么 |
-|------|--------|
-| 主界面某处 | 显示剩余点数（score） |
-| LLM 调用后 | 上报 token 用量到 `POST /api/client/v1/quota/report` |
-| 额度不足时 | 弹窗提示 |
+| # | 文件 | 改什么 | 决策 |
+|---|------|--------|------|
+| 3.1 | 改 `app/settings/about-settings.tsx` | 加一行"剩余额度：{score}"。组件挂载时调 `GET /api/client/v1/quota` 刷新 score | 4.6 ✅ |
+| 3.2 | 新建 `lib/quota-report.ts` | 封装 `reportUsage(model, input_tokens, output_tokens, request_id)` → `POST /api/client/v1/quota/report`。返回 `{remaining_score}` 时更新 `store/auth.ts` 的 score；返回 `{code:0}` 时触发额度不足弹窗 | 4.5 ✅ |
+| 3.3 | 改 `app/session/hooks/use-message-stream.ts` | 找到 L819-820 / L923-924 的 `payload?.usage` 处理点，在 `message.end` 事件里追加调用 `reportUsage()`（模型名、token 数从 payload 取） | 4.5 ✅ |
+| 3.4 | 改 composer 发送逻辑 | 发消息前预判 `score <= 0` → 直接弹"额度不足，联系代理充值"，不发起 LLM 调用 | 4.5 ✅ |
 
 ### 第 4 层：更新机制（优先级低，可后面做）
 
-| 文件 | 改什么 |
-|------|--------|
-| `store/updates.ts` (597行) | git-based 检查换成 HTTP `/api/client/v1/update/check` |
+| # | 文件 | 改什么 |
+|---|------|--------|
+| 4.1 | 改 `store/updates.ts` | git-based 检查换成 HTTP `GET /api/client/v1/update/check` |
+
+### 实现顺序建议
+1. **先做第 1 层**（1.1 → 1.2 → 1.5 → 1.3 → 1.4）—— 基地址先用占位常量，4.1 定了改一行
+2. **再做第 2 层**（2.1 → 2.2 → 2.3）—— 能跑通"登录→进主界面→隐藏设置入口"主流程
+3. **然后第 3 层**（3.2 → 3.3 → 3.1 → 3.4）—— 额度闭环
+4. **最后第 4 层** —— 不阻塞主线
 
 ---
 
@@ -141,17 +164,35 @@
 - Electron secureStorage / keychain（最安全，但复杂）
 - 写入 Hermes 的 config.yaml（持久化，重启不丢）
 
-### 4.3 登录页 UI 范围
-只放 username + password + 登录按钮？还是还要"忘记密码"、"注册"入口等？
+### 4.3 登录页 UI 范围 ✅ 已定
+**主体：** username + password + 登录按钮 + 错误提示
+**底部两个外链入口：**
+- 「注册账号」→ `window.open()` 打开后端注册页（注册要短信验证码，桌面端不做）
+- 「忘记密码」→ `window.open()` 打开后端找回密码页
+
+实现参照现有 onboarding overlay 的外链模式（`docsUrl` + `window.open()`，见 `desktop-onboarding-overlay.tsx` 的 `DocsLink`）。
+两个入口的 URL 随 4.1 基地址一起定（现在待定）。
+
+**不做：**
+- 不做桌面端内注册（要短信验证码，复杂，丢给网页）
+- 不做"记住密码"
+- 不做第三方登录（微信/Google 等）
 
 ### 4.4 Token 过期处理
 7 天过期后：自动重新登录（需要存密码）？弹登录页？refresh token（后端文档没提）？
 
-### 4.5 体验模式（trial）vs 正式模式（formal）
-体验模式 score=0 时：允许聊天但额度为 0 弹窗？还是直接不让进？
+### 4.5 体验模式（trial）vs 正式模式（formal）✅ 已定
+**score=0 也让进主界面，在聊天时拦截。**
+- 发消息前前端预判 `score <= 0` → 直接弹"额度不足，联系代理充值"，不发起 LLM 调用
+- 理由：用户得能看见界面才知道去哪充值/填邀请码
+- 兜底：即使前端漏判，后端 `/quota/report` 返回 `{code:0}` 时也弹同样的提示
 
-### 4.6 显示剩余点数
-显示在哪？聊天界面顶部？设置页？额度不足怎么提示？
+### 4.6 显示剩余点数 ✅ 已定
+**放设置页 → 关于（About）里，不挂标题栏。**
+- 用户主动进设置 → 关于页才能看到剩余 score
+- 理由：额度不是高频关注信息，放显眼处反而焦虑；让用户主动查
+- 关于页加一行"剩余额度：{score}"，打开关于页时刷新一次（调 `GET /api/client/v1/quota`）
+- 额度不足的强提示仍然走 4.5 的聊天拦截弹窗（那个是必须主动打扰的）
 
 ---
 
