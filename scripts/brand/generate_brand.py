@@ -363,8 +363,10 @@ def generate_brand_config(
     palette_name: str,
     name_en: str = "",
     portal_url: str = "https://www.aicps.vip",
+    random_theme: bool = False,
 ) -> dict:
     """生成品牌配置 JSON。"""
+    import random as _rng
 
     # 推断英文名
     if not name_en:
@@ -372,6 +374,17 @@ def generate_brand_config(
 
     # 繁体映射（简单规则，复杂字需人工校对）
     name_hant = name_cn  # 默认同简体，后续可人工调整
+
+    # 主题生成
+    if random_theme or palette_name == "random":
+        palette_name = _rng.choice(list(PALETTES.keys()))
+        typography = _rng.choice(["system", "serif", "rounded"])
+        mode = _rng.choice(["light", "dark", "auto"])
+        density = _rng.choice(["normal", "compact", "large"])
+    else:
+        typography = "system"
+        mode = "auto"
+        density = "normal"
 
     palette = PALETTES.get(palette_name, PALETTES["teal"])
 
@@ -397,9 +410,9 @@ def generate_brand_config(
         "git_remote_name": "gitee",
         "theme": {
             "palette": palette_name,
-            "typography": "system",
-            "mode": "auto",
-            "density": "normal",
+            "typography": typography,
+            "mode": mode,
+            "density": density,
             "font_url": "",
         },
     }
@@ -424,8 +437,10 @@ def main():
     parser.add_argument('--name', help='指定品牌名（跳过自动起名）')
     parser.add_argument('--name-en', help='指定品牌英文名（默认从拼音推断，如 黑镜 → HeiJing）')
     parser.add_argument('--palette', default='teal',
-                        choices=list(PALETTES.keys()),
-                        help='配色模板（默认 teal）')
+                        choices=list(PALETTES.keys()) + ['random'],
+                        help='配色模板（默认 teal，可选 random 随机）')
+    parser.add_argument('--random-theme', action='store_true',
+                        help='随机生成全套主题（配色+字体+布局+模式任意组合）')
     parser.add_argument('--logo-source', help='从本地图片文件导入 Logo（跳过 AI 生成）')
     parser.add_argument('--logo-count', type=int, default=4, help='AI 生成 Logo 候选数量（默认 4）')
     parser.add_argument('--name-only', action='store_true', help='只生成名字候选，不生成 Logo')
@@ -507,7 +522,7 @@ def main():
     generated_icons = process_icon(logo_source, brand_id, output_dir)
 
     # --- 第4步：生成品牌配置 JSON ---
-    config = generate_brand_config(name, brand_id, args.palette, name_en, args.portal_url)
+    config = generate_brand_config(name, brand_id, args.palette, name_en, args.portal_url, args.random_theme)
     config_path = script_dir / "brands" / f"{brand_id}.json"
     config_path.write_text(
         json.dumps(config, ensure_ascii=False, indent=2) + "\n",

@@ -118,10 +118,62 @@ python scripts/brand/apply_brand.py \
 
 ---
 
+## 二次品牌化（从已品牌化仓库出发）
+
+如果仓库已经品牌化过（如奇计），想换成另一个品牌（如黑镜），用 `--source-brand`：
+
+```bash
+# 从奇计仓库 → 黑镜
+python scripts/brand/apply_brand.py \
+  --config scripts/brand/brands/heimirror.json \
+  --repo . \
+  --source-brand qiji
+
+# 从上游 Hermes → 黑镜（默认，不需要 --source-brand）
+python scripts/brand/apply_brand.py \
+  --config scripts/brand/brands/heimirror.json \
+  --repo .
+```
+
+`--source-brand` 会先执行 **第0层：通用品牌名替换**，把源品牌名（奇计/Qiji）替换为目标品牌名（黑镜/HeiMirror），覆盖 apps/desktop/src、hermes_cli、skills 下所有文件。然后再执行常规的 1-7 层。
+
+支持的源品牌：`qiji`（奇计）、`hermes`（上游 Hermes）。
+
+---
+
+## 随机主题生成
+
+每次品牌化时随机生成一套主题（配色 + 字体 + 布局 + 明暗模式任意组合）：
+
+```bash
+# apply_brand.py 随机主题
+python scripts/brand/apply_brand.py \
+  --config scripts/brand/brands/heimirror.json \
+  --repo . \
+  --random-theme
+
+# generate_brand.py 随机主题
+python scripts/brand/generate_brand.py --name 黑镜 --name-en HeiMirror --random-theme
+```
+
+随机组合维度：
+
+| 维度 | 可选值 |
+|------|--------|
+| 配色 | teal / midnight / ember / mono / cyberpunk / rose / nous-blue / slate |
+| 字体 | system / serif / rounded |
+| 明暗模式 | light / dark / auto |
+| 布局密度 | normal / compact / large |
+
+每次运行结果不同，共 8×3×3×3 = 216 种组合。
+
+---
+
 ## 第一层自动覆盖的 6 个子层
 
 | 子层 | 内容 | 自动化 |
 |----|------|--------|
+| 0 | 通用品牌名替换（二次品牌化，`--source-brand`） | ✅ |
 | 1.1 | package.json (productName, appId 等) | ✅ |
 | 1.2 | 图标资源 (icon.ico, icon.png 等) | ❌ 手动 |
 | 1.3 | i18n 国际化 (zh.ts, en.ts, zh-hant.ts, ja.ts) | ✅ |
@@ -130,6 +182,7 @@ python scripts/brand/apply_brand.py \
 | 1.5b | 前端组件品牌名 | ✅ (部分) |
 | 1.6 | install.ps1 品牌化 + vendor 强制覆盖 | ✅ |
 | 1.7 | skills/ 品牌名文案（qiji-geo 等） | ✅ |
+| 2 | 主题 YAML 生成（配色+字体+布局） | ✅ |
 
 ---
 

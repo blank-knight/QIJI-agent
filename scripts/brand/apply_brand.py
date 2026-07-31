@@ -1,23 +1,34 @@
 #!/usr/bin/env python3
 """
-奇计品牌化脚本 — 从上游 Hermes Agent 源码一键打品牌。
+品牌化脚本 — 一键打品牌，支持从上游 Hermes 或已品牌化仓库（如奇计）出发。
 
 用法:
-  python apply_brand.py --config brands/qiji.json --repo /path/to/repo
-  python apply_brand.py --config brands/qiji.json --repo . --dry-run    # 预览
-  python apply_brand.py --config brands/qiji.json --repo . --verify     # 验证残留
+  # 从上游 Hermes fresh checkout 出发（默认模式）
+  python apply_brand.py --config brands/heimirror.json --repo /path/to/repo
+  python apply_brand.py --config brands/heimirror.json --repo . --dry-run    # 预览
+  python apply_brand.py --config brands/heimirror.json --repo . --verify     # 验证残留
+
+  # 从已品牌化仓库出发（二次品牌化，如 奇计 → 黑镜）
+  python apply_brand.py --config brands/heimirror.json --repo . --source-brand qiji
 
 工作原理:
-  脚本假设 repo 指向上游 Hermes Agent 的 fresh checkout（或已打过品牌的 fork）。
-  逐层替换品牌名、URL、平台描述等，覆盖 6 层品牌化。
+  默认模式：脚本假设 repo 指向上游 Hermes Agent 的 fresh checkout。
+  --source-brand 模式：脚本先做通用品牌名替换（源品牌 → 目标品牌），覆盖所有源品牌名残留。
+  逐层替换品牌名、URL、平台描述、主题等。
   图标资源和 OAuth→openExternal 代码改动需要手动处理（见 README.md）。
 """
 
 import argparse
 import json
+import random
 import re
 import sys
 from pathlib import Path
+
+try:
+    import yaml
+except ImportError:
+    yaml = None
 
 # Windows GBK 终端默认编码无法打印 ✓/✗/→ 等 Unicode 符号，强制 stdout/stderr 用 UTF-8。
 # reconfigure() 是 Python 3.7+，无副作用：已经是 UTF-8 时是空操作。
@@ -557,6 +568,110 @@ def layer6_install_script(repo, brand, dry_run):
 
 
 # ============================================================
+# 源品牌配置（用于二次品牌化 --source-brand）
+# ============================================================
+
+# 已知源品牌的名称映射（中文名 / 英文名 / 其他别名）
+SOURCE_BRAND_PROFILES = {
+    "qiji": {
+        "name_cn": "奇计",
+        "name_en": "Qiji",
+        "aliases_cn": ["奇計"],  # 繁体变体
+        "aliases_en": [],
+        "app_id": "com.qiji.desktop",
+    },
+    "hermes": {
+        "name_cn": "Hermes",
+        "name_en": "Hermes",
+        "aliases_cn": [],
+        "aliases_en": ["Hermes Agent"],
+        "app_id": "com.nousresearch.hermes",
+    },
+}
+
+
+def layer0_generic_rebrand(repo, brand, source_profile, dry_run):
+    """通用品牌名替换：把源品牌名替换为目标品牌名。
+
+    在所有其他层之前运行，覆盖源品牌名在代码库中的所有残留。
+    支持从已品牌化的仓库（如奇计）出发做二次品牌化。
+    """
+    src_cn = source_profile["name_cn"]
+    src_en = source_profile["name_en"]
+    tgt_cn = brand["name_cn"]
+    tgt_en = brand["name_en"]
+
+    log(f"\n{Colors.CYAN}{Colors.BOLD}第0层：通用品牌名替换（{src_cn}/{src_en} → {tgt_cn}/{tgt_en}）{Colors.RESET}")
+
+    # 构建替换规则（顺序重要：先长后短，先组合词后独立词）
+    rules = []
+    # 英文组合词
+    for alias in source_profile.get("aliases_en", []):
+        rules.append((alias, tgt_en))
+    rules.append((src_en, tgt_en))
+    # 中文组合词/繁体变体
+    for alias in source_profile.get("aliases_cn", []):
+        rules.append((alias, tgt_cn))
+    rules.append((src_cn, tgt_cn))
+
+    # 扫描范围：apps/desktop（含 src + electron）+ hermes_cli + skills
+    scan_dirs = [
+        repo / "apps" / "desktop" / "src",
+        repo / "apps" / "desktop" / "electron",
+        repo / "hermes_cli",
+        repo / "skills",
+    ]
+    scan_exts = {'.ts', '.tsx', '.py', '.js', '.cjs', '.mjs', '.json', '.yaml', '.yml', '.jsonl', '.md', '.ps1'}
+    skip_files = {'package-lock.json'}
+
+    total_count = 0
+    changed_files = 0
+
+    for scan_dir in scan_dirs:
+        if not scan_dir.is_dir():
+            continue
+        for filepath in sorted(scan_dir.rglob("*")):
+            if not filepath.is_file():
+                continue
+            if filepath.suffix not in scan_exts:
+                continue
+            if filepath.name in skip_files:
+                continue
+            if "node_modules" in filepath.parts:
+                continue
+            if "vendor" in filepath.parts:
+                continue
+
+            try:
+                text = filepath.read_text(encoding='utf-8')
+            except (UnicodeDecodeError, PermissionError):
+                continue
+
+            original = text
+            file_count = 0
+            for old, new in rules:
+                if old in text:
+                    c = text.count(old)
+                    text = text.replace(old, new)
+                    file_count += c
+
+            if text != original:
+                total_count += file_count
+                changed_files += 1
+                rel = filepath.relative_to(repo)
+                log(f"{Colors.GREEN}✓{Colors.RESET} {rel}")
+                log(f"{Colors.DIM}  {src_cn}/{src_en} → {tgt_cn}/{tgt_en}: {file_count}处{Colors.RESET}")
+                changes_log.append((str(filepath), src_cn, tgt_cn, file_count))
+                if not dry_run:
+                    filepath.write_text(text, encoding='utf-8')
+
+    if total_count == 0:
+        log(f"{Colors.DIM}  未发现源品牌名残留（可能已是上游或已完成替换）{Colors.RESET}")
+    else:
+        log(f"{Colors.DIM}  合计: {total_count}处，{changed_files}个文件{Colors.RESET}")
+
+
+# ============================================================
 # 第7层：Skills 品牌化（qiji-geo 等内置 skill 的品牌名文案）
 # ============================================================
 
@@ -654,6 +769,224 @@ def layer7_skills(repo, brand, dry_run):
         log(f"{Colors.DIM}  无品牌名残留{Colors.RESET}")
     else:
         log(f"{Colors.DIM}  合计: {total_count}处，{changed_files}个文件{Colors.RESET}")
+
+
+# ============================================================
+# 第二层：主题与 UI 定制（生成 YAML 主题包）
+# ============================================================
+
+# 预置配色模板库 — 每套配色定义完整的调色板
+# 色值参考 themes/presets.ts 中的内置主题
+THEME_PALETTES = {
+    "teal": {
+        "background": "#041C1C", "midground": "#0D9488", "foreground": "#FFFFFF",
+        "warm_glow": "rgba(255, 189, 56, 0.35)",
+    },
+    "midnight": {
+        "background": "#0D2F86", "midground": "#1540B1", "foreground": "#FFFFFF",
+        "warm_glow": "rgba(96, 165, 250, 0.25)",
+    },
+    "ember": {
+        "background": "#2A0F0A", "midground": "#B8390E", "foreground": "#FFE6CB",
+        "warm_glow": "rgba(255, 138, 76, 0.3)",
+    },
+    "mono": {
+        "background": "#1A1A1A", "midground": "#4A4A4A", "foreground": "#E5E5E5",
+        "warm_glow": "rgba(180, 180, 180, 0.15)",
+    },
+    "cyberpunk": {
+        "background": "#0A0A0A", "midground": "#39FF14", "foreground": "#39FF14",
+        "warm_glow": "rgba(57, 255, 20, 0.2)",
+    },
+    "rose": {
+        "background": "#FFF0F6", "midground": "#D6336C", "foreground": "#1A1A1A",
+        "warm_glow": "rgba(214, 51, 108, 0.15)",
+    },
+    "nous-blue": {
+        "background": "#F8FAFF", "midground": "#0053FD", "foreground": "#17171A",
+        "warm_glow": "rgba(0, 83, 253, 0.1)",
+    },
+    "slate": {
+        "background": "#1E293B", "midground": "#3B82F6", "foreground": "#F1F5F9",
+        "warm_glow": "rgba(59, 130, 246, 0.2)",
+    },
+}
+
+THEME_TYPOGRAPHY = {
+    "system": {
+        "font_sans": 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+        "font_mono": 'ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace',
+    },
+    "serif": {
+        "font_sans": '"Source Han Serif", "Noto Serif CJK SC", Georgia, serif',
+        "font_mono": 'ui-monospace, "SF Mono", monospace',
+    },
+    "rounded": {
+        "font_sans": '"Segoe UI Rounded", "PingFang SC", -apple-system, sans-serif',
+        "font_mono": '"Cascadia Code", "JetBrains Mono", monospace',
+    },
+}
+
+THEME_DENSITY = {
+    "normal": {"radius": "0.75rem", "density": "comfortable", "base_size": "15px"},
+    "compact": {"radius": "0.5rem", "density": "compact", "base_size": "14px"},
+    "large": {"radius": "1rem", "density": "spacious", "base_size": "16px"},
+}
+
+
+def generate_random_theme(brand_cn: str) -> dict:
+    """随机生成一套主题配置（配色 + 字体 + 布局密度的任意组合）。"""
+    palette_name = random.choice(list(THEME_PALETTES.keys()))
+    typo_name = random.choice(list(THEME_TYPOGRAPHY.keys()))
+    density_name = random.choice(list(THEME_DENSITY.keys()))
+    mode = random.choice(["light", "dark", "auto"])
+
+    return {
+        "palette": palette_name,
+        "typography": typo_name,
+        "mode": mode,
+        "density": density_name,
+        "font_url": "",
+    }
+
+
+def layer8_theme_yaml(repo, brand, dry_run):
+    """第二层：根据品牌配置的 theme 字段，生成 YAML 主题包。
+
+    生成的主题写入仓库的 apps/desktop/public/themes/ 目录（随安装包分发），
+    同时在运行时由后端 _discover_user_themes() 从 ~/.hermes/dashboard-themes/ 加载。
+    """
+    theme_cfg = brand.get("theme")
+    if not theme_cfg:
+        log(f"\n{Colors.CYAN}{Colors.BOLD}第二层：主题定制（配置中无 theme 字段，跳过）{Colors.RESET}")
+        return
+
+    # 处理 random 标记
+    if theme_cfg.get("palette") == "random":
+        theme_cfg = generate_random_theme(brand["name_cn"])
+        log(f"\n{Colors.CYAN}{Colors.BOLD}第二层：主题定制（随机生成）{Colors.RESET}")
+        log(f"  随机主题: palette={theme_cfg['palette']}, typography={theme_cfg['typography']}, "
+            f"mode={theme_cfg['mode']}, density={theme_cfg['density']}")
+    else:
+        log(f"\n{Colors.CYAN}{Colors.BOLD}第二层：主题定制{Colors.RESET}")
+
+    palette_name = theme_cfg.get("palette", "teal")
+    typo_name = theme_cfg.get("typography", "system")
+    density_name = theme_cfg.get("density", "normal")
+    mode = theme_cfg.get("mode", "auto")
+    font_url = theme_cfg.get("font_url", "")
+
+    palette = THEME_PALETTES.get(palette_name, THEME_PALETTES["teal"])
+    typo = THEME_TYPOGRAPHY.get(typo_name, THEME_TYPOGRAPHY["system"])
+    density = THEME_DENSITY.get(density_name, THEME_DENSITY["normal"])
+
+    # 构建 YAML 主题定义
+    brand_id = brand.get("app_id", "brand").replace("com.", "").replace(".desktop", "")
+    theme_name = f"{brand_id}-{palette_name}"
+    theme_label = f"{brand['name_cn']}{_palette_label_cn(palette_name)}"
+
+    theme_yaml = {
+        "name": theme_name,
+        "label": theme_label,
+        "description": f"{brand['name_cn']} 专属主题 — {_palette_label_cn(palette_name)}配色",
+        "palette": {
+            "background": palette["background"],
+            "midground": palette["midground"],
+            "foreground": palette["foreground"],
+            "warmGlow": palette["warm_glow"],
+            "noiseOpacity": 0.6 if palette_name in ("cyberpunk", "mono") else 1.0,
+        },
+        "typography": {
+            "fontSans": typo["font_sans"],
+            "fontMono": typo["font_mono"],
+            "baseSize": density["base_size"],
+        },
+        "layout": {
+            "radius": density["radius"],
+            "density": density["density"],
+        },
+    }
+
+    if font_url:
+        theme_yaml["typography"]["fontUrl"] = font_url
+
+    # 明暗模式覆盖
+    if mode == "light":
+        theme_yaml["colorOverrides"] = {
+            "background": "#FFFFFF",
+            "foreground": "#1A1A1A",
+        }
+    elif mode == "dark":
+        theme_yaml["colorOverrides"] = {
+            "background": palette["background"],
+            "foreground": "#FFFFFF",
+        }
+
+    # 写入两个位置：
+    # 1. 仓库内 public/themes/（随安装包分发，作为该品牌的默认主题）
+    # 2. 提示用户运行时路径 ~/.hermes/dashboard-themes/
+    repo_themes_dir = repo / "apps" / "desktop" / "public" / "themes"
+    yaml_filename = f"{theme_name}.yaml"
+
+    log(f"  配色: {palette_name} ({_palette_label_cn(palette_name)})")
+    log(f"  字体: {typo_name}")
+    log(f"  模式: {mode}")
+    log(f"  布局: {density_name} (radius={density['radius']}, base={density['base_size']})")
+
+    if not dry_run:
+        if yaml is None:
+            log(f"\n  {Colors.YELLOW}⚠ 未安装 PyYAML，无法生成 YAML。请 pip install pyyaml{Colors.RESET}")
+            log(f"  {Colors.DIM}YAML 内容已打印到控制台，可手动保存：{Colors.RESET}")
+            import json as _json
+            log(f"\n{_json.dumps(theme_yaml, ensure_ascii=False, indent=2)}")
+            return
+
+        # 写入仓库（随包分发）
+        repo_themes_dir.mkdir(parents=True, exist_ok=True)
+        yaml_path = repo_themes_dir / yaml_filename
+        yaml_content = yaml.dump(theme_yaml, allow_unicode=True, default_flow_style=False, sort_keys=False)
+        yaml_path.write_text(yaml_content, encoding='utf-8')
+        log(f"\n  {Colors.GREEN}✓{Colors.RESET} 主题已生成: {yaml_path.relative_to(repo)}")
+        changes_log.append((str(yaml_path), "theme", theme_name, 1))
+
+        # 同时写入运行时目录（让开发环境立即可用）
+        runtime_dir = Path.home() / ".hermes" / "dashboard-themes"
+        runtime_dir.mkdir(parents=True, exist_ok=True)
+        runtime_path = runtime_dir / yaml_filename
+        runtime_path.write_text(yaml_content, encoding='utf-8')
+        log(f"  {Colors.GREEN}✓{Colors.RESET} 运行时主题: {runtime_path}")
+
+        # 设置为活动主题（写入 config.yaml 的 dashboard.theme 字段）
+        config_path = Path.home() / ".hermes" / "config.yaml"
+        try:
+            config_data = {}
+            if config_path.exists():
+                config_data = yaml.safe_load(config_path.read_text(encoding='utf-8')) or {}
+            if "dashboard" not in config_data:
+                config_data["dashboard"] = {}
+            config_data["dashboard"]["theme"] = theme_name
+            config_path.write_text(
+                yaml.dump(config_data, allow_unicode=True, default_flow_style=False, sort_keys=False),
+                encoding='utf-8',
+            )
+            log(f"  {Colors.GREEN}✓{Colors.RESET} 已设为活动主题: {config_path}")
+            log(f"  {Colors.DIM}  桌面端启动后自动应用此主题{Colors.RESET}")
+        except Exception as e:
+            log(f"  {Colors.YELLOW}⚠ 无法设置活动主题: {e}{Colors.RESET}")
+            log(f"  {Colors.DIM}  手动在设置页选择主题，或编辑 ~/.hermes/config.yaml{Colors.RESET}")
+    else:
+        log(f"\n  {Colors.DIM}[预览] 将生成 {yaml_filename}{Colors.RESET}")
+        import json as _json
+        log(f"{Colors.DIM}{_json.dumps(theme_yaml, ensure_ascii=False, indent=2)}{Colors.RESET}")
+
+
+def _palette_label_cn(name: str) -> str:
+    labels = {
+        "teal": "青绿", "midnight": "深蓝紫", "ember": "红铜",
+        "mono": "灰阶", "cyberpunk": "霓虹", "rose": "粉红",
+        "nous-blue": "亮蓝", "slate": "石板蓝",
+    }
+    return labels.get(name, name)
 
 
 # ============================================================
@@ -776,12 +1109,22 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-  python apply_brand.py --config brands/qiji.json --repo .
-  python apply_brand.py --config brands/qiji.json --repo . --dry-run
-  python apply_brand.py --config brands/qiji.json --repo . --verify
+  # 从上游 Hermes 出发
+  python apply_brand.py --config brands/heimirror.json --repo .
+
+  # 从已品牌化仓库出发（二次品牌化）
+  python apply_brand.py --config brands/heimirror.json --repo . --source-brand qiji
+
+  # 随机主题
+  python apply_brand.py --config brands/heimirror.json --repo . --random-theme
+
+  python apply_brand.py --config brands/heimirror.json --repo . --dry-run
+  python apply_brand.py --config brands/heimirror.json --repo . --verify
         """)
     parser.add_argument('--config', required=True, help='品牌配置 JSON 文件路径')
     parser.add_argument('--repo', required=True, help='仓库根目录路径')
+    parser.add_argument('--source-brand', help='源品牌标识（二次品牌化用，如 qiji/hermes）')
+    parser.add_argument('--random-theme', action='store_true', help='随机生成主题（配色+字体+布局任意组合）')
     parser.add_argument('--dry-run', action='store_true', help='预览变更，不写入文件')
     parser.add_argument('--verify', action='store_true', help='仅验证残留，不修改')
     args = parser.parse_args()
@@ -799,18 +1142,36 @@ def main():
     # 过滤掉 _comment 字段
     brand = {k: v for k, v in brand.items() if not k.startswith('_')}
 
+    # 随机主题覆盖
+    if args.random_theme:
+        brand["theme"] = {"palette": "random"}
+        log(f"{Colors.YELLOW}随机主题模式已启用{Colors.RESET}")
+
     repo = Path(args.repo).resolve()
+
+    source_profile = None
+    if args.source_brand:
+        source_profile = SOURCE_BRAND_PROFILES.get(args.source_brand)
+        if source_profile is None:
+            log(f"{Colors.RED}错误：未知源品牌 '{args.source_brand}'。可选: {', '.join(SOURCE_BRAND_PROFILES.keys())}{Colors.RESET}")
+            sys.exit(1)
 
     log(f"\n{Colors.BOLD}品牌化脚本{Colors.RESET}")
     log(f"  品牌: {brand['name_cn']} ({brand['name_en']})")
     log(f"  仓库: {repo}")
     log(f"  Portal: {brand['portal_url']}")
+    if source_profile:
+        log(f"  源品牌: {source_profile['name_cn']} ({source_profile['name_en']})")
     mode = "验证" if args.verify else ("预览" if args.dry_run else "执行")
     log(f"  模式: {mode}\n")
 
     if args.verify:
         success = verify(repo, brand)
         sys.exit(0 if success else 1)
+
+    # 第0层：通用品牌名替换（仅二次品牌化时运行）
+    if source_profile:
+        layer0_generic_rebrand(repo, brand, source_profile, args.dry_run)
 
     # 执行7层品牌化
     layer1_package_json(repo, brand, args.dry_run)
@@ -821,6 +1182,9 @@ def main():
     layer5b_frontend_components(repo, brand, args.dry_run)
     layer6_install_script(repo, brand, args.dry_run)
     layer7_skills(repo, brand, args.dry_run)
+
+    # 第二层：主题与 UI 定制
+    layer8_theme_yaml(repo, brand, args.dry_run)
 
     # 汇总
     total_changes = sum(c for _, _, _, c in changes_log)
