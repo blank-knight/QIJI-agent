@@ -38,6 +38,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import sys
 import urllib.request
 from pathlib import Path
@@ -447,6 +448,8 @@ def main():
     parser.add_argument('--portal-url', default='https://www.aicps.vip',
                         help='中转站 URL（默认 aicps.vip）')
     parser.add_argument('--no-interactive', action='store_true', help='非交互模式（取第一个候选）')
+    parser.add_argument('--auto-place-icons', action='store_true',
+                        help='自动把图标复制到 apps/desktop/ 对应位置（跳过手动复制步骤）')
     args = parser.parse_args()
 
     # --- 第1步：品牌名 ---
@@ -530,6 +533,31 @@ def main():
     )
     print(f"\n品牌配置已生成: {config_path}")
 
+    # --- 第5步（可选）：自动放置图标 ---
+    if args.auto_place_icons:
+        repo_root = script_dir.parent.parent
+        desktop_assets = repo_root / "apps" / "desktop" / "assets"
+        desktop_public = repo_root / "apps" / "desktop" / "public"
+
+        icon_targets = [
+            ("icon.ico", desktop_assets / "icon.ico"),
+            ("icon.icns", desktop_assets / "icon.icns"),
+            ("icon.png", desktop_public / "icon.png"),
+            ("apple-touch-icon.png", desktop_public / "apple-touch-icon.png"),
+            (f"{brand_id}-logo.png", desktop_public / f"{brand_id}-logo.png"),
+            (f"{brand_id}-logo.png", desktop_public / "qiji-brand.png"),  # 兼容引用
+        ]
+
+        print(f"\n自动放置图标 → apps/desktop/")
+        for src_name, dst in icon_targets:
+            src = output_dir / src_name
+            if src.exists():
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dst)
+                print(f"  ✓ {src_name} → {dst.relative_to(repo_root)}")
+            else:
+                print(f"  ⚠ {src_name} 不存在，跳过")
+
     # --- 汇总 + 下一步指引 ---
     print(f"\n{'='*60}")
     print(f"品牌生成完成！")
@@ -539,15 +567,20 @@ def main():
     print(f"  图标目录: {output_dir}")
     print(f"  配置文件: {config_path}")
     print(f"\n下一步：")
-    print(f"  1. 把图标复制到对应位置：")
-    print(f"     {output_dir}/icon.ico          → apps/desktop/assets/icon.ico")
-    print(f"     {output_dir}/icon.icns         → apps/desktop/assets/icon.icns")
-    print(f"     {output_dir}/icon.png          → apps/desktop/public/icon.png")
-    print(f"     {output_dir}/apple-touch-icon.png → apps/desktop/public/apple-touch-icon.png")
-    print(f"     {output_dir}/{brand_id}-logo.png  → apps/desktop/public/{brand_id}-logo.png")
-    print(f"  2. 在上游 fresh checkout 上执行品牌化：")
-    print(f"     python scripts/brand/apply_brand.py --config scripts/brand/brands/{brand_id}.json --repo .")
-    print(f"  3. 编译")
+    if args.auto_place_icons:
+        print(f"  图标已自动放置，直接品牌化：")
+        print(f"  1. python scripts/brand/apply_brand.py --config scripts/brand/brands/{brand_id}.json --repo . --source-brand qiji")
+        print(f"  2. 编译")
+    else:
+        print(f"  1. 把图标复制到对应位置（或加 --auto-place-icons 自动完成）：")
+        print(f"     {output_dir}/icon.ico          → apps/desktop/assets/icon.ico")
+        print(f"     {output_dir}/icon.icns         → apps/desktop/assets/icon.icns")
+        print(f"     {output_dir}/icon.png          → apps/desktop/public/icon.png")
+        print(f"     {output_dir}/apple-touch-icon.png → apps/desktop/public/apple-touch-icon.png")
+        print(f"     {output_dir}/{brand_id}-logo.png  → apps/desktop/public/{brand_id}-logo.png")
+        print(f"  2. 在上游 fresh checkout 上执行品牌化：")
+        print(f"     python scripts/brand/apply_brand.py --config scripts/brand/brands/{brand_id}.json --repo . --source-brand qiji")
+        print(f"  3. 编译")
 
 
 if __name__ == '__main__':
