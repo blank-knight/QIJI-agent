@@ -23,5 +23,14 @@
   "legal_trademarks": "奇计",
 
   "git_origin": "https://gitee.com/wintao-storm/QIJI-agent.git",
-  "git_remote_name": "gitee"
+  "git_remote_name": "gitee",
+
+  "_theme_comment": "第二层（可选）：主题与 UI 定制。四个维度各选一项，从预置模板库拼装。留空则使用默认主题（奇计青）。",
+  "theme": {
+    "palette": "teal",
+    "typography": "system",
+    "mode": "auto",
+    "density": "normal",
+    "font_url": ""
+  }
 }

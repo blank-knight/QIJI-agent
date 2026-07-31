@@ -19,6 +19,15 @@ import re
 import sys
 from pathlib import Path
 
+# Windows GBK 终端默认编码无法打印 ✓/✗/→ 等 Unicode 符号，强制 stdout/stderr 用 UTF-8。
+# reconfigure() 是 Python 3.7+，无副作用：已经是 UTF-8 时是空操作。
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, 'reconfigure'):
+        try:
+            _stream.reconfigure(encoding='utf-8', errors='replace')
+        except (ValueError, OSError):
+            pass
+
 
 # ============================================================
 # 工具函数
@@ -548,6 +557,106 @@ def layer6_install_script(repo, brand, dry_run):
 
 
 # ============================================================
+# 第7层：Skills 品牌化（qiji-geo 等内置 skill 的品牌名文案）
+# ============================================================
+
+def layer7_skills(repo, brand, dry_run):
+    """替换 skills/ 目录下内置 skill 的品牌名文案。
+
+    注意：
+    - 只替换用户可见的品牌名文字（奇计 → 新品牌名）
+    - 不替换目录名、package.json 的 name 字段、文件路径引用（这些对用户隐藏，改了风险高）
+    - GEO 服务端域名是运行时向用户获取的，不写死，无需替换
+    """
+    log(f"\n{Colors.CYAN}{Colors.BOLD}第7层：Skills 品牌名文案{Colors.RESET}")
+
+    skills_dir = repo / "skills"
+    if not skills_dir.is_dir():
+        log(f"{Colors.YELLOW}  ⚠ skills/ 目录不存在{Colors.RESET}")
+        return
+
+    # 要扫描的文件类型（排除 package-lock.json 这种生成文件）
+    scan_exts = {'.md', '.py', '.js', '.json', '.yaml', '.yml', '.txt'}
+    # 排除的文件名
+    skip_files = {'package-lock.json'}
+
+    # 品牌名替换规则
+    # 注意顺序：先替换长串的，避免部分匹配
+    brand_cn = brand["name_cn"]
+    brand_en = brand["name_en"]
+
+    # 需要替换的品牌词 → 目标词
+    # 只替换纯品牌名，不碰目录名/包名/路径标识符（qiji-geo, qiji-fork 等）
+    replacements = [
+        # 中文品牌名（各种上下文）
+        ("奇计GEO平台", f"{brand_cn}GEO平台"),
+        ("奇计网页端", f"{brand_cn}网页端"),
+        ("奇计后台", f"{brand_cn}后台"),
+        ("奇计客户端", f"{brand_cn}客户端"),
+        ("奇计账号", f"{brand_cn}账号"),
+        ("奇计AI", f"{brand_cn}AI"),
+        ("奇计改写", f"{brand_cn}改写"),
+        ("奇计表格", f"{brand_cn}表格"),
+        ("奇计用了", f"{brand_cn}用了"),
+        ("奇计平台", f"{brand_cn}平台"),
+        ("奇计后端", f"{brand_cn}后端"),
+        # 剩余的独立"奇计"（触发词、孤立提及等）
+        ("奇计", brand_cn),
+    ]
+
+    total_count = 0
+    changed_files = 0
+
+    # 遍历 skills/ 下所有子目录（qiji-geo 等）
+    for skill_dir in sorted(skills_dir.iterdir()):
+        if not skill_dir.is_dir():
+            continue
+
+        for filepath in sorted(skill_dir.rglob("*")):
+            if not filepath.is_file():
+                continue
+            if filepath.suffix not in scan_exts:
+                continue
+            if filepath.name in skip_files:
+                continue
+            # 跳过 node_modules
+            if "node_modules" in filepath.parts:
+                continue
+
+            try:
+                text = filepath.read_text(encoding='utf-8')
+            except (UnicodeDecodeError, PermissionError):
+                continue
+
+            if "奇计" not in text:
+                continue
+
+            original = text
+            file_count = 0
+            rel = filepath.relative_to(repo)
+
+            for old, new in replacements:
+                if old in text:
+                    c = text.count(old)
+                    text = text.replace(old, new)
+                    file_count += c
+
+            if text != original:
+                total_count += file_count
+                changed_files += 1
+                log(f"{Colors.GREEN}✓{Colors.RESET} {rel}")
+                log(f"{Colors.DIM}  奇计 → {brand_cn}: {file_count}处{Colors.RESET}")
+                changes_log.append((str(filepath), "奇计", brand_cn, file_count))
+                if not dry_run:
+                    filepath.write_text(text, encoding='utf-8')
+
+    if total_count == 0:
+        log(f"{Colors.DIM}  无品牌名残留{Colors.RESET}")
+    else:
+        log(f"{Colors.DIM}  合计: {total_count}处，{changed_files}个文件{Colors.RESET}")
+
+
+# ============================================================
 # 验证模式
 # ============================================================
 
@@ -620,6 +729,32 @@ def verify(repo, brand):
                 ['productName', 'appId', 'legalTrademarks', 'shortcutName', 'CFBundleName', 'maintainer', 'uninstallDisplayName']):
                 issues.append((str(pkg.relative_to(repo)), i, line.strip()))
 
+    # 5. skills/ 残留（品牌名"奇计"）
+    skills_dir = repo / "skills"
+    if skills_dir.is_dir():
+        scan_exts = {'.md', '.py', '.js', '.json', '.yaml', '.yml', '.txt'}
+        skip_files = {'package-lock.json'}
+        for skill_dir in skills_dir.iterdir():
+            if not skill_dir.is_dir():
+                continue
+            for filepath in skill_dir.rglob("*"):
+                if not filepath.is_file():
+                    continue
+                if filepath.suffix not in scan_exts:
+                    continue
+                if filepath.name in skip_files:
+                    continue
+                if "node_modules" in filepath.parts:
+                    continue
+                try:
+                    text = filepath.read_text(encoding='utf-8')
+                except (UnicodeDecodeError, PermissionError):
+                    continue
+                if "奇计" in text:
+                    for i, line in enumerate(text.split('\n'), 1):
+                        if "奇计" in line:
+                            issues.append((str(filepath.relative_to(repo)), i, line.strip()))
+
     if issues:
         log(f"{Colors.RED}发现 {len(issues)} 处残留：{Colors.RESET}\n")
         for filepath, lineno, content in issues:
@@ -658,7 +793,7 @@ def main():
         script_dir = Path(__file__).parent
         config_path = script_dir / args.config
 
-    with open(config_path, encoding='utf-8') as f:
+    with open(config_path, encoding='utf-8-sig') as f:
         brand = json.load(f)
 
     # 过滤掉 _comment 字段
@@ -677,7 +812,7 @@ def main():
         success = verify(repo, brand)
         sys.exit(0 if success else 1)
 
-    # 执行6层品牌化
+    # 执行7层品牌化
     layer1_package_json(repo, brand, args.dry_run)
     layer2_icons(repo, brand, args.dry_run)
     layer3_i18n(repo, brand, args.dry_run)
@@ -685,6 +820,7 @@ def main():
     layer5_portal_urls(repo, brand, args.dry_run)
     layer5b_frontend_components(repo, brand, args.dry_run)
     layer6_install_script(repo, brand, args.dry_run)
+    layer7_skills(repo, brand, args.dry_run)
 
     # 汇总
     total_changes = sum(c for _, _, _, c in changes_log)

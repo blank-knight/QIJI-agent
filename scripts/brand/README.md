@@ -1,6 +1,74 @@
 # 品牌化脚本使用指南
 
-## 快速开始
+> 两个脚本：
+> - **`generate_brand.py`** — 贴牌商什么都不提供时，一键生成全套品牌资产（起名 + Logo + 图标 + 配置）。
+> - **`apply_brand.py`** — 把品牌配置应用到上游代码（7层替换）。
+>
+> **第二层：主题与 UI 定制**（颜色/字体/布局组合）通过模板素材库拼装，见下方"第二层"小节。
+> 完整定制体系说明见 [`docs/offline-build/brand-customization.md`](../../docs/offline-build/brand-customization.md)。
+
+---
+
+## 零输入一键生成（generate_brand.py）
+
+当贴牌商不提供任何素材时，用这个脚本自动生成。
+
+### 用法
+
+```bash
+# 完全自动：起名 + AI 生成 Logo + 生成配置
+python scripts/brand/generate_brand.py
+
+# 指定品牌名（跳过起名）
+python scripts/brand/generate_brand.py --name 黑镜
+
+# 指定品牌名 + 英文名 + 配色
+python scripts/brand/generate_brand.py --name 黑镜 --name-en HeiMirror --palette midnight
+
+# 从本地图片导入 Logo（跳过 AI 生成，适合外部工具/Midjourney 生成的图）
+python scripts/brand/generate_brand.py --name 黑镜 --logo-source ./my-logo.png
+
+# 只看名字候选
+python scripts/brand/generate_brand.py --name-only
+```
+
+### 参数
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `--name` | 品牌名（不填则自动起名） | — |
+| `--name-en` | 英文名（不填则从拼音推断，需 pypinyin） | — |
+| `--palette` | 配色模板 | `teal` |
+| `--logo-source` | 本地 Logo 图片路径（跳过 AI 生成） | — |
+| `--logo-count` | AI 生成 Logo 候选数量 | 4 |
+| `--portal-url` | 中转站 URL | `https://www.aicps.vip` |
+| `--no-interactive` | 非交互模式（自动选第一个候选） | false |
+
+### 输出
+
+```
+scripts/brand/brands/{brand-id}.json     — 品牌配置（直接喂给 apply_brand.py）
+scripts/brand/assets/{brand-id}/         — 全套图标
+  ├── icon.ico          (Windows, 多尺寸)
+  ├── icon.icns         (macOS)
+  ├── icon.png          (512×512)
+  ├── apple-touch-icon.png (180×180)
+  └── {brand-id}-logo.png (256×256)
+```
+
+### Logo 生成方式
+
+1. **AI 生成（默认）**：调 image_gen provider（FAL/xAI/OpenAI）生成 N 个候选，交互式筛选。需要先配好 `hermes tools` → Image Generation。
+2. **本地导入**：`--logo-source` 指定图片，适合用 Midjourney/外部工具生成的 Logo。
+
+### 依赖
+
+- **Pillow**（核心依赖，已内置）— 图标裁剪
+- **pypinyin**（可选）— 从中文名推断英文名。没装时用 `--name-en` 手动指定，或 `pip install pypinyin`
+
+---
+
+## 应用品牌到代码（apply_brand.py）
 
 ### 1. 从上游 fresh checkout 开始
 
@@ -25,7 +93,7 @@ python scripts/brand/apply_brand.py \
   --dry-run
 ```
 
-### 4. 执行品牌化
+### 4. 执行品牌化（第一层）
 
 ```bash
 python scripts/brand/apply_brand.py \
@@ -44,19 +112,24 @@ python scripts/brand/apply_brand.py \
 
 ### 6. 手动处理脚本无法自动化的部分（见下方）
 
+### 7. （可选）执行第二层：主题与 UI 定制
+
+见下方"第二层：主题与 UI 定制"小节。
+
 ---
 
-## 自动覆盖的 6 层
+## 第一层自动覆盖的 6 个子层
 
-| 层 | 内容 | 自动化 |
+| 子层 | 内容 | 自动化 |
 |----|------|--------|
-| 1 | package.json (productName, appId 等) | ✅ |
-| 2 | 图标资源 (icon.ico, icon.png 等) | ❌ 手动 |
-| 3 | i18n 国际化 (zh.ts, en.ts, zh-hant.ts, ja.ts) | ✅ |
-| 4 | Python 后端 (web_server.py, setup.py) | ✅ |
-| 5 | Portal URL (6个Python文件, 13处) | ✅ |
-| 5.5 | 前端组件品牌名 | ✅ (部分) |
-| 6 | install.ps1 品牌化 + vendor 强制覆盖 | ✅ |
+| 1.1 | package.json (productName, appId 等) | ✅ |
+| 1.2 | 图标资源 (icon.ico, icon.png 等) | ❌ 手动 |
+| 1.3 | i18n 国际化 (zh.ts, en.ts, zh-hant.ts, ja.ts) | ✅ |
+| 1.4 | Python 后端 (web_server.py, setup.py) | ✅ |
+| 1.5 | Portal URL (6个Python文件, 13处) | ✅ |
+| 1.5b | 前端组件品牌名 | ✅ (部分) |
+| 1.6 | install.ps1 品牌化 + vendor 强制覆盖 | ✅ |
+| 1.7 | skills/ 品牌名文案（qiji-geo 等） | ✅ |
 
 ---
 
@@ -115,14 +188,53 @@ apps/desktop/build/preinstalled/
 
 ---
 
+## 第二层：主题与 UI 定制（可选）
+
+第一层只换品牌身份。如果贴牌商还需要差异化的视觉风格（颜色/字体/明暗/密度），走第二层。
+
+### 工作流
+
+1. 贴牌商从模板素材库选四个维度（见品牌配置的 `theme` 字段）：
+   - **配色（palette）：** `teal` / `nous-blue` / `midnight` / `ember` / `mono` / `cyberpunk` / `rose`
+   - **字体（typography）：** `system`（默认）或 `custom`（需提供 `fontUrl`）
+   - **明暗模式（mode）：** `light` / `dark` / `auto`
+   - **布局密度（density）：** `normal` / `large`
+2. 在品牌配置 JSON 的 `theme` 字段填入选择（见 `template.json`）。
+3. 运行 `apply_brand.py`，脚本会从模板库拼装出一份 YAML 主题文件。
+4. 脚本自动写入 `~/.hermes/dashboard-themes/{brand-id}.yaml`，并设为活动主题。
+5. 桌面端下次启动即应用，**无需重新编译**。
+
+### 配置示例
+
+```json
+{
+  "name_cn": "黑镜",
+  "theme": {
+    "palette": "midnight",
+    "typography": "system",
+    "mode": "auto",
+    "density": "normal"
+  }
+}
+```
+
+### 模板素材库位置
+
+配色模板来自桌面端内置主题（`apps/desktop/src/themes/presets.ts`），每份都已校验对比度和暗色回归。**不开放裸 CSS 编辑**——贴牌商只能从预置模板里选，避免拼接出不可读的配色。
+
+> 详细维度说明、主题系统架构见 [`docs/offline-build/brand-customization.md`](../../docs/offline-build/brand-customization.md) "第二层"章节。
+
+---
+
 ## 新增品牌流程
 
 1. `cp scripts/brand/brands/template.json scripts/brand/brands/new-brand.json`
-2. 编辑 `new-brand.json`
+2. 编辑 `new-brand.json`（含第一层品牌信息 + 可选的第二层 `theme` 字段）
 3. Fresh clone 上游
 4. `python apply_brand.py --config brands/new-brand.json --repo .`
 5. 手动处理图标 + OAuth
-6. 编译
+6. （可选）确认第二层主题 YAML 已生成到 `~/.hermes/dashboard-themes/`
+7. 编译
 
 ---
 

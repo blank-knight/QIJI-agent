@@ -41,7 +41,7 @@
 | `public/icon.png` | 打包后 exe 图标 |
 | `public/qiji-brand.png` | BrandMark 组件、推荐 provider 行 |
 
-> 完整图标替换流程（含 .ico/.icns）见 [`brand-customization.md`](./brand-customization.md) 第2层。
+> 完整图标替换流程（含 .ico/.icns）见 [`brand-customization.md`](./brand-customization.md) 1.2 图标资源。
 
 ---
 
@@ -54,7 +54,7 @@
 | `src/app/settings/constants.ts` | 45 | `docsUrl` — "了解更多"链接 |
 | `src/components/desktop-onboarding-overlay.tsx` | 556 | 图标 `qiji-brand.png` |
 
-> ⚠️ 点击"连接"按钮的 OAuth 跳转链接在 **Python 后端**（13处），详见 [`brand-customization.md`](./brand-customization.md) 第5层。
+> ⚠️ 点击"连接"按钮的 OAuth 跳转链接在 **Python 后端**（13处），详见 [`brand-customization.md`](./brand-customization.md) 1.5 提供方/订阅配置。
 
 ---
 

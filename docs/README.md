@@ -13,7 +13,7 @@
 | 文件 | 说明 |
 |------|------|
 | how-it-works.md | **离线包原理详解** — vendor 是什么、npm 为什么在 desktop 下、完整架构图 |
-| brand-customization.md | **品牌替换指南** — 换名称/图标/链接该改哪些文件 |
+| brand-customization.md | **品牌定制指南（分层架构）** — 第一层换品牌名/Logo/安装包身份，第二层主题/UI 任意组合 |
 | build-and-test.md | **编译测试手册** — 完整编译流程、一键脚本、检查清单、三种测试方式 |
 | bugs-and-pitfalls.md | **踩坑记录** — 11个坑（★高频标注）、根因、修复方案 |
 | ui-customization-guide.md | UI 定制速查 — 改文案/颜色/图标的快速参考 |
