@@ -101,6 +101,23 @@ export function useGatewayBoot({
     let reconnecting = false
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null
     let reconnectAttempt = 0
+    // Initial-boot bounded retry: a logout→reload boot can race the backend
+    // restart (stale cached WS URL against a SIGTERM'd backend) and fail once;
+    // retry the whole boot a few times before latching a fatal failure.
+    let bootRetryCount = 0
+    let bootRetryTimer: ReturnType<typeof setTimeout> | null = null
+    const BOOT_MAX_RETRIES = 3
+    // 慢速自动重试：快速重试（1s/2s/4s，总窗口 ~7s）耗尽后 failDesktopBoot
+    // 钉死失败层，但后端重启竞态窗口可达 10s+——事后日志证明新后端在最后
+    // 一次失败后 1 秒就已就绪，却再无拨号，用户干等 12 分钟直到手动重启。
+    // 故失败态不再终态：每 15s 自动重跑完整 boot（每轮重置快速重试预算），
+    // 任一次成功即 completeDesktopBoot 自愈；最多 3 轮防死循环。复用
+    // bootRetryTimer 以白捡 cleanup 与唤醒信号的提前触发。
+    let bootSlowRetryCount = 0
+    const BOOT_SLOW_RETRY_DELAY_MS = 15_000
+    const BOOT_MAX_SLOW_RETRIES = 3
+    // 重连退避失败多少次后升级为可恢复 boot error（1+2+4+8+15+15 ≈ 45s）
+    const RECONNECT_ESCALATION_THRESHOLD = 6
     // Surface "sign in again" once per disconnect episode, not on every backoff
     // tick — a stale OAuth ticket fails every attempt and would otherwise stack
     // identical error toasts (and their haptics). Reset on the next clean open.
@@ -155,6 +172,17 @@ export function useGatewayBoot({
         }
 
         reconnectAttempt = 0
+        // 逃生口自愈：重连成功后清掉此前升级的 boot error（BootFailureOverlay
+        // 收起，回到正常工作区），并重置 OAuth 一次性提示标记。
+        if ($desktopBoot.get().error !== null) {
+          setDesktopBootStep({
+            phase: 'renderer.ready',
+            message: translateNow('boot.ready'),
+            progress: 100,
+            running: false
+          })
+        }
+        reauthNotified = false
         // Resync state that may have moved on the backend while we were asleep.
         await callbacksRef.current.refreshHermesConfig().catch(() => undefined)
         await callbacksRef.current.refreshSessions().catch(() => undefined)
@@ -166,6 +194,12 @@ export function useGatewayBoot({
         if (!cancelled && isGatewayReauthRequired(err) && !reauthNotified) {
           reauthNotified = true
           notifyError(err, translateNow('boot.errors.gatewaySignInRequired'))
+        }
+        // 死端逃生口：重连循环失败次数到阈值仍连不上 → 置可恢复 boot error，
+        // 让 BootFailureOverlay（重试/登录/换网关）浮出水面替代无限 CONNECTING
+        // 转圈。不 return、不清循环：后台继续退避重试，一旦连上即自愈清 error。
+        if (!cancelled && !gatewayOpen() && reconnectAttempt >= RECONNECT_ESCALATION_THRESHOLD) {
+          failDesktopBoot(translateNow('boot.errors.gatewayUnreachableAfterRetries'))
         }
       } finally {
         reconnecting = false
@@ -190,8 +224,22 @@ export function useGatewayBoot({
       }, delay)
     }
 
+    // 自救信号（online/可见/powerResume）不应被 bootCompleted 挡死：
+    // 登出→reload 后 boot 撞上后端重启竞态失败时，重试定时器在退避等待中，
+    // 唤醒信号到达却因 bootCompleted=false 直接 no-op，错过最快的自愈时机。
+    // 改为：boot 未完成但有挂起的重试定时器 → 立即触发（提前退避）。
     const reconnectNow = () => {
-      if (cancelled || !bootCompleted) {
+      if (cancelled) {
+        return
+      }
+
+      if (!bootCompleted && bootRetryTimer !== null) {
+        clearTimeout(bootRetryTimer)
+        bootRetryTimer = null
+        void boot()
+      }
+
+      if (!bootCompleted) {
         return
       }
 
@@ -314,8 +362,15 @@ export function useGatewayBoot({
     })
 
     async function boot() {
+      // Transport-race gate: only failures AFTER getConnection resolved are
+      // retried. A getConnection rejection means bootstrap/remote wait failed
+      // (45s timeout against a dead VPS) — retrying multiplies the wait and
+      // delays the failure overlay; fail fast as before.
+      let connResolved = false
+
       try {
         const conn = await desktop.getConnection()
+        connResolved = true
 
         if (cancelled) {
           return
@@ -379,10 +434,42 @@ export function useGatewayBoot({
         bootCompleted = true
       } catch (err) {
         if (!cancelled) {
+          // 登出→重新登录链路：reload 后 boot 可能撞上后端重启竞态（旧后端被
+          // SIGTERM、新后端端口未就绪），一次失败就 failDesktopBoot 会把失败
+          // 层永久钉死在登录页下面（boot 无重试、唤醒信号全部 no-op），用户
+          // 只能重启客户端。改为有界自动重试：1s/2s/4s 退避重跑整个 boot，
+          // 任一次成功即自愈；重试期间保持 boot 进度态（连接遮罩）而非失败态。
+          // 仅重试传输竞态类失败（getConnection 已成功后的 WS 拨号失败）。
+          if (connResolved && bootRetryCount < BOOT_MAX_RETRIES) {
+            bootRetryCount += 1
+            const delay = 1_000 * 2 ** (bootRetryCount - 1)
+            console.warn(`[boot] attempt ${bootRetryCount}/${BOOT_MAX_RETRIES} failed; retrying in ${delay}ms`, err)
+            bootRetryTimer = setTimeout(() => {
+              bootRetryTimer = null
+              void boot()
+            }, delay)
+            return
+          }
+
           const message = err instanceof Error ? err.message : String(err)
           failDesktopBoot(message)
           notifyError(err, translateNow('boot.errors.desktopBootFailed'))
           setSessionsLoading(false)
+          // 失败态自愈：快速重试耗尽 ≠ 终态。后台重启竞态的窗口比快速
+          // 重试链长，钉死会让用户面对失败层干等。15s 后自动重跑完整
+          // boot（重置快速重试预算），有界 3 轮。成功路径 completeDesktopBoot
+          // 已收失败层，无需在此清计数。与快速重试同 gate：仅传输竞态类
+          // 失败（getConnection 已成功后的 WS 拨号失败）；getConnection
+          // 拒绝（死 VPS / bootstrap 失败）维持 fail-fast 不重试。
+          if (connResolved && bootSlowRetryCount < BOOT_MAX_SLOW_RETRIES) {
+            bootSlowRetryCount += 1
+            console.warn(`[boot] fatal; slow auto-retry ${bootSlowRetryCount}/${BOOT_MAX_SLOW_RETRIES} in ${BOOT_SLOW_RETRY_DELAY_MS}ms`)
+            bootRetryTimer = setTimeout(() => {
+              bootRetryTimer = null
+              bootRetryCount = 0
+              void boot()
+            }, BOOT_SLOW_RETRY_DELAY_MS)
+          }
         }
       }
     }
@@ -392,6 +479,10 @@ export function useGatewayBoot({
     return () => {
       cancelled = true
       clearReconnectTimer()
+      if (bootRetryTimer !== null) {
+        clearTimeout(bootRetryTimer)
+        bootRetryTimer = null
+      }
       clearInterval(keepaliveTimer)
       offWorking()
       offAttention()

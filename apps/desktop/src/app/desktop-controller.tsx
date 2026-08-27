@@ -7,6 +7,7 @@ import { BootFailureOverlay } from '@/components/boot-failure-overlay'
 import { DesktopInstallOverlay } from '@/components/desktop-install-overlay'
 import { DesktopOnboardingOverlay } from '@/components/desktop-onboarding-overlay'
 import { GatewayConnectingOverlay } from '@/components/gateway-connecting-overlay'
+import { ClientUpdateOverlay } from '@/components/client-update-overlay'
 import { LoginOverlay } from '@/components/login-overlay'
 import { Pane, PaneMain } from '@/components/pane-shell'
 import { RemoteDisplayBanner } from '@/components/remote-display-banner'
@@ -47,6 +48,7 @@ import { respondToApprovalAction } from '../store/native-notifications'
 import { setPetActivity } from '../store/pet'
 import { setPetOverlayOpenAppHandler, setPetOverlaySubmitHandler } from '../store/pet-overlay'
 import { $auth, isAuthenticated, isTokenExpired } from '../store/auth'
+import { checkClientUpdate } from '../store/client-update'
 import { $filePreviewTarget, $previewTarget, closeActiveRightRailTab } from '../store/preview'
 import {
   $activeGatewayProfile,
@@ -92,7 +94,7 @@ import {
 } from '../store/session'
 import { onSessionsChanged } from '../store/session-sync'
 import { clearSessionTodos, setSessionTodos, todoListActive } from '../store/todos'
-import { openUpdatesWindow, startUpdatePoller, stopUpdatePoller } from '../store/updates'
+import { openUpdatesWindow } from '../store/updates'
 import { isSecondaryWindow } from '../store/windows'
 
 import { ChatView } from './chat'
@@ -300,12 +302,13 @@ export function DesktopController() {
   }, [gatewayState, authState.apiKey, needLogin])
 
   useEffect(() => {
-    startUpdatePoller()
+    // 更新统一走 URL 通道（PHP 后端 /update/check → downloadurl），
+    // git 更新轮询已停用（离线包无 git 仓库）。
+    void checkClientUpdate()
     const unsubscribe = window.hermesDesktop?.onOpenUpdatesRequested?.(() => openUpdatesWindow())
 
     return () => {
       unsubscribe?.()
-      stopUpdatePoller()
     }
   }, [])
 
@@ -1047,6 +1050,8 @@ export function DesktopController() {
       )}
       <RemoteDisplayBanner />
       {!isSecondaryWindow() && <DesktopInstallOverlay />}
+      {/* 客户端更新覆盖层：强制更新阻断 / 下载进度（登录页之上） */}
+      {!isSecondaryWindow() && <ClientUpdateOverlay />}
       {!isSecondaryWindow() && (
         <DesktopOnboardingOverlay
           enabled={gatewayState === 'open'}

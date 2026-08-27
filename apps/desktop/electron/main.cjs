@@ -33,6 +33,7 @@ const fs = require('node:fs')
 const http = require('node:http')
 const https = require('node:https')
 const net = require('node:net')
+const os = require('node:os')
 const path = require('node:path')
 const { pathToFileURL } = require('node:url')
 const { execFileSync, spawn } = require('node:child_process')
@@ -281,12 +282,42 @@ function resolveHermesHome() {
     if (fromRegistryHermes) return normalizeHermesHomeRoot(fromRegistryHermes)
   }
   if (IS_WINDOWS && process.env.LOCALAPPDATA) {
-    return path.join(process.env.LOCALAPPDATA, 'qiji')
+    // 品牌兜底目录名与安装器（BrandInfo.cs）同源 —— 贴牌改名只改 electron/brand.cjs
+    const brand = require('./brand.cjs')
+    return path.join(process.env.LOCALAPPDATA, brand.dataDirName)
   }
-  return path.join(app.getPath('home'), '.qiji')
+  const brandFallback = require('./brand.cjs')
+  return path.join(app.getPath('home'), '.' + brandFallback.dataDirName)
 }
 
 const HERMES_HOME = resolveHermesHome()
+
+// ---------------------------------------------------------------------------
+// 主进程全局异常兜底 —— 任何漏网的异常都必须留下尸检报告再死/再活。
+// 没有这个，main 进程炸了就是静默消失，desktop.log 上一行痕迹都没有。
+// ---------------------------------------------------------------------------
+function installGlobalCrashHandlers() {
+  // uncaughtException：主进程已处于未定义状态，记录后退出（留尸检再死）
+  process.on('uncaughtException', (err) => {
+    try {
+      rememberLog(`[main-crash] uncaughtException: ${err && err.stack ? err.stack : String(err)}`)
+    } catch { /* 尽力而为 */ }
+    setTimeout(() => process.exit(1), 500)
+  })
+  // unhandledRejection：只记录不退出——一个漏接的 promise 拒绝不该连累整个客户端闪退
+  process.on('unhandledRejection', (reason) => {
+    try {
+      rememberLog(`[main-warn] unhandledRejection: ${reason && reason.stack ? reason.stack : String(reason)}`)
+    } catch { /* 尽力而为 */ }
+  })
+}
+
+installGlobalCrashHandlers()
+
+// 便捷访问品牌数据目录名（老目录检测等处使用）
+function brandDataDirName() {
+  return require('./brand.cjs').dataDirName
+}
 
 function hermesManagedNodePathEntries() {
   // NOTE: keep this ordering in sync with iter_hermes_node_dirs() in
@@ -711,6 +742,11 @@ let appTray = null
 let isQuitting = false
 let hermesProcess = null
 let connectionPromise = null
+// True while the primary backend is being torn down on purpose (logout /
+// profile switch / connection change). The renderer reloads immediately
+// after, so the exit must NOT be broadcast as a failure — otherwise the
+// boot-failure overlay flashes for a frame before the reload clears it.
+let plannedPrimaryTeardown = false
 // Additional per-profile backends, keyed by profile name. The PRIMARY backend
 // (the desktop's launch profile) stays managed by hermesProcess +
 // connectionPromise + startHermes(); this pool only holds EXTRA profile
@@ -1543,10 +1579,26 @@ function runGit(args, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(
       resolveGitBinary(),
-      IS_WINDOWS ? ['-c', 'windows.appendAtomically=false', ...args] : args,
+      // -c credential.helper= (empty) blocks ALL credential helpers — without
+      // it, Git Credential Manager pops a GUI "CredentialHelperSelector"
+      // dialog during self-update checks whenever a network hiccup makes git
+      // ask for credentials. We never want GUI prompts from background git:
+      // GIT_TERMINAL_PROMPT=0 kills the terminal prompt, GCM_INTERACTIVE=never
+      // makes GCM refuse to show UI, and the empty helper kills even that.
+      // Failures fall back to the HTTP update channel instead.
+      IS_WINDOWS
+        ? ['-c', 'credential.helper=', '-c', 'windows.appendAtomically=false', ...args]
+        : args,
       hiddenWindowsChildOptions({
         cwd: options.cwd,
-        env: { ...process.env, ...(options.env || {}), GIT_TERMINAL_PROMPT: '0' },
+        env: {
+          ...process.env,
+          ...(options.env || {}),
+          GIT_TERMINAL_PROMPT: '0',
+          GCM_INTERACTIVE: 'never',
+          GIT_ASKPASS: '/dev/null',
+          SSH_ASKPASS: '/dev/null'
+        },
         stdio: ['ignore', 'pipe', 'pipe']
       })
     )
@@ -3053,6 +3105,20 @@ async function ensureRuntime(backend) {
   // to a renderer-side install overlay.
   if (backend.kind === 'bootstrap-needed') {
     rememberLog('[bootstrap] no 奇计 install found; starting first-launch bootstrap')
+
+    // 老目录保险丝：数据目录品牌化（hermes→qiji）后，老用户首次启动新包会走到
+    // 这里静默重装。检测到老版数据目录还躺在原地时，留下醒目警告，让排障的人
+    // 第一时间知道旧数据（会话/配置/key）搁浅在哪，而不是全靠推理。
+    if (IS_WINDOWS && process.env.LOCALAPPDATA) {
+      const legacyRoot = path.join(process.env.LOCALAPPDATA, 'hermes', 'hermes-agent')
+      const legacyMarker = path.join(legacyRoot, '.hermes-bootstrap-complete')
+      if (fileExists(legacyMarker)) {
+        rememberLog(
+          `[bootstrap] ⚠ 检测到旧版数据目录 ${path.dirname(legacyRoot)} 存在完整安装（含会话/配置/密钥）。` +
+            `本次为目录改名（hermes→${brandDataDirName()}）后的首次重装，旧数据未被读取也未被删除。`
+        )
+      }
+    }
 
     if (await handOffWindowsBootstrapRecovery('bootstrap-needed')) {
       const handoffError = new Error('奇计恢复已交给安装程序。桌面将在恢复完成后自动重启。')
@@ -5127,9 +5193,11 @@ function resetHermesConnection() {
 async function teardownPrimaryBackendAndWait() {
   // Capture the reference before resetHermesConnection() nulls hermesProcess.
   const dying = hermesProcess && !hermesProcess.killed ? hermesProcess : null
+  plannedPrimaryTeardown = true
   resetHermesConnection()
 
   await waitForBackendExit(dying)
+  plannedPrimaryTeardown = false
 }
 
 async function waitForBackendExit(child, timeoutMs = 5000) {
@@ -5165,6 +5233,44 @@ async function waitForBackendExit(child, timeoutMs = 5000) {
 // that defers to active_profile / default).
 function primaryProfileKey() {
   return readActiveDesktopProfile() || 'default'
+}
+
+// Materialize the directory skeleton for a named profile before the backend
+// launches with `--profile <name>`. The Python side (resolve_profile_env)
+// hard-fails when the directory is missing ("Profile 'x' does not exist.
+// Create it with: hermes profile create x"), which used to crash-loop the
+// backend after an account→profile switch: the renderer's profile.set only
+// writes the pointer, nobody creates the directory. Mirrors the skeleton of
+// hermes_cli.profiles.create_profile (_PROFILE_DIRS + empty .env) without
+// cloning any state — the dashboard builds the rest on first run. Idempotent.
+function ensureNamedProfileDir(name) {
+  try {
+    const canon = String(name || '').trim()
+    if (!canon || canon === 'default' || !PROFILE_NAME_RE.test(canon)) {
+      return
+    }
+    // Profiles root mirrors _get_profiles_root(): anchored to the hermes
+    // ROOT, not to a profile-scoped HERMES_HOME. resolveHermesHome() returns
+    // the root for the desktop's brand layout (…/qiji), so profiles live at
+    // <root>/profiles/<name>.
+    const profilesRoot = path.join(HERMES_HOME, 'profiles')
+    const dir = path.join(profilesRoot, canon)
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true })
+      for (const sub of ['memories', 'sessions', 'skills', 'skins', 'logs', 'plans', 'workspace', 'cron', 'home']) {
+        fs.mkdirSync(path.join(dir, sub), { recursive: true })
+      }
+      const envPath = path.join(dir, '.env')
+      if (!fs.existsSync(envPath)) {
+        fs.writeFileSync(envPath, '# Per-profile secrets for this Hermes profile.\n')
+      }
+      rememberLog(`Created profile directory skeleton for "${canon}" at ${dir}`)
+    }
+  } catch (error) {
+    // Best-effort: a failure here must not block startup — the backend's own
+    // error will surface if the directory truly can't be used.
+    rememberLog(`ensureNamedProfileDir("${name}") failed: ${error.message}`)
+  }
 }
 
 // Resolve a backend connection for the given profile. Routes the primary
@@ -5269,6 +5375,7 @@ async function spawnPoolBackend(profile, entry) {
   // step 3 in hermes_cli/main.py), so the child re-homes to this profile.
   // --port 0: the OS assigns an ephemeral port; the child announces it on stdout.
   const dashboardArgs = ['--profile', profile, 'dashboard', '--no-open', '--host', '127.0.0.1', '--port', '0']
+  ensureNamedProfileDir(profile)
   const backend = await ensureRuntime(resolveHermesBackend(dashboardArgs))
   const hermesCwd = resolveHermesCwd()
   const webDist = resolveWebDist()
@@ -5487,6 +5594,7 @@ async function startHermes() {
     const activeProfile = readActiveDesktopProfile()
     if (activeProfile) {
       dashboardArgs.unshift('--profile', activeProfile)
+      ensureNamedProfileDir(activeProfile)
     }
     await advanceBootProgress('backend.runtime', 'Resolving 奇计 runtime', 28)
     const backend = await ensureRuntime(resolveHermesBackend(dashboardArgs))
@@ -5552,6 +5660,13 @@ async function startHermes() {
       rememberLog(`奇计 backend exited (${signal || code})`)
       hermesProcess = null
       connectionPromise = null
+      if (plannedPrimaryTeardown) {
+        // Deliberate teardown (logout / profile switch): the renderer is
+        // about to reload. Broadcasting the exit would flash the boot
+        // failure overlay for a frame — skip both the broadcast and the
+        // boot error latch.
+        return
+      }
       sendBackendExit({ code, signal })
       if (!backendReady) {
         const message = `奇计 backend exited before it became ready (${signal || code}).`
@@ -5975,12 +6090,16 @@ function createWindow() {
     const details = detailsOrLevel && typeof detailsOrLevel === 'object' ? detailsOrLevel : null
     const level = details ? details.level : detailsOrLevel
 
-    if (level !== 3) return
+    // 记录 warning(2) 及以上：boot 重试链路打的是 console.warn，只记 error
+    // 会把登出竞态、WS 拨号失败等关键诊断全部吞掉（实案：4 条 WS 被掐、
+    // 重试 3 次全灭，desktop.log 零渲染层日志，定位耗时一晚）。
+    if (level < 2) return
 
     const text = details ? details.message : message
     const src = details ? details.sourceUrl : sourceId
     const lineNo = details ? details.lineNumber : line
-    rememberLog(`[renderer console] ${text} (${src}:${lineNo})`)
+    const tag = level >= 3 ? 'error' : 'warn'
+    rememberLog(`[renderer console:${tag}] ${text} (${src}:${lineNo})`)
   })
 
   if (DEV_SERVER) {
@@ -6270,6 +6389,13 @@ ipcMain.handle('hermes:connection-config:apply', async (_event, payload) => {
 ipcMain.handle('hermes:profile:get', async () => ({ profile: readActiveDesktopProfile() }))
 ipcMain.handle('hermes:profile:set', async (_event, name) => {
   const next = writeActiveDesktopProfile(name)
+
+  // The pointer alone is not enough: the backend hard-fails when the named
+  // profile directory is missing. Materialize the skeleton eagerly so the
+  // re-homed backend (spawned right after the reload below) always finds it.
+  if (next && next !== 'default') {
+    ensureNamedProfileDir(next)
+  }
 
   // Switching profiles is a backend re-home: relaunch the dashboard under the
   // new HERMES_HOME. Pool backends keep their own homes, so only the primary
@@ -6627,6 +6753,173 @@ ipcMain.handle('hermes:openExternal', (_event, url) => {
   if (!openExternalUrl(url)) {
     throw new Error('Invalid external URL')
   }
+})
+
+// ===========================================================================
+// Client update (URL-based) — download the installer published on the PHP
+// backend and launch it. The offline package has no git repo, so updates
+// uniformly flow through GET /api/client/v1/update/check → downloadurl.
+// ===========================================================================
+
+function sanitizeInstallerName(rawUrl) {
+  let name = ''
+
+  try {
+    name = decodeURIComponent(new URL(rawUrl).pathname.split('/').filter(Boolean).pop() || '')
+  } catch {
+    name = ''
+  }
+
+  // Strip anything that could escape the updates dir; keep a boring filename.
+  name = name.replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 120)
+
+  // No usable extension (e.g. a bare CDN path) → assume the published
+  // installer; otherwise keep whatever the publisher named it (.exe/.msi/.zip).
+  if (!/\.[a-zA-Z0-9]{1,5}$/.test(name)) {
+    name = `${name || 'qiji-setup'}.exe`
+  }
+
+  return name
+}
+
+// Stream the installer to <userData>/updates/<name>. Follows redirects
+// (CDN/OSS download links commonly 302). Reports progress as
+// { received, total, percent } — percent is 0 when the server sends no
+// Content-Length (chunked), the renderer then shows an indeterminate bar.
+function downloadInstallerFile(rawUrl, onProgress, redirectsLeft = 5) {
+  return new Promise((resolve, reject) => {
+    let parsed
+
+    try {
+      parsed = new URL(String(rawUrl))
+    } catch {
+      reject(new Error('无效的下载地址'))
+      return
+    }
+
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      reject(new Error(`不支持的下载协议: ${parsed.protocol}`))
+      return
+    }
+
+    const client = parsed.protocol === 'https:' ? https : http
+
+    const req = client.request(parsed, { method: 'GET' }, res => {
+      const status = res.statusCode || 0
+
+      if (status >= 300 && status < 400 && res.headers.location) {
+        res.resume()
+
+        if (redirectsLeft <= 0) {
+          reject(new Error('下载地址重定向次数过多'))
+          return
+        }
+
+        try {
+          const next = new URL(res.headers.location, parsed).toString()
+          downloadInstallerFile(next, onProgress, redirectsLeft - 1).then(resolve, reject)
+        } catch {
+          reject(new Error('无效的重定向地址'))
+        }
+        return
+      }
+
+      if (status >= 400) {
+        res.resume()
+        reject(new Error(`下载失败 (HTTP ${status})`))
+        return
+      }
+
+      const total = Number(res.headers['content-length'] || 0)
+      const dir = path.join(app.getPath('userData'), 'updates')
+      const filePath = path.join(dir, sanitizeInstallerName(rawUrl))
+      let received = 0
+      let lastReported = 0
+      let settled = false
+
+      const done = (err, result) => {
+        if (settled) return
+        settled = true
+        resolveReject(err, result)
+      }
+
+      const resolveReject = (err, result) => (err ? reject(err) : resolve(result))
+
+      fs.promises
+        .mkdir(dir, { recursive: true })
+        .then(() => {
+          const out = fs.createWriteStream(filePath)
+
+          const fail = err => {
+            req.destroy()
+            out.destroy()
+            done(err)
+          }
+
+          res.on('data', chunk => {
+            received += chunk.length
+
+            // Throttle progress events to ~4/s; 500MB installers would
+            // otherwise flood the IPC channel.
+            if (onProgress && received - lastReported >= 250_000) {
+              lastReported = received
+              onProgress({
+                received,
+                total,
+                percent: total > 0 ? Math.floor((received / total) * 100) : 0
+              })
+            }
+          })
+          res.on('error', fail)
+          res.on('end', () => {
+            if (onProgress) {
+              onProgress({ received, total: total || received, percent: 100 })
+            }
+          })
+
+          out.on('error', fail)
+          out.on('finish', () => done(null, filePath))
+          res.pipe(out)
+        })
+        .catch(err => done(err))
+    })
+
+    req.on('error', reject)
+    // Idle timeout — resets on data; a stalled CDN link aborts in 60s.
+    req.setTimeout(60_000, () => req.destroy(new Error('下载超时')))
+    req.end()
+  })
+}
+
+ipcMain.handle('hermes:clientUpdate:downloadAndRun', async (_event, rawUrl) => {
+  const url = String(rawUrl || '').trim()
+
+  if (!/^https?:\/\//i.test(url)) {
+    throw new Error('无效的下载地址')
+  }
+
+  const sendProgress = payload => {
+    try {
+      mainWindow?.webContents?.send?.('hermes:clientUpdate:progress', payload)
+    } catch { /* window may be mid-teardown while quitting */ }
+  }
+
+  const filePath = await downloadInstallerFile(url, sendProgress)
+
+  rememberLog(`[client-update] installer downloaded: ${url} -> ${filePath}`)
+
+  const openError = await shell.openPath(filePath)
+
+  if (openError) {
+    throw new Error(`无法启动安装程序: ${openError}`)
+  }
+
+  // The running exe locks the install dir — quit so the installer can
+  // overwrite in place. openPath already spawned the SFX (UAC prompt takes
+  // a moment), so the quit race is benign.
+  setTimeout(() => app.quit(), 1500)
+
+  return { ok: true, path: filePath }
 })
 
 ipcMain.handle('hermes:openPreviewInBrowser', async (_event, url) => {
@@ -7018,6 +7311,68 @@ ipcMain.handle('hermes:version', async () => ({
   platform: process.platform,
   hermesRoot: resolveUpdateRoot()
 }))
+
+// ---------------------------------------------------------------------------
+// 日志自检导出 —— 用户反馈问题时一键打包诊断快照到桌面，把"手动拷贝
+// %LOCALAPPDATA%\qiji\logs"变成点一下按钮。收集：环境信息 + 各日志尾部
+// + 安装标记 + 老目录残留检测。不含任何密钥明文。
+// ---------------------------------------------------------------------------
+ipcMain.handle('hermes:diagnostics:export', async () => {
+  const home = app.getPath('home')
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+  const fileName = `qiji-diagnostics-${stamp}.txt`
+  const desktopDir = path.join(home, 'Desktop')
+  const outPath = path.join(desktopDir, fileName)
+
+  const readTail = (p, maxBytes = 64 * 1024) => {
+    try {
+      if (!fs.existsSync(p)) return '(文件不存在)'
+      const stat = fs.statSync(p)
+      const start = Math.max(0, stat.size - maxBytes)
+      const fd = fs.openSync(p, 'r')
+      try {
+        const buf = Buffer.alloc(Math.min(stat.size, maxBytes))
+        fs.readSync(fd, buf, 0, buf.length, start)
+        return buf.toString('utf8')
+      } finally {
+        fs.closeSync(fd)
+      }
+    } catch (e) {
+      return `(读取失败: ${e && e.message})`
+    }
+  }
+
+  const logDir = path.join(HERMES_HOME, 'logs')
+  const sections = []
+  sections.push('==== 奇计诊断快照 ====')
+  sections.push(`导出时间: ${new Date().toISOString()}`)
+  sections.push(`版本: ${resolveHermesVersion()}  Electron: ${process.versions.electron}  Node: ${process.versions.node}`)
+  sections.push(`系统: ${process.platform} ${os.release()} ${process.arch}  主机: ${os.hostname()}`)
+  sections.push(`数据目录: ${HERMES_HOME}`)
+  sections.push(`标记文件: ${readBootstrapMarker() ? JSON.stringify(readBootstrapMarker()) : '(缺失!)'}`)
+  sections.push(`运行时长: ${Math.round(process.uptime())}s`)
+
+  // 老目录残留检测（hermes→qiji 改名事故的痕迹）
+  if (IS_WINDOWS && process.env.LOCALAPPDATA) {
+    const legacyHome = path.join(process.env.LOCALAPPDATA, 'hermes')
+    sections.push(`旧版数据目录 ${legacyHome}: ${fs.existsSync(legacyHome) ? '存在（注意：旧数据搁浅在此）' : '无'}`)
+  }
+
+  for (const name of ['desktop.log', 'agent.log', 'gui.log', 'errors.log', 'install.log']) {
+    sections.push(`\n==== ${name} (尾部 64KB) ====`)
+    sections.push(readTail(path.join(logDir, name)))
+  }
+
+  const content = sections.join('\n') + '\n'
+  try {
+    fs.mkdirSync(desktopDir, { recursive: true })
+    fs.writeFileSync(outPath, content, 'utf8')
+    rememberLog(`[diagnostics] 诊断快照已导出到 ${outPath}`)
+    return { ok: true, path: outPath }
+  } catch (e) {
+    return { ok: false, error: e && e.message ? e.message : String(e) }
+  }
+})
 
 // ===========================================================================
 // Uninstall — remove the Chat GUI (and optionally the agent / user data).

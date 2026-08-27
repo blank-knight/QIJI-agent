@@ -124,6 +124,7 @@ declare global {
       cancelBootstrap: () => Promise<{ ok: boolean; cancelled: boolean }>
       onBootstrapEvent: (callback: (payload: DesktopBootstrapEvent) => void) => () => void
       getVersion: () => Promise<DesktopVersionInfo>
+      exportDiagnostics?: () => Promise<{ ok: boolean; path?: string; error?: string }>
       getRemoteDisplayReason?: () => Promise<string | null>
       updates: {
         check: () => Promise<DesktopUpdateStatus>
@@ -131,6 +132,11 @@ declare global {
         getBranch: () => Promise<{ branch: string }>
         setBranch: (name: string) => Promise<{ branch: string }>
         onProgress: (callback: (payload: DesktopUpdateProgress) => void) => () => void
+      }
+      // URL-based client update: download the published installer and run it.
+      clientUpdate: {
+        downloadAndRun: (url: string) => Promise<{ ok: boolean; path: string }>
+        onProgress: (callback: (payload: ClientUpdateProgress) => void) => () => void
       }
       uninstall: {
         summary: () => Promise<DesktopUninstallSummary>
@@ -297,6 +303,16 @@ export interface DesktopUpdateProgress {
   percent: number | null
   error: string | null
   at: number
+}
+
+/** Installer download progress from `hermes:clientUpdate:downloadAndRun`. */
+export interface ClientUpdateProgress {
+  /** Bytes received so far. */
+  received: number
+  /** Total bytes (Content-Length); 0 when the server sends chunked encoding. */
+  total: number
+  /** 0-100; 0 while indeterminate (no Content-Length), 100 on completion. */
+  percent: number
 }
 
 export interface HermesConnection {

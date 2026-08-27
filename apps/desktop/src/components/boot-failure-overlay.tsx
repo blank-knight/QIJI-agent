@@ -173,7 +173,10 @@ export function BootFailureOverlay() {
   })
 
   return (
-    <div className="fixed inset-0 z-[1400] flex items-center justify-center bg-(--ui-chat-surface-background) p-6">
+    // z-[10000]：必须高于登录页 z-[9999]。退出登录→reload→boot 竞态失败时，
+    // 失败遮罩被登录页压住会导致"界面活着但网关死态"（登录成功也只会卡
+    // 30s 超时），用户完全无感知。硬失败要压住一切让用户看到并可重试。
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-(--ui-chat-surface-background) p-6">
       <div className="w-full max-w-[40rem] overflow-hidden rounded-xl border border-(--stroke-nous) bg-(--ui-chat-bubble-background) shadow-nous">
         <div className="flex items-start gap-3 px-5 py-4">
           <ErrorIcon className="mt-0.5" size="1.25rem" />

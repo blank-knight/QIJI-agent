@@ -73,6 +73,7 @@ export interface Translations {
       backendStopped: string
       desktopBootFailed: string
       gatewaySignInRequired: string
+      gatewayUnreachableAfterRetries: string
       ipcBridgeUnavailable: string
     }
     failure: {

@@ -262,4 +262,86 @@ describe('useGatewayBoot remote reconnect loop (real hook, fake socket)', () => 
     expect($gatewayState.get()).toBe('open')
     expect($desktopBoot.get().error).toBeNull()
   })
+
+  it('FIX: initial-boot failure retries with backoff and self-heals (logout→reload race)', async () => {
+    // The logout→login path: reload re-runs boot() while the main process is
+    // restarting the backend (SIGTERM'd old one, new port not ready). The
+    // first boot fails on gateway.connect — previously latching a fatal
+    // failDesktopBoot under the login overlay. Now: bounded retries.
+    FakeWebSocket.mode = 'fail'
+    render(<Harness />)
+    await flushAsync()
+
+    // First attempt failed — but no fatal error yet: still booting/retrying.
+    expect($gatewayState.get()).not.toBe('open')
+    expect($desktopBoot.get().error).toBeNull()
+
+    // Burn retry 1 (1s) and 2 (2s) — still failing (backend not ready).
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000)
+    })
+    expect($desktopBoot.get().error).toBeNull()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000)
+    })
+    expect($desktopBoot.get().error).toBeNull()
+
+    // The backend finally comes up: retry 3 (4s) connects and completes boot.
+    FakeWebSocket.mode = 'open'
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4_000)
+    })
+
+    expect($gatewayState.get()).toBe('open')
+    expect($desktopBoot.get().error).toBeNull()
+  })
+
+  it('FIX: initial-boot failure latches the fatal error only after exhausting retries', async () => {
+    FakeWebSocket.mode = 'fail'
+    render(<Harness />)
+    await flushAsync()
+
+    // Exhaust all 3 retries: 1s + 2s + 4s, then flush the last socket failure.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000)
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000)
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4_000)
+    })
+    // The 3rd retry's socket fails asynchronously (0ms timer) — flush it so
+    // the fatal branch runs before we assert.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000)
+    })
+
+    // attempt 1 (initial) + 3 retries = 4 failed attempts, then fatal.
+    expect(FakeWebSocket.instances.length).toBeGreaterThanOrEqual(4)
+    expect($desktopBoot.get().error).toBeTruthy()
+  })
+
+  it('FIX: getConnection rejection (dead VPS / bootstrap failure) fails fast — no retries', async () => {
+    // Regression guard for the transport-race gate: a getConnection rejection
+    // means the backend itself never came up. Retrying would re-run the 45s
+    // waitForHermes wait up to 3 more times; the failure overlay must appear
+    // immediately, as it always did.
+    const desktop = fakeDesktop()
+    desktop.getConnection = vi.fn(async () => {
+      throw new Error('Hermes backend did not become ready: timeout')
+    })
+    ;(window as { hermesDesktop?: unknown }).hermesDesktop = desktop
+
+    render(<Harness />)
+    await flushAsync()
+
+    expect($desktopBoot.get().error).toBeTruthy()
+    // No WS was ever minted, and no retry was scheduled.
+    expect(FakeWebSocket.instances).toHaveLength(0)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000)
+    })
+    expect(FakeWebSocket.instances).toHaveLength(0)
+  })
 })

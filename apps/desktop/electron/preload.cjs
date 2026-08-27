@@ -167,6 +167,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     return () => ipcRenderer.removeListener('hermes:bootstrap:event', listener)
   },
   getVersion: () => ipcRenderer.invoke('hermes:version'),
+  exportDiagnostics: () => ipcRenderer.invoke('hermes:diagnostics:export'),
   getRemoteDisplayReason: () => ipcRenderer.invoke('hermes:get-remote-display-reason'),
   uninstall: {
     summary: () => ipcRenderer.invoke('hermes:uninstall:summary'),
@@ -181,6 +182,15 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
       const listener = (_event, payload) => callback(payload)
       ipcRenderer.on('hermes:updates:progress', listener)
       return () => ipcRenderer.removeListener('hermes:updates:progress', listener)
+    }
+  },
+  // URL-based client update: download the published installer and run it.
+  clientUpdate: {
+    downloadAndRun: url => ipcRenderer.invoke('hermes:clientUpdate:downloadAndRun', url),
+    onProgress: callback => {
+      const listener = (_event, payload) => callback(payload)
+      ipcRenderer.on('hermes:clientUpdate:progress', listener)
+      return () => ipcRenderer.removeListener('hermes:clientUpdate:progress', listener)
     }
   },
   themes: {

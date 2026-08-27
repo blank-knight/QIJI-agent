@@ -58,6 +58,7 @@ export const en: Translations = {
       backendStopped: 'Backend stopped',
       desktopBootFailed: 'Desktop boot failed',
       gatewaySignInRequired: 'Gateway sign-in required',
+      gatewayUnreachableAfterRetries: 'Could not reach the gateway after several retries. Check your network and retry.',
       ipcBridgeUnavailable: 'Desktop IPC bridge is unavailable.'
     },
     failure: {

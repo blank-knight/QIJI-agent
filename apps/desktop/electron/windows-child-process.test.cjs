@@ -28,8 +28,10 @@ test('desktop background child processes opt into hidden Windows consoles', () =
   assert.match(source, /function hiddenWindowsChildOptions\(options = \{\}\)/)
 
   requireHiddenChildOptions(source, "execFileSync(\n          'reg'")
-  requireHiddenChildOptions(source, 'execFileSync(pyExe')
-  requireHiddenChildOptions(source, 'spawn(resolveGitBinary()')
+  // pyExe 调用现为多行形式（execFileSync 后换行再传 pyExe），断言同步匹配
+  requireHiddenChildOptions(source, "execFileSync(\n          pyExe,")
+  // git 调用同为多行形式（spawn 后换行再传 resolveGitBinary()）
+  requireHiddenChildOptions(source, "spawn(\n      resolveGitBinary(),")
   requireHiddenChildOptions(source, "execFileSync('taskkill'")
   requireHiddenChildOptions(source, 'spawn(command, args')
   requireHiddenChildOptions(source, "spawn('curl'")

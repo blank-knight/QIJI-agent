@@ -29,6 +29,7 @@ import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { Tip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
 import { triggerHaptic } from '@/lib/haptics'
+import { accountLockedProfile } from '@/lib/account-profile'
 import { PROFILE_SWATCHES, profileColorSoft, resolveProfileColor } from '@/lib/profile-color'
 import { cn } from '@/lib/utils'
 import {
@@ -132,7 +133,12 @@ export function ProfileRail() {
   const onDefault = !isAll && activeKey === 'default'
 
   const named = sortByProfileOrder(profiles.filter(profile => !profile.is_default), order)
-  const multiProfile = profiles.length > 1
+
+  // 用户隔离（方案A）：账号锁定了自己的专属 profile 时，切换器退化为
+  // 单方块——不显示 default/其他账号入口、“所有 profile”视图、新建 +。
+  // 未启用隔离（accountLockedProfile() === null）则保持原样。
+  const lockedProfile = accountLockedProfile()
+  const multiProfile = lockedProfile ? false : profiles.length > 1
 
   // distance constraint: a small drag reorders, a tap still selects the profile.
   const sensors = useSensors(
@@ -257,16 +263,18 @@ export function ProfileRail() {
           </DndContext>
         )}
 
-        <Tip label={p.newProfile}>
-          <button
-            aria-label={p.newProfile}
-            className="grid size-5 shrink-0 place-items-center rounded-[3px] text-(--ui-text-tertiary) opacity-55 transition hover:bg-(--ui-control-hover-background) hover:text-foreground hover:opacity-100"
-            onClick={() => setCreateOpen(true)}
-            type="button"
-          >
-            <Codicon name="add" size="0.75rem" />
-          </button>
-        </Tip>
+        {!lockedProfile && (
+          <Tip label={p.newProfile}>
+            <button
+              aria-label={p.newProfile}
+              className="grid size-5 shrink-0 place-items-center rounded-[3px] text-(--ui-text-tertiary) opacity-55 transition hover:bg-(--ui-control-hover-background) hover:text-foreground hover:opacity-100"
+              onClick={() => setCreateOpen(true)}
+              type="button"
+            >
+              <Codicon name="add" size="0.75rem" />
+            </button>
+          </Tip>
+        )}
       </div>
 
       {/* Always reachable, even with only the default profile: the manage

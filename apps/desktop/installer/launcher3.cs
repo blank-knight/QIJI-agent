@@ -28,6 +28,15 @@ class Launcher
     // ── Constants ───────────────────────────────────────────────────
     const string APP_NAME = "奇计";
     const string APP_VERSION = "0.17.0";
+    // 品牌数据目录名 —— 由打包期生成 BrandInfo.cs 注入（源 apps/desktop/electron/brand.cjs）。
+    // #if 兜底保证缺 BrandInfo.cs 时仍可独立编译（回落 'qiji'）。
+#if !BRAND_INFO
+    static class BrandInfo
+    {
+        public const string DataDir = "qiji";
+        public const string UserDataDir = "Qiji";
+    }
+#endif
     static readonly Color BRAND_COLOR = Color.FromArgb(60, 100, 230);
     static readonly Color BG_COLOR = Color.FromArgb(255, 255, 255);
     static readonly Color CARD_COLOR = Color.FromArgb(240, 240, 245);
@@ -90,10 +99,52 @@ class Launcher
         s_installDir = installDir;
         Directory.CreateDirectory(installDir);
 
+        // 0. 杀目标目录下运行中的 Qiji 进程：旧版本运行中会锁住 app.asar 等
+        //    文件，导致覆盖安装解压失败/写坏 0 字节文件（2026-08-23 案）
+        reporter(0, "正在停止运行中的旧版本...");
+        try
+        {
+            for (int round = 0; round < 3; round++)
+            {
+                var toKill = new System.Collections.Generic.List<Process>();
+                foreach (var p in Process.GetProcesses())
+                {
+                    try
+                    {
+                        string pPath = p.MainModule.FileName;
+                        if (pPath != null && pPath.StartsWith(installDir + "\\", StringComparison.OrdinalIgnoreCase))
+                            toKill.Add(p);
+                        // Roaming 下的辅助进程（网关子进程）一并停，防锁数据目录
+                        else if (pPath != null && pPath.IndexOf("\\AppData\\Roaming\\" + BrandInfo.UserDataDir, StringComparison.OrdinalIgnoreCase) >= 0
+                            && pPath.IndexOf("\\installer", StringComparison.OrdinalIgnoreCase) < 0)
+                            toKill.Add(p);
+                    }
+                    catch { } // 系统进程读不到路径，跳过
+                }
+                if (toKill.Count == 0) break;
+                foreach (var p in toKill)
+                {
+                    try { p.Kill(); p.WaitForExit(5000); } catch { }
+                }
+                Thread.Sleep(1000); // 给句柄释放时间，再扫一轮
+            }
+        }
+        catch { }
+        Thread.Sleep(1500); // 等文件句柄彻底释放
+
         // 1. Defender 排除
         reporter(0, "正在配置 Windows Defender...");
         AddDefenderExclusion(installDir);
         AddDefenderExclusion(s_tempDir);
+        // 数据目录（%LOCALAPPDATA%\<dataDirName>，vendor/git 复制目标）也要排除：
+        // 首启 bootstrap 把 40 万 MB/9504 文件的 vendor 复制进去，若被实时扫描，
+        // 每个小文件都触发一次拦截，装完首启要 28-60 分钟。排除可先于目录存在注册。
+        // 品牌目录名由打包期 BrandInfo.cs 注入（源 apps/desktop/electron/brand.cjs），
+        // 与 main.cjs 运行时解析链同源，贴牌改名不会漏。
+        foreach (string dataDir in ResolveDataDirs())
+        {
+            AddDefenderExclusion(dataDir);
+        }
 
         // 2. 7z 解压（解析进度）
         reporter(5, "正在解压文件...");
@@ -161,12 +212,14 @@ class Launcher
 
         // 7. 注册卸载信息
         reporter(93, "正在注册系统信息...");
+        string uninstallPath = Path.Combine(appDir, "uninstall.exe");
         using (var key = Registry.CurrentUser.CreateSubKey(
-            @"Software\Microsoft\Windows\CurrentVersion\Uninstall\Qiji"))
+            @"Software\Microsoft\Windows\CurrentVersion\Uninstall\" + BrandInfo.UserDataDir))
         {
             key.SetValue("DisplayName", APP_NAME);
             key.SetValue("DisplayIcon", appExe + ", 0");
-            key.SetValue("UninstallString", Path.Combine(appDir, "uninstall.exe"));
+            // 路径含空格必须加引号，否则控制面板执行时按空格切分找不到 exe（点卸载无反应）
+            key.SetValue("UninstallString", "\"" + uninstallPath + "\"");
             key.SetValue("InstallLocation", appDir);
             key.SetValue("DisplayVersion", APP_VERSION);
             key.SetValue("Publisher", APP_NAME);
@@ -176,8 +229,7 @@ class Launcher
 
         // 8. 初始化数据目录
         reporter(96, "正在初始化数据目录...");
-        string qijiHome = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "qiji");
+        string qijiHome = ResolvePrimaryDataDir();
         Directory.CreateDirectory(qijiHome);
 
         Registry.SetValue(@"HKEY_CURRENT_USER\Environment", "QIJI_HOME", qijiHome);
@@ -290,6 +342,72 @@ class Launcher
             p.WaitForExit(10000);
         }
         catch { }
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    //  数据目录解析（与 electron/main.cjs resolveHermesHome 同链，防两处漂移）
+    //  QIJI_HOME/HERMES_HOME 环境变量（含注册表 User 范围） → %LOCALAPPDATA%\<品牌名>
+    // ─────────────────────────────────────────────────────────────────
+
+    static string ReadUserEnvVar(string name)
+    {
+        try
+        {
+            using (var envKey = Registry.CurrentUser.OpenSubKey("Environment"))
+            {
+                if (envKey != null)
+                {
+                    object v = envKey.GetValue(name);
+                    if (v != null)
+                    {
+                        string s = v.ToString().Trim();
+                        if (s.Length > 0 && !s.StartsWith("%")) return s;
+                    }
+                }
+            }
+        }
+        catch { }
+        return null;
+    }
+
+    /// <summary>主数据目录（安装时写 QIJI_HOME 注册表用它）</summary>
+    static string ResolvePrimaryDataDir()
+    {
+        // 已有显式覆盖（老机器迁移/定制部署）优先，不动
+        string existing = ReadUserEnvVar("QIJI_HOME") ?? ReadUserEnvVar("HERMES_HOME");
+        if (existing != null) return existing;
+
+        return Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            BrandInfo.DataDir);
+    }
+
+    /// <summary>
+    /// 需要 Defender 排除的数据目录全集（去重）：
+    /// 1. 品牌兜底目录 %LOCALAPPDATA%\&lt;BRAND_DATA_DIR&gt;（排除可先于目录存在注册）
+    /// 2. 注册表/环境变量里现存的所有 QIJI_HOME / HERMES_HOME（老 Hermes 装机兼容）
+    /// 注意：v4.0.30319 csc 只支持 C# 5，禁用局部函数/内插字符串等新语法。
+    /// </summary>
+    static void AddDataDir(List<string> dirs, HashSet<string> seen, string p)
+    {
+        if (string.IsNullOrEmpty(p)) return;
+        try { p = Path.GetFullPath(p); } catch { }
+        if (seen.Add(p)) dirs.Add(p);
+    }
+
+    static List<string> ResolveDataDirs()
+    {
+        var dirs = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        AddDataDir(dirs, seen, Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            BrandInfo.DataDir));
+
+        AddDataDir(dirs, seen, ReadUserEnvVar("QIJI_HOME"));
+        AddDataDir(dirs, seen, ReadUserEnvVar("HERMES_HOME"));
+
+        return dirs;
     }
 
     static void CreateShortcut(string shortcutPath, string targetPath, string workingDir)

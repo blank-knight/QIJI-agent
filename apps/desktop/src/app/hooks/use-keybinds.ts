@@ -6,6 +6,7 @@ import { PANE_TOGGLE_REVEAL_EVENT } from '@/components/pane-shell'
 import { matchesQuery } from '@/hooks/use-media-query'
 import { PROFILE_SLOT_COUNT, SESSION_SLOT_COUNT } from '@/lib/keybinds/actions'
 import { comboAllowedInInput, comboFromEvent, isEditableTarget } from '@/lib/keybinds/combo'
+import { accountLockedProfile } from '@/lib/account-profile'
 import { toggleCommandPalette } from '@/store/command-palette'
 import { $capture, $comboIndex, endCapture, setBinding, toggleKeybindPanel } from '@/store/keybinds'
 import {
@@ -160,12 +161,17 @@ export function useKeybinds(deps: KeybindRuntimeDeps): void {
 
     'appearance.toggleMode': () => setMode(resolvedMode === 'dark' ? 'light' : 'dark'),
 
-    'profile.default': switchToDefaultProfile,
-    ...profileSwitchHandlers,
-    'profile.next': () => cycleProfile(1),
-    'profile.prev': () => cycleProfile(-1),
-    'profile.toggleAll': toggleShowAllProfiles,
-    'profile.create': requestProfileCreate
+    // 用户隔离（方案A）：账号锁定 profile 时禁用手动切换快捷键（旁路封堵）
+    ...(accountLockedProfile()
+      ? {}
+      : {
+          'profile.default': switchToDefaultProfile,
+          ...profileSwitchHandlers,
+          'profile.next': () => cycleProfile(1),
+          'profile.prev': () => cycleProfile(-1),
+          'profile.toggleAll': toggleShowAllProfiles,
+          'profile.create': requestProfileCreate
+        })
   }
 
   useEffect(() => {

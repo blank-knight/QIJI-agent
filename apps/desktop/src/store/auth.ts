@@ -1,6 +1,7 @@
 import { atom } from 'nanostores'
 
 import {
+  AUTH_API_KEY_STORE_KEY,
   AUTH_IS_CUSTOM_KEY,
   AUTH_LOGIN_AT_KEY,
   AUTH_MODE_KEY,
@@ -37,7 +38,9 @@ function readPersisted(): AuthState {
       mode: (window.localStorage.getItem(AUTH_MODE_KEY) as 'trial' | 'formal') ?? 'trial',
       score: 0, // 不持久化，每次启动后由 quota 查询刷新
       loginAt: Number(window.localStorage.getItem(AUTH_LOGIN_AT_KEY)) || null,
-      apiKey: null // 不持久化，每次 login 后从后端拿
+      // 用户隔离（方案A）：api_key 持久化——切 profile 触发 reload 后，
+      // desktop-controller 的 gateway-ready 兜底推送依赖它（内存态会丢）。
+      apiKey: window.localStorage.getItem(AUTH_API_KEY_STORE_KEY) || null
     }
   } catch {
     return { token: null, username: null, isCustomKey: false, mode: 'trial', score: 0, loginAt: null, apiKey: null }
@@ -53,6 +56,12 @@ function persist(state: AuthState) {
     window.localStorage.setItem(AUTH_IS_CUSTOM_KEY, state.isCustomKey ? '1' : '0')
     window.localStorage.setItem(AUTH_MODE_KEY, state.mode)
     window.localStorage.setItem(AUTH_USERNAME_KEY, state.username ?? '')
+    // api_key 与 token 同级敏感（token 本来就持久化），TTL 同 loginAt 30 天
+    if (state.apiKey) {
+      window.localStorage.setItem(AUTH_API_KEY_STORE_KEY, state.apiKey)
+    } else {
+      window.localStorage.removeItem(AUTH_API_KEY_STORE_KEY)
+    }
   } catch {
     // best-effort
   }
@@ -97,20 +106,46 @@ export async function login(username: string, password: string): Promise<LoginRe
   }
 
   const data = res.data
-
-  // 边界：代理链全无 key —— 登录成功但 api_key 为空
-  if (!data.api_key) {
-    throw new Error('当前账号未配置 AI 服务，请联系代理/上级开通')
-  }
+  // api_key 为空时不阻塞登录——允许用户先进入应用，AI 聊天功能会在使用时提示配置
 
   const next: AuthState = {
     token: data.token,
-    username: data.username,
+    username: data.username ?? username,
     isCustomKey: data.is_custom_key === 1,
     mode: data.mode,
-    score: data.score,
+    score: data.score ?? 0,
     loginAt: Date.now(),
-    apiKey: data.api_key
+    apiKey: data.api_key ?? null
+  }
+
+  persist(next)
+  patch(next)
+
+  return data
+}
+
+/** 注册。成功后自动登录（后端注册接口直接返回 token + api_key）。 */
+export async function register(mobile: string, password: string, inviteCode?: string): Promise<LoginResponse> {
+  const body: Record<string, string> = { mobile, password }
+  if (inviteCode) body.invite_code = inviteCode
+
+  const res = await backendPost<LoginResponse>('/api/client/v1/auth/register', body)
+
+  if (!res.data) {
+    throw new Error('注册响应缺少 data')
+  }
+
+  const data = res.data
+  // api_key 为空时不阻塞注册——允许用户先进入应用
+
+  const next: AuthState = {
+    token: data.token,
+    username: data.username ?? mobile,
+    isCustomKey: data.is_custom_key === 1,
+    mode: data.mode,
+    score: data.score ?? 0,
+    loginAt: Date.now(),
+    apiKey: data.api_key ?? null
   }
 
   persist(next)
@@ -126,6 +161,7 @@ export function clearAuth() {
   if (typeof window !== 'undefined') {
     try {
       window.localStorage.removeItem(AUTH_TOKEN_KEY)
+      window.localStorage.removeItem(AUTH_API_KEY_STORE_KEY)
       window.localStorage.removeItem(AUTH_LOGIN_AT_KEY)
       window.localStorage.removeItem(AUTH_IS_CUSTOM_KEY)
       window.localStorage.removeItem(AUTH_MODE_KEY)

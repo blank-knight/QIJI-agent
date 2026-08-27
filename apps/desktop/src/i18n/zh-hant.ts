@@ -58,6 +58,7 @@ export const zhHant = defineLocale({
       backendStopped: '後端已停止',
       desktopBootFailed: '桌面啟動失敗',
       gatewaySignInRequired: '需要閘道登入',
+      gatewayUnreachableAfterRetries: '多次重試後仍無法連線奇計閘道，請檢查網路後重試',
       ipcBridgeUnavailable: '桌面 IPC 橋接器不可用。'
     },
     failure: {

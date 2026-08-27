@@ -36,6 +36,10 @@ const INSTALLER = __dirname
 const APP_NAME = 'Qiji'
 const VERSION = '0.17.0'
 const PRODUCT_NAME_ZH = '奇计'
+// 品牌数据目录单一事实源 —— 与 electron/brand.cjs 同源。贴牌改名只改那里。
+const brand = require(path.join(ROOT, 'electron', 'brand.cjs'))
+const DATA_DIR_NAME = brand.dataDirName
+const USER_DATA_DIR_NAME = brand.userDataDirName
 
 // Paths
 const winUnpacked = path.join(RELEASE, 'win-unpacked')
@@ -74,8 +78,26 @@ console.log(`  Payload: ${payloadSize} MB`)
 
 // ---- Compile uninstall.exe ----
 step(3, 'Compiling uninstall.exe ...')
+// 品牌注入：从 electron/brand.cjs 读取品牌目录名，直接写入源码副本的
+// BrandInfo 兜底常量（UTF-8 BOM），再编译临时副本。不用 /d:+BrandInfo.cs
+// 独立文件方案 —— 老 csc(v4.0.30319) 对 "/d: 定义 + 多源文件 + /t:winexe"
+// 组合会报 CS5001(找不到入口点)/CS1577，源码注入则与历史可用命令形状一致。
+// 贴牌（白标）改名只改 brand.cjs，安装器/卸载器/主进程自动对齐。
+function injectBrandSrc(srcPath, outPath) {
+  const src = fs.readFileSync(srcPath, 'utf8')
+  const injected = src
+    .replace(/public const string DataDir = "[^"]*";/, `public const string DataDir = ${JSON.stringify(DATA_DIR_NAME)};`)
+    .replace(/public const string UserDataDir = "[^"]*";/, `public const string UserDataDir = ${JSON.stringify(USER_DATA_DIR_NAME)};`)
+  // UTF-8 BOM：老 csc 无 BOM 时按系统 ANSI(GBK) 解码，中文注释/字符串有乱码风险
+  fs.writeFileSync(outPath, '\ufeff' + injected, 'utf8')
+  return outPath
+}
+const uninstallTmp = path.join(RELEASE, 'uninstall.brand.cs')
+injectBrandSrc(uninstallSrc, uninstallTmp)
+console.log(`  brand injected: dataDir=${DATA_DIR_NAME} userDataDir=${USER_DATA_DIR_NAME}`)
+
 if (fs.existsSync(uninstallExe)) fs.unlinkSync(uninstallExe)
-execSync(`"${CSC}" /nologo /optimize /target:exe /out:"${uninstallExe}" "${uninstallSrc}"`, { stdio: 'inherit' })
+execSync(`"${CSC}" /nologo /optimize /target:exe /out:"${uninstallExe}" "${uninstallTmp}"`, { stdio: 'inherit' })
 const uninstallSize = (fs.statSync(uninstallExe).size / 1024).toFixed(1)
 console.log(`  uninstall.exe: ${uninstallSize} KB`)
 
@@ -88,14 +110,23 @@ console.log(`  uninstall.exe: ${uninstallSize} KB`)
 const iconIco = path.join(INSTALLER, 'icon.ico')
 
 step(4, 'Compiling launcher3.exe (admin manifest + icon + embedded 7zr.exe + uninstall.exe) ...')
-if (fs.existsSync(launcherExe)) fs.unlinkSync(launcherExe)
 try {
-  execSync(`"${CSC}" /nologo /optimize /target:winexe /win32icon:"${iconIco}" /win32manifest:"${manifest}" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /resource:"${sevenZip}" /resource:"${uninstallExe}" /resource:"${iconIco},icon.ico" /out:"${launcherExe}" "${launcherSrc}"`, { stdio: 'pipe' })
+  if (fs.existsSync(launcherExe)) fs.unlinkSync(launcherExe)
+} catch (e) {
+  console.error(`  WARNING: could not delete old launcher3.exe (${e.message}), continuing ...`)
+}
+try {
+  // NOTE: the icon resource arg must stay UNQUOTED — csc treats a quoted
+  // "file,id" as a single literal filename (comma included) and fails with
+  // CS1566 "file not found". Paths here contain no spaces, so no quoting
+  // is needed.
+  const launcherTmp = injectBrandSrc(launcherSrc, path.join(RELEASE, 'launcher3.brand.cs'))
+  execSync(`"${CSC}" /nologo /optimize /target:winexe /win32icon:"${iconIco}" /win32manifest:"${manifest}" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /resource:"${sevenZip}" /resource:"${uninstallExe}" /resource:${iconIco},icon.ico /out:"${launcherExe}" "${launcherTmp}"`, { stdio: 'inherit' })
 } catch (e) {
   // csc may write progress to stderr even on success (exit 0);
   // only fail if the exe wasn't actually produced
   if (!fs.existsSync(launcherExe)) {
-    console.error(e.stderr ? e.stderr.toString() : e.message)
+    console.error(e.message)
     process.exit(1)
   }
 }

@@ -1,8 +1,8 @@
 import { clearAuth } from '@/store/auth'
 
-// 后端基地址。等 4.1 服务器落定后改这一行即可（或用 VITE_BACKEND_BASE_URL 覆盖）。
+// 后端基地址。可用 VITE_BACKEND_BASE_URL 覆盖。
 export const BACKEND_BASE_URL =
-  (import.meta.env.VITE_BACKEND_BASE_URL as string | undefined) ?? 'http://8.138.58.181'
+  (import.meta.env.VITE_BACKEND_BASE_URL as string | undefined) ?? 'http://agent.aijiqiren.vip'
 
 // 登录 token 有效期（后端规定 30 天）
 export const TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000
@@ -42,10 +42,34 @@ export interface ApiKeyResponse {
 
 export interface UpdateCheckResponse {
   has_update: boolean
-  enforce: boolean
+  enforce: boolean | 0 | 1
   newversion: string
   downloadurl: string
-  upgradetext: string
+  packagesize?: string
+  upgradetext?: string
+}
+
+/** GET /api/client/v1/update/check — 版本检查（无需登录） */
+export async function checkUpdate(version: string): Promise<UpdateCheckResponse> {
+  const url = `${BACKEND_BASE_URL}/api/client/v1/update/check?version=${encodeURIComponent(version)}`
+
+  const res = await fetch(url)
+
+  if (!res.ok) {
+    throw new BackendError(`版本检查失败 (${res.status})`, res.status)
+  }
+
+  const body = (await res.json()) as BackendResponse<UpdateCheckResponse>
+
+  if (body.code === 0) {
+    throw new BackendError(body.msg ?? '版本检查失败', res.status, body)
+  }
+
+  if (!body.data) {
+    throw new BackendError('版本检查响应缺少 data', res.status, body)
+  }
+
+  return body.data
 }
 
 let unauthorizedHandler: (() => void) | null = null
@@ -141,3 +165,5 @@ export const AUTH_LOGIN_AT_KEY = 'qiji-auth-login-at'
 export const AUTH_IS_CUSTOM_KEY = 'qiji-auth-is-custom-key'
 export const AUTH_MODE_KEY = 'qiji-auth-mode'
 export const AUTH_USERNAME_KEY = 'qiji-auth-username'
+/** 用户隔离（方案A）：api_key 持久化，reload/切 profile 后兜底推送用 */
+export const AUTH_API_KEY_STORE_KEY = 'qiji-auth-api-key'

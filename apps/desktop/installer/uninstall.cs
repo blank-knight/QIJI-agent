@@ -7,6 +7,48 @@ using Microsoft.Win32;
 
 class Uninstaller
 {
+    // 品牌数据目录名 —— 由打包期生成 BrandInfo.cs 注入（源 apps/desktop/electron/brand.cjs）。
+    // #if 兜底保证缺 BrandInfo.cs 时仍可独立编译（回落 'qiji'）。
+#if !BRAND_INFO
+    static class BrandInfo
+    {
+        public const string DataDir = "qiji";
+        public const string UserDataDir = "Qiji";
+    }
+#endif
+
+    // 与 launcher3/electron main.cjs 同链：QIJI_HOME/HERMES_HOME → %LOCALAPPDATA%\<品牌名>
+    static string ReadUserEnvVar(string name)
+    {
+        try
+        {
+            using (var envKey = Registry.CurrentUser.OpenSubKey("Environment"))
+            {
+                if (envKey != null)
+                {
+                    object v = envKey.GetValue(name);
+                    if (v != null)
+                    {
+                        string s = v.ToString().Trim();
+                        if (s.Length > 0 && !s.StartsWith("%")) return s;
+                    }
+                }
+            }
+        }
+        catch { }
+        return null;
+    }
+
+    static string ResolvePrimaryDataDir()
+    {
+        string existing = ReadUserEnvVar("QIJI_HOME") ?? ReadUserEnvVar("HERMES_HOME");
+        if (existing != null) return existing;
+
+        return Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            BrandInfo.DataDir);
+    }
+
     [STAThread]
     static void Main(string[] args)
     {
@@ -38,11 +80,12 @@ class Uninstaller
             return;
         }
 
-        // Mode 2: running from temp -> actual uninstall
+        // 2. Running from temp -> actual uninstall
         string installDir = args[0];
         // Strip trailing backslash if present
         if (installDir.EndsWith("\\"))
             installDir = installDir.Substring(0, installDir.Length - 1);
+        var failures = new System.Collections.Generic.List<string>();
 
         Console.WriteLine();
         Console.WriteLine("  ============================================");
@@ -51,32 +94,66 @@ class Uninstaller
         Console.WriteLine();
         Console.WriteLine("  正在卸载奇计...");
 
-        // 1. Kill running Qiji processes
+        // 1. Kill running Qiji processes (by exe path, full family, retry)
         Console.Write("  停止运行中的进程...");
+        bool anyKilled = false;
         try
         {
-            foreach (var p in Process.GetProcessesByName("Qiji"))
+            for (int round = 0; round < 3; round++)
             {
-                try { p.Kill(); p.WaitForExit(5000); } catch { }
+                var toKill = new System.Collections.Generic.List<Process>();
+                foreach (var p in Process.GetProcesses())
+                {
+                    try
+                    {
+                        // 按可执行文件路径匹配（不按名字）：覆盖安装目录里的 Qiji.exe 家族，
+                        // 也覆盖 %APPDATA% 里的辅助进程；按名字杀不全（崩溃残留的渲染进程等）
+                        string pPath = p.MainModule.FileName;
+                        bool inInstall = pPath.StartsWith(installDir + "\\", StringComparison.OrdinalIgnoreCase);
+                        bool isDataHelper = pPath.IndexOf("\\AppData\\Roaming\\" + BrandInfo.UserDataDir, StringComparison.OrdinalIgnoreCase) >= 0
+                            && pPath.IndexOf("\\install", StringComparison.OrdinalIgnoreCase) < 0; // 排除卸载器自身路径误伤
+                        if (inInstall || isDataHelper) toKill.Add(p);
+                    }
+                    catch { } // 系统进程/权限不足读不到 MainModule，跳过
+                }
+                if (toKill.Count == 0) break;
+                foreach (var p in toKill)
+                {
+                    try { p.Kill(); p.WaitForExit(5000); anyKilled = true; } catch { }
+                }
+                Thread.Sleep(1000); // 给句柄释放时间，再扫一轮直到干净
             }
-            Console.WriteLine(" 完成");
+            Console.WriteLine(anyKilled ? " 完成" : " 未发现运行中的进程");
         }
         catch { Console.WriteLine(" 跳过"); }
 
         Thread.Sleep(1500);
 
-        // 2. Delete install directory
+        // 2. Delete install directory (with retry for locked handles)
         Console.Write("  删除安装文件...");
-        try
+        bool installDeleted = false;
+        Exception lastErr = null;
+        for (int attempt = 1; attempt <= 3; attempt++)
         {
-            if (Directory.Exists(installDir))
+            try
+            {
+                if (!Directory.Exists(installDir)) { installDeleted = true; break; }
                 Directory.Delete(installDir, true);
-            Console.WriteLine(" 完成");
+                installDeleted = true;
+                break;
+            }
+            catch (Exception ex)
+            {
+                lastErr = ex;
+                if (attempt < 3) { Console.Write("."); Thread.Sleep(2000); } // 句柄释放重试
+            }
         }
-        catch (Exception ex)
+        if (installDeleted) Console.WriteLine(" 完成");
+        else
         {
             Console.WriteLine(" 部分失败");
-            Console.WriteLine("    " + ex.Message);
+            Console.WriteLine("    " + lastErr.Message);
+            failures.Add("安装目录");
         }
 
         // 3. Delete start menu shortcuts
@@ -108,17 +185,16 @@ class Uninstaller
         try
         {
             Registry.CurrentUser.DeleteSubKeyTree(
-                @"Software\Microsoft\Windows\CurrentVersion\Uninstall\Qiji", false);
+                @"Software\Microsoft\Windows\CurrentVersion\Uninstall\" + BrandInfo.UserDataDir, false);
             Console.WriteLine(" 完成");
         }
         catch { Console.WriteLine(" 跳过"); }
 
-        // 6. Clean up QIJI_HOME data directory (%LOCALAPPDATA%\qiji)
+        // 6. Clean up QIJI_HOME data directory（按解析链找真实位置，贴牌改名不漏删）
         Console.Write("  清理数据目录...");
         try
         {
-            string qijiHome = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "qiji");
+            string qijiHome = ResolvePrimaryDataDir();
             if (Directory.Exists(qijiHome))
                 Directory.Delete(qijiHome, true);
             Console.WriteLine(" 完成");
@@ -127,6 +203,34 @@ class Uninstaller
         {
             Console.WriteLine(" 部分失败");
             Console.WriteLine("    " + ex.Message);
+            failures.Add("数据目录");
+        }
+
+        // 6b. Clean up Electron userData (%APPDATA%\Qiji) — 登录态/localStorage 在这里，
+        // 不删则重装后沿用旧登录态，登录页永不弹出（2026-08-23 案）
+        Console.Write("  清理登录数据...");
+        bool roamingDeleted = false;
+        for (int attempt = 1; attempt <= 3; attempt++)
+        {
+            try
+            {
+                string roamingData = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), BrandInfo.UserDataDir);
+                if (!Directory.Exists(roamingData)) { roamingDeleted = true; break; }
+                Directory.Delete(roamingData, true);
+                roamingDeleted = true;
+                break;
+            }
+            catch
+            {
+                if (attempt < 3) { Console.Write("."); Thread.Sleep(2000); }
+            }
+        }
+        if (roamingDeleted) Console.WriteLine(" 完成");
+        else
+        {
+            Console.WriteLine(" 部分失败（重启电脑后可手动删除 %APPDATA%\\" + BrandInfo.UserDataDir + "）");
+            failures.Add("登录数据");
         }
 
         // 7. Remove QIJI_HOME env var from registry
@@ -143,7 +247,19 @@ class Uninstaller
 
         Console.WriteLine();
         Console.WriteLine("  ============================================");
-        Console.WriteLine("            卸载完成！");
+        if (failures.Count > 0)
+        {
+            Console.WriteLine("            卸载部分完成");
+            Console.WriteLine("  ============================================");
+            Console.WriteLine();
+            Console.WriteLine("  以下内容未能完全删除（可能被占用）:");
+            foreach (var f in failures) Console.WriteLine("    - " + f);
+            Console.WriteLine("  重启电脑后重新运行本卸载程序，或手动删除剩余文件。");
+        }
+        else
+        {
+            Console.WriteLine("            卸载完成！");
+        }
         Console.WriteLine("  ============================================");
         Console.WriteLine();
         Console.Write("  按任意键关闭...");
