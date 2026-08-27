@@ -11656,14 +11656,30 @@ async def pty_ws(ws: WebSocket) -> None:
 @app.websocket("/api/ws")
 async def gateway_ws(ws: WebSocket) -> None:
     if not _DASHBOARD_EMBEDDED_CHAT_ENABLED:
+        _log.info("ws refused: embedded chat disabled")
         await ws.close(code=4403)
         return
 
     if not _ws_auth_ok(ws):
+        # 之前这里静默关闭：渲染层反复拨号失败时后端日志零痕迹，排障只能
+        # 猜。现在把拒绝原因+模式打出来，与 /api/pty 的日志风格对齐。
+        reason, _cred = _ws_auth_reason(ws)
+        _log.warning(
+            "ws refused: auth (%s) mode=%s peer=%s",
+            reason,
+            _ws_auth_mode(),
+            ws.client.host if ws.client else "?",
+        )
         await ws.close(code=4401)
         return
 
     if not _ws_request_is_allowed(ws):
+        host_origin_reason = _ws_host_origin_reason(ws)
+        _log.warning(
+            "ws refused: request (%s) peer=%s",
+            host_origin_reason or "client not allowed",
+            ws.client.host if ws.client else "?",
+        )
         await ws.close(code=4403)
         return
 

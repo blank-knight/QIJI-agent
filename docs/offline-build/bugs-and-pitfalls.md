@@ -169,3 +169,27 @@ onboarding 的 `saveOnboardingLocalEndpoint` 调用 `setModelAssignment({ provid
 **教训：** 上游合并时，如果上游代码引入了与白标定制冲突的逻辑（如新增 `hasApiKey` 检查），合并后必须验证白标功能是否被覆盖。这个 bug 已经因为上游合并复现了 3 次，后续合并要特别注意 `providers-settings.tsx` 的 `CustomEndpointCard`。
 
 ---
+
+## 坑22：build-installer.cjs icon.ico 引号导致 csc CS1566 静默失败（2026-08-16）
+
+**严重度：★★★☆☆（多次导致 build.ps1 第 4 步失败，且错误被吞看不到原因）**
+
+**现象：** `build.ps1 -FastRepack` 在 `[4] Compiling launcher3.exe` 步骤失败，报 `npm exit code: 1`，但看不到任何 csc 报错信息。曾多次失败，每次都需要手动跑 csc 补编译 + 手动拼接 Setup.exe。
+
+**根因（双重）：**
+
+1. **引号位置 bug：** csc 命令写成 `/resource:"C:\...\icon.ico,icon.ico"`——引号包住了逗号，csc 命令行解析器把引号内的逗号当作文件名的一部分，于是去找字面名为 `icon.ico,icon.ico` 的文件，报 `CS1566: 读取资源文件"...\icon.ico,icon.ico"时出错 -- 系统找不到指定的文件`。
+2. **错误被吞：** `execSync` 用了 `stdio: 'pipe'`，csc 的 stderr 被捕获到 `e.stderr`，catch 分支只在 exe 不存在时才打印——而失败时 exe 本来就不存在，打印逻辑虽然对但 pipe 模式下 `e.stderr` 有时不完整，导致多次失败时输出全被吞掉。
+
+**修复：**
+- resource 的逗号参数（`/resource:路径,标识`）**不加引号**（路径无空格时安全）：
+  ```js
+  execSync(`"${CSC}" ... /resource:${iconIco},icon.ico ...`, { stdio: 'inherit' })
+  ```
+- stdio 改 `'inherit'`，csc 报错直接透传到控制台。
+
+**验证：** 修复后 build.ps1 首次完整自动跑通（编译 → app.asar → 7z → uninstall → launcher3 → 拼接 → 校验全绿）。
+
+**教训：** csc/robocopy 这类 Windows 原生命令的参数引号规则和 POSIX 不同——带逗号的复合参数（`file,id` 形式）加引号会把逗号变成字面量的一部分。写这类命令时要么不加引号，要么把逗号部分拆出去。另外 spawn 子进程的 stdio 用 'inherit' 永远比 'pipe' 更好排查。
+
+---

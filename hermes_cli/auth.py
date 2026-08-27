@@ -697,6 +697,10 @@ def _resolve_zai_base_url(api_key: str, default_url: str, env_override: str) -> 
             "key_hash": key_hash,
         }
         _save_provider_state(auth_store, "zai", state)
+        # 必须落盘：否则探测结果只存活在本次内存中的 auth_store 里，下次
+        # _load_auth_store()（credential pool 每 15s refresh 重建）重新 miss
+        # → 重新探测（每端点 ~8s HTTPS）→ 重新打 info 日志。曾刷 10444 行。
+        _save_auth_store(auth_store)
         logger.info("Z.AI: auto-detected endpoint %s (%s)", detected["label"], detected["base_url"])
         return detected["base_url"]
 

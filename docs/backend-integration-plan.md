@@ -140,11 +140,17 @@
 | 3.3 | 改 `app/session/hooks/use-message-stream.ts` | 找到 L819-820 / L923-924 的 `payload?.usage` 处理点，在 `message.end` 事件里追加调用 `reportUsage()`（模型名、token 数从 payload 取） | 4.5 ✅ |
 | 3.4 | 改 composer 发送逻辑 | 发消息前预判 `score <= 0` → 直接弹"额度不足，联系代理充值"，不发起 LLM 调用 | 4.5 ✅ |
 
-### 第 4 层：更新机制（优先级低，可后面做）
+### 第 4 层：更新机制 ✅ 已完成（2026-08-16）
 
-| # | 文件 | 改什么 |
-|---|------|--------|
-| 4.1 | 改 `store/updates.ts` | git-based 检查换成 HTTP `GET /api/client/v1/update/check` |
+| # | 文件 | 改什么 | 状态 |
+|---|------|--------|------|
+| 4.1 | 新增 `store/client-update.ts` | 启动时 HTTP `GET /api/client/v1/update/check`；非强制 toast（24h 冷却），`enforce:1` 全屏阻断弹窗 | ✅ |
+| 4.2 | 新增 `components/client-update-overlay.tsx` | 强制更新阻断弹窗 + 下载进度条 | ✅ |
+| 4.3 | `electron/main.cjs` + `electron/preload.cjs` | `hermes:clientUpdate:downloadAndRun`：流式下载安装包（302 重定向/60s 超时/进度节流），下载完自动启动安装器并退出应用 | ✅ |
+| 4.4 | `app/desktop-controller.tsx` | git 更新轮询停用（`startUpdatePoller` 移除），启动改调 `checkClientUpdate()` | ✅ |
+| 4.5 | `app/settings/about-settings.tsx` | 关于页更新卡片改 URL 通道（手动检查/立即更新/手动下载兜底） | ✅ |
+
+**发版流程：** 版本号改两处（`package.json` version + `build-installer.cjs` VERSION）→ 编译 → Setup.exe 上传服务器 `/downloads/` → 后台版本管理加记录（newversion 必须大于客户端版本，downloadurl 填公网直链）。
 
 ### 实现顺序建议
 1. **先做第 1 层**（1.1 → 1.2 → 1.5 → 1.3 → 1.4）—— 基地址先用占位常量，4.1 定了改一行
@@ -156,8 +162,8 @@
 
 ## 四、待确认的细节问题（明天讨论）
 
-### 4.1 后端基地址
-现在硬编码 `http://8.138.58.181`。写死在代码里？还是可配置？
+### 4.1 后端基地址 ✅ 已定（2026-08-16 上线）
+`http://agent.aijiqiren.vip`（正式域名，FastAdmin PHP 后端）。硬编码在 `lib/backend.ts` 的 `BACKEND_BASE_URL`，编译时可用 `VITE_BACKEND_BASE_URL` 覆盖（build.ps1 `-BackendUrl` 参数）。
 
 ### 4.2 Token 存储方式
 - localStorage（页面刷新不丢，但关浏览器后清除）
@@ -235,8 +241,9 @@ GET /api/client/v1/update/check?version=1.0.0
 
 ---
 
-## 六、当前分支状态
+## 六、当前状态（2026-08-16 更新）
 
-- 分支：`feat/backend-integration`（已从 main 拉出）
-- main 上最后一个 commit：`6b2fc490f docs: 更新CHANGELOG和离线打包踩坑记录`
-- 尚未写任何代码，纯方案讨论阶段
+- **状态：全部 4 层已完成并上线联调通过。** 后端 `http://agent.aijiqiren.vip` 已部署，8 个接口（注册/登录/查额度/查 apikey/上报用量/401 拦截/额度不足/版本检查）实测通过。
+- 后台版本管理当前无版本记录（0.17.0 即最新版，客户端启动不弹更新提示）。
+- 正式发新版流程见"第 4 层"末尾。
+- 历史方案讨论阶段（feat/backend-integration 分支）已合并落地。

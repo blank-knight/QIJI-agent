@@ -21,15 +21,21 @@
 .PARAMETER HermesHome
   Hermes CLI 安装目录（vendor 数据源）。默认 %LOCALAPPDATA%\hermes
 
+.PARAMETER BackendUrl
+  客户端连接的后端地址（编译时注入 VITE_BACKEND_BASE_URL）。
+  默认用源码里的值（http://8.138.58.181）。
+
 .EXAMPLE
-  .\build.ps1                 # 完整编译（推荐）
-  .\build.ps1 -SkipVendor     # vendor 已存在，跳过生成
-  .\build.ps1 -FastRepack     # 只改前端，快速重打包
+  .\build.ps1                              # 完整编译（推荐）
+  .\build.ps1 -SkipVendor                  # vendor 已存在，跳过生成
+  .\build.ps1 -FastRepack                  # 只改前端，快速重打包
+  .\build.ps1 -BackendUrl http://localhost:8082  # 指定后端地址
 #>
 param(
     [switch]$SkipVendor,
     [switch]$FastRepack,
-    [string]$HermesHome = "$env:LOCALAPPDATA\hermes"
+    [string]$HermesHome = "$env:LOCALAPPDATA\hermes",
+    [string]$BackendUrl = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -290,7 +296,12 @@ if ($FastRepack) {
     # ErrorActionPreference=Stop 会把它当致命异常抛出。临时降为 Continue。
     $prevEAP = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
-    $wslOutput = wsl.exe -e bash -lc "cd '$wslRepoRoot/apps/desktop' && npx tsc -b && npx vite build" 2>&1
+    $wslEnvPrefix = ""
+    if ($BackendUrl) {
+        $wslEnvPrefix = "export VITE_BACKEND_BASE_URL='$BackendUrl' && "
+        Write-Host "  后端地址: $BackendUrl" -ForegroundColor Yellow
+    }
+    $wslOutput = wsl.exe -e bash -lc "cd '$wslRepoRoot/apps/desktop' && ${wslEnvPrefix}npx tsc -b && ${wslEnvPrefix}npx vite build" 2>&1
     $wslExit = $LASTEXITCODE
     $ErrorActionPreference = $prevEAP
     $wslOutput | ForEach-Object { Write-Host $_ }
@@ -344,6 +355,10 @@ if ($FastRepack) {
     # ---- 完整编译：tsc+vite → electron-builder --dir → 7z SFX ----
     Write-Step 4 "编译（tsc+vite → electron-builder --dir → 7z SFX）"
 
+    if ($BackendUrl) {
+        $env:VITE_BACKEND_BASE_URL = $BackendUrl
+        Write-Host "  后端地址: $BackendUrl" -ForegroundColor Yellow
+    }
     Push-Location $desktopDir
     # npm run dist:win:sfx 内部 vite build 会把 PLUGIN_TIMINGS 写到 stderr，
     # ErrorActionPreference=Stop 会误杀。临时降为 Continue。
@@ -399,6 +414,20 @@ foreach ($g in $grepChecks) {
     } else {
         Write-Err "$($g.Desc) 未找到！dist 可能缺少功能"
         Write-Host "    grep pattern: $($g.Pat)" -ForegroundColor DarkGray
+    }
+}
+
+# 5c. 后端地址验证（防打包时环境变量没传进去）
+if ($BackendUrl) {
+    $prevEAP3 = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    $escapedUrl = $BackendUrl -replace '\.', '\.'
+    $addrResult = wsl.exe -e bash -lc "grep -roa '$escapedUrl' '$distAssets'/*.js 2>/dev/null | head -1" 2>&1
+    $ErrorActionPreference = $prevEAP3
+    if ($addrResult -and $addrResult.ToString().Trim()) {
+        Write-Ok "后端地址 $BackendUrl 已固化进 dist"
+    } else {
+        Write-Err "后端地址 $BackendUrl 未在 dist 中找到！环境变量可能未生效"
     }
 }
 

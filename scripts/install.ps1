@@ -253,34 +253,37 @@ function Stage-VendorFiles {
         # a terminating error, aborting git init before remote add + commit.
         $prevEAP = $ErrorActionPreference
         $ErrorActionPreference = "Continue"
+        # Block credential GUI prompts (CredentialHelperSelector popup)
+        $env:GIT_TERMINAL_PROMPT = "0"
+        $env:GCM_INTERACTIVE = "never"
         try {
             $gitStep = "init"
-            git -c windows.appendAtomically=false init 2>&1 | Out-Null
+            git -c credential.helper= -c windows.appendAtomically=false init 2>&1 | Out-Null
             if ($LASTEXITCODE -ne 0) { throw "git init failed (exit $LASTEXITCODE)" }
 
-            git -c windows.appendAtomically=false config windows.appendAtomically false 2>&1 | Out-Null
-            git -c windows.appendAtomically=false config core.autocrlf false 2>&1 | Out-Null
-            git -c windows.appendAtomically=false config user.name "Qiji Installer" 2>&1 | Out-Null
-            git -c windows.appendAtomically=false config user.email "installer@local" 2>&1 | Out-Null
-            git -c windows.appendAtomically=false init.defaultBranch main 2>&1 | Out-Null
+            git -c credential.helper= -c windows.appendAtomically=false config windows.appendAtomically false 2>&1 | Out-Null
+            git -c credential.helper= -c windows.appendAtomically=false config core.autocrlf false 2>&1 | Out-Null
+            git -c credential.helper= -c windows.appendAtomically=false config user.name "Qiji Installer" 2>&1 | Out-Null
+            git -c credential.helper= -c windows.appendAtomically=false config user.email "installer@local" 2>&1 | Out-Null
+            git -c credential.helper= -c windows.appendAtomically=false init.defaultBranch main 2>&1 | Out-Null
 
             # Rename master -> main if init created master (old git default)
-            $curBranch = git -c windows.appendAtomically=false symbolic-ref --short HEAD 2>&1
+            $curBranch = git -c credential.helper= -c windows.appendAtomically=false symbolic-ref --short HEAD 2>&1
             if ($LASTEXITCODE -eq 0 -and $curBranch -ne "main") {
-                git -c windows.appendAtomically=false branch -m main 2>&1 | Out-Null
+                git -c credential.helper= -c windows.appendAtomically=false branch -m main 2>&1 | Out-Null
             }
 
             $gitStep = "remote"
-            git remote add origin "https://gitee.com/wintao-storm/QIJI-agent.git" 2>&1 | Out-Null
+            git -c credential.helper= remote add origin "https://gitee.com/wintao-storm/QIJI-agent.git" 2>&1 | Out-Null
             # remote add fails if already exists; that's fine
             if ($LASTEXITCODE -ne 0) {
-                git remote set-url origin "https://gitee.com/wintao-storm/QIJI-agent.git" 2>&1 | Out-Null
+                git -c credential.helper= remote set-url origin "https://gitee.com/wintao-storm/QIJI-agent.git" 2>&1 | Out-Null
             }
 
             $gitStep = "add+commit"
-            git -c windows.appendAtomically=false add pyproject.toml hermes_cli/__init__.py AGENTS.md README.md 2>&1 | Out-Null
+            git -c credential.helper= -c windows.appendAtomically=false add pyproject.toml hermes_cli/__init__.py AGENTS.md README.md 2>&1 | Out-Null
             if ($LASTEXITCODE -ne 0) { throw "git add failed (exit $LASTEXITCODE)" }
-            git -c windows.appendAtomically=false commit -m "vendor snapshot (offline install)" 2>&1 | Out-Null
+            git -c credential.helper= -c windows.appendAtomically=false commit -m "vendor snapshot (offline install)" 2>&1 | Out-Null
             if ($LASTEXITCODE -ne 0) { throw "git commit failed (exit $LASTEXITCODE)" }
 
             Write-Host "[vendor] Git initialized: $(git rev-parse --short HEAD) on branch $(git rev-parse --abbrev-ref HEAD)" -ForegroundColor Green
@@ -1821,11 +1824,11 @@ function Install-Repository {
                 # Reset $LASTEXITCODE before the probe so we don't pick up
                 # a stale 0 from an earlier git call in this session.
                 $global:LASTEXITCODE = 0
-                $revParseOut = & git -c windows.appendAtomically=false rev-parse --is-inside-work-tree 2>&1
+                $revParseOut = & git -c credential.helper= -c windows.appendAtomically=false rev-parse --is-inside-work-tree 2>&1
                 $revParseOk = ($LASTEXITCODE -eq 0) -and ($revParseOut -match "true")
 
                 $global:LASTEXITCODE = 0
-                $null = & git -c windows.appendAtomically=false status --short 2>&1
+                $null = & git -c credential.helper= -c windows.appendAtomically=false status --short 2>&1
                 $statusOk = ($LASTEXITCODE -eq 0)
 
                 # An interrupted previous clone leaves a repo with NO initial
@@ -1835,7 +1838,7 @@ function Install-Repository {
                 # (#40998). Require a resolvable HEAD so such partial checkouts
                 # are treated as broken and re-cloned fresh below.
                 $global:LASTEXITCODE = 0
-                $null = & git -c windows.appendAtomically=false rev-parse --verify HEAD 2>&1
+                $null = & git -c credential.helper= -c windows.appendAtomically=false rev-parse --verify HEAD 2>&1
                 $hasCommit = ($LASTEXITCODE -eq 0)
 
                 if ($revParseOk -and $statusOk -and $hasCommit) {
@@ -1865,7 +1868,7 @@ function Install-Repository {
                 # be overwritten by checkout", which is exactly the failure GUI
                 # users hit on update. Pin autocrlf=false so the dirt is never
                 # created in the first place.
-                git -c windows.appendAtomically=false config core.autocrlf false 2>$null
+                git -c credential.helper= -c windows.appendAtomically=false config core.autocrlf false 2>$null
                 # Preserve any real local changes before the checkout instead of
                 # discarding them with `reset --hard HEAD`. The old hard reset
                 # silently destroyed agent-edited source on managed clones (the
@@ -1873,7 +1876,7 @@ function Install-Repository {
                 # nothing is lost, and a failed restore leaves the work in a
                 # git stash for manual recovery. Untracked files are included so
                 # agent-created dirs (e.g. tinker-atropos/) survive too.
-                $statusOut = git -c windows.appendAtomically=false status --porcelain 2>$null
+                $statusOut = git -c credential.helper= -c windows.appendAtomically=false status --porcelain 2>$null
                 if (-not [string]::IsNullOrWhiteSpace(($statusOut -join "`n"))) {
                     # A previously interrupted update can leave the index with
                     # unmerged entries. In that state `git stash` aborts with
@@ -1884,17 +1887,17 @@ function Install-Repository {
                     # working-tree changes are kept (and stashed just below); only
                     # the index conflict state is dropped. Mirrors the `hermes
                     # update` path (#4735).
-                    $unmergedOut = git -c windows.appendAtomically=false ls-files --unmerged 2>$null
+                    $unmergedOut = git -c credential.helper= -c windows.appendAtomically=false ls-files --unmerged 2>$null
                     if (-not [string]::IsNullOrWhiteSpace(($unmergedOut -join "`n"))) {
                         Write-Info "Clearing unmerged index entries from a previous conflict..."
-                        git -c windows.appendAtomically=false reset -q 2>$null
+                        git -c credential.helper= -c windows.appendAtomically=false reset -q 2>$null
                     }
                     $stashName = "hermes-install-autostash-" + (Get-Date -Format "yyyyMMdd-HHmmss")
                     Write-Info "Local changes detected, stashing before update..."
-                    git -c windows.appendAtomically=false stash push --include-untracked -m "$stashName"
+                    git -c credential.helper= -c windows.appendAtomically=false stash push --include-untracked -m "$stashName"
                     if ($LASTEXITCODE -eq 0) { $autostashRef = "stash@{0}" }
                 }
-                git -c windows.appendAtomically=false fetch origin $Branch
+                git -c credential.helper= -c windows.appendAtomically=false fetch origin $Branch
                 if ($LASTEXITCODE -ne 0) { throw "git fetch failed (exit $LASTEXITCODE)" }
                 # Precedence: Commit > Tag > Branch.  Commit and Tag check
                 # out as detached HEAD intentionally -- they're meant to be
@@ -1902,17 +1905,17 @@ function Install-Repository {
                 if ($Commit) {
                     # Make sure we have the commit locally (a tag-less commit
                     # SHA isn't always reachable from any one branch fetch).
-                    git -c windows.appendAtomically=false fetch origin $Commit
-                    git -c windows.appendAtomically=false checkout --detach $Commit
+                    git -c credential.helper= -c windows.appendAtomically=false fetch origin $Commit
+                    git -c credential.helper= -c windows.appendAtomically=false checkout --detach $Commit
                     if ($LASTEXITCODE -ne 0) { throw "git checkout $Commit failed (exit $LASTEXITCODE)" }
                 } elseif ($Tag) {
-                    git -c windows.appendAtomically=false fetch origin "refs/tags/${Tag}:refs/tags/${Tag}"
-                    git -c windows.appendAtomically=false checkout --detach "refs/tags/$Tag"
+                    git -c credential.helper= -c windows.appendAtomically=false fetch origin "refs/tags/${Tag}:refs/tags/${Tag}"
+                    git -c credential.helper= -c windows.appendAtomically=false checkout --detach "refs/tags/$Tag"
                     if ($LASTEXITCODE -ne 0) { throw "git checkout tag $Tag failed (exit $LASTEXITCODE)" }
                 } else {
-                    git -c windows.appendAtomically=false checkout $Branch
+                    git -c credential.helper= -c windows.appendAtomically=false checkout $Branch
                     if ($LASTEXITCODE -ne 0) { throw "git checkout $Branch failed (exit $LASTEXITCODE)" }
-                    git -c windows.appendAtomically=false pull --ff-only origin $Branch
+                    git -c credential.helper= -c windows.appendAtomically=false pull --ff-only origin $Branch
                     if ($LASTEXITCODE -ne 0) { throw "git pull failed (exit $LASTEXITCODE)" }
                 }
 
@@ -1943,9 +1946,9 @@ function Install-Repository {
 
                     if ($restoreNow) {
                         Write-Info "Restoring local changes..."
-                        git -c windows.appendAtomically=false stash apply $autostashRef
+                        git -c credential.helper= -c windows.appendAtomically=false stash apply $autostashRef
                         if ($LASTEXITCODE -eq 0) {
-                            git -c windows.appendAtomically=false stash drop $autostashRef 2>$null
+                            git -c credential.helper= -c windows.appendAtomically=false stash drop $autostashRef 2>$null
                             Write-Warn "Local changes were restored on top of the updated codebase."
                             Write-Warn "Review git diff / git status if the app behaves unexpectedly."
                         } else {
@@ -2010,7 +2013,7 @@ function Install-Repository {
         Write-Info "Trying SSH clone..."
         $env:GIT_SSH_COMMAND = "ssh -o BatchMode=yes -o ConnectTimeout=5"
         try {
-            Invoke-NativeWithRelaxedErrorAction { git -c windows.appendAtomically=false clone --depth 1 --branch $Branch $RepoUrlSsh $InstallDir }
+            Invoke-NativeWithRelaxedErrorAction { git -c credential.helper= -c windows.appendAtomically=false clone --depth 1 --branch $Branch $RepoUrlSsh $InstallDir }
             if ($LASTEXITCODE -eq 0) { $cloneSuccess = $true }
         } catch { }
         $env:GIT_SSH_COMMAND = $null
@@ -2019,7 +2022,7 @@ function Install-Repository {
             if (Test-Path $InstallDir) { Remove-Item -Recurse -Force $InstallDir -ErrorAction SilentlyContinue }
             Write-Info "SSH failed, trying HTTPS..."
             try {
-                Invoke-NativeWithRelaxedErrorAction { git -c windows.appendAtomically=false clone --depth 1 --branch $Branch $RepoUrlHttps $InstallDir }
+                Invoke-NativeWithRelaxedErrorAction { git -c credential.helper= -c windows.appendAtomically=false clone --depth 1 --branch $Branch $RepoUrlHttps $InstallDir }
                 if ($LASTEXITCODE -eq 0) { $cloneSuccess = $true }
             } catch { }
         }
@@ -2058,9 +2061,9 @@ function Install-Repository {
 
                     # Initialize git repo so updates work later
                     Push-Location $InstallDir
-                    git -c windows.appendAtomically=false init 2>$null
-                    git -c windows.appendAtomically=false config windows.appendAtomically false 2>$null
-                    git remote add origin $RepoUrlHttps 2>$null
+                    git -c credential.helper= -c windows.appendAtomically=false init 2>$null
+                    git -c credential.helper= -c windows.appendAtomically=false config windows.appendAtomically false 2>$null
+                    git -c credential.helper= remote add origin $RepoUrlHttps 2>$null
                     Pop-Location
                     Write-Success "Git repo initialized for future updates"
 
@@ -2082,12 +2085,12 @@ function Install-Repository {
 
     # Set per-repo config (harmless if it fails)
     Push-Location $InstallDir
-    git -c windows.appendAtomically=false config windows.appendAtomically false 2>$null
+    git -c credential.helper= -c windows.appendAtomically=false config windows.appendAtomically false 2>$null
     # Pin autocrlf=false on the managed clone so git never renormalizes the
     # repo's LF text files to CRLF in the working tree. Without this, the very
     # next `hermes update` checkout aborts on a "dirty" tree the user never
     # touched (see the update path above).
-    git -c windows.appendAtomically=false config core.autocrlf false 2>$null
+    git -c credential.helper= -c windows.appendAtomically=false config core.autocrlf false 2>$null
 
     # Post-clone pin: when a clone (or ZIP-fallback init) just landed us on
     # $Branch's tip, honour the higher-precedence $Commit / $Tag by checking
@@ -2099,18 +2102,21 @@ function Install-Repository {
         # global EAP=Stop otherwise.  We check $LASTEXITCODE for real errors.
         $prevEAP = $ErrorActionPreference
         $ErrorActionPreference = "Continue"
+        # Block credential GUI prompts (CredentialHelperSelector popup)
+        $env:GIT_TERMINAL_PROMPT = "0"
+        $env:GCM_INTERACTIVE = "never"
         try {
             if ($Commit) {
                 Write-Info "Pinning to commit $Commit..."
-                git -c windows.appendAtomically=false fetch origin $Commit
-                git -c windows.appendAtomically=false checkout --detach $Commit
+                git -c credential.helper= -c windows.appendAtomically=false fetch origin $Commit
+                git -c credential.helper= -c windows.appendAtomically=false checkout --detach $Commit
                 if ($LASTEXITCODE -ne 0) {
                     throw "git checkout $Commit failed (exit $LASTEXITCODE)"
                 }
             } elseif ($Tag) {
                 Write-Info "Pinning to tag $Tag..."
-                git -c windows.appendAtomically=false fetch origin "refs/tags/${Tag}:refs/tags/${Tag}"
-                git -c windows.appendAtomically=false checkout --detach "refs/tags/$Tag"
+                git -c credential.helper= -c windows.appendAtomically=false fetch origin "refs/tags/${Tag}:refs/tags/${Tag}"
+                git -c credential.helper= -c windows.appendAtomically=false checkout --detach "refs/tags/$Tag"
                 if ($LASTEXITCODE -ne 0) {
                     throw "git checkout tag $Tag failed (exit $LASTEXITCODE)"
                 }
@@ -2416,6 +2422,9 @@ except Exception:
         # even when fastapi/uvicorn are actually installed.
         $prevEAP = $ErrorActionPreference
         $ErrorActionPreference = "Continue"
+        # Block credential GUI prompts (CredentialHelperSelector popup)
+        $env:GIT_TERMINAL_PROMPT = "0"
+        $env:GCM_INTERACTIVE = "never"
         try {
             & $pythonExe -c "import fastapi, uvicorn" 2>&1 | Out-Null
             if ($LASTEXITCODE -eq 0) { $webOk = $true }

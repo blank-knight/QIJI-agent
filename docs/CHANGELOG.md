@@ -5,6 +5,22 @@
 
 ---
 
+## 2026-08-16 URL 更新通道 + 注册/退出登录 + 正式后端上线
+
+- **URL 更新通道（替代 git 更新）：** 客户端更新统一走 PHP 后端 `GET /api/client/v1/update/check?version=x` → `downloadurl`。git 更新轮询停用（离线包无 git 仓库，git 通道对正式用户无效）。
+  - 新增 `store/client-update.ts`：启动时自动检查（登录页之前，无需 token）；非强制更新 toast 提醒（24h 冷却）；`enforce:1` 时全屏阻断弹窗（锁图标提示"完成更新前无法使用本软件"）。
+  - 新增 `components/client-update-overlay.tsx`：强制更新阻断弹窗 + 下载进度条（无 Content-Length 时显示不定进度条）。
+  - `electron/main.cjs` 新增 `hermes:clientUpdate:downloadAndRun` IPC：流式下载安装包到 `<userData>/updates/`（支持 302 重定向、60s 超时、进度节流 ~4/s），下载完 `shell.openPath` 启动安装器并 1.5s 后自动退出应用（避免 EBUSY 文件锁，让安装器覆盖写入）。
+  - `lib/backend.ts` 新增 `checkUpdate()`；关于页更新卡片改为 URL 通道（手动检查/立即更新/手动下载兜底/下载进度）。
+- **注册功能（内置表单）：** 登录页「注册账号」从外链改为内置注册表单（手机号+密码+邀请码可选），调 `POST /api/client/v1/auth/register`，成功后自动登录进主界面。`store/auth.ts` 新增 `register()`。
+- **退出登录：** 设置 → 关于 → 账户信息底部红色「退出登录」按钮，清空 auth localStorage 并刷新回登录页（`clearAuth()` 之前无 UI 入口）。
+- **api_key 为空不再阻塞登录：** 去掉 login/register 里的 `!data.api_key` 强制检查；api_key 为空时只弹 info 通知"未配置 AI 服务，请联系代理/上级开通"，不阻止进入主界面。
+- **后端基地址正式上线：** `http://8.138.58.181`（占位）→ `http://agent.aijiqiren.vip`（正式域名）。可用 `VITE_BACKEND_BASE_URL` 编译时覆盖（build.ps1 加了 `-BackendUrl` 参数）。
+- **build-installer.cjs 修复 icon.ico 引号 bug（陈年静默失败根因）：** `/resource:"...\icon.ico,icon.ico"` 的引号使 csc 把逗号当文件名一部分（CS1566 找不到 `icon.ico,icon.ico` 文件）。修复：resource 的逗号参数不加引号；同时 stdio 改 'inherit' 让 csc 报错可见。修复后 build.ps1 首次完整自动跑通。
+- **线上后端联调全通：** 注册/登录/查额度/查 apikey/上报用量（幂等）/401 拦截（HTTP 401）/额度不足（code:429）/版本检查全部实测通过。带邀请码注册返回 trial（只绑代理+下发 api_key，formal 升级走 activate 接口，与后端确认是设计如此）。
+- **发版流程（重要）：** 版本号要改**两处**——`package.json` 的 `version`（客户端上报用）+ `installer/build-installer.cjs` 的 `VERSION`（Setup.exe 文件名用）。发新版三步：升版本号 → 编译 → 上传 Setup.exe 到服务器 `/downloads/` → 后台版本管理加记录填 downloadurl。注意 `newversion` 必须大于客户端实际版本，否则死循环提示更新。
+- **涉及文件：** `store/client-update.ts`(新), `components/client-update-overlay.tsx`(新), `lib/backend.ts`, `store/auth.ts`, `components/login-overlay.tsx`, `app/settings/about-settings.tsx`, `app/desktop-controller.tsx`, `electron/main.cjs`, `electron/preload.cjs`, `src/global.d.ts`, `installer/build-installer.cjs`, `build.ps1`
+
 ## 2026-07-30 后端联动改造（登录页 + 额度 + 设置入口隐藏）
 
 - **第1层 认证基础设施：** 新增 `lib/backend.ts`（基地址常量 + `backendFetch()` 401 拦截器 + API 类型定义）、`store/auth.ts`（auth store：token/is_custom_key/score/mode + login/clearAuth/devSkipLogin）、`components/login-overlay.tsx`（全屏登录覆盖层：username + password + 注册/忘记密码外链 + 开发模式跳过按钮）。禁用引导页（`store/onboarding.ts` INITIAL 永远 configured=true）。`desktop-controller.tsx` 挂载登录页 + 401 handler + gateway 就绪后补推 api_key。
