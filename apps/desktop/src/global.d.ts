@@ -136,6 +136,8 @@ declare global {
       // URL-based client update: download the published installer and run it.
       clientUpdate: {
         downloadAndRun: (url: string) => Promise<{ ok: boolean; path: string }>
+        download: (url: string) => Promise<{ ok: boolean; path: string }>
+        runInstaller: (filePath: string) => Promise<{ ok: boolean }>
         onProgress: (callback: (payload: ClientUpdateProgress) => void) => () => void
       }
       uninstall: {

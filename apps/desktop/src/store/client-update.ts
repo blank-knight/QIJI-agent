@@ -4,15 +4,19 @@ import { checkUpdate, type UpdateCheckResponse } from '@/lib/backend'
 import { notify } from '@/store/notifications'
 
 // 非强制更新的 toast 冷却时间（24h），避免每次启动都弹。
+// 冷却按"版本"隔离：同一版本 24h 内不重复弹，换新版本号立即重新弹。
 const TOAST_COOLDOWN_MS = 24 * 60 * 60 * 1000
-const LAST_TOAST_KEY = 'qiji-client-update-toast-at'
+const toastCooldownKey = (version: string) => `qiji-client-update-toast-${version}`
+// 已下载安装包路径（跨启动持久化；temp 文件被系统清理时优雅降级）
+const downloadedPathKey = (version: string) => `qiji-client-update-installer-${version}`
 
 export type ClientUpdateStatus =
   | 'idle' // 还没检查过
   | 'checking'
   | 'uptodate'
   | 'available' // 有新版本，等待用户操作
-  | 'downloading'
+  | 'downloading' // 后台静默下载中（不阻断界面）
+  | 'downloaded' // 已下载完成，等待用户确认安装
   | 'error'
 
 export interface ClientUpdateState {
@@ -22,6 +26,8 @@ export interface ClientUpdateState {
   progressPercent: number
   /** 服务器未告知总大小时为 true，UI 显示不定进度条 */
   progressIndeterminate: boolean
+  /** 已下载安装包的本地路径（status=downloaded 时有效） */
+  installerPath?: string
   error?: string
   lastCheckedAt?: number
 }
@@ -45,6 +51,14 @@ let progressUnsub: (() => void) | null = null
 /** 当前版本是否有强制更新待处理（用于阻断式弹窗） */
 export function isEnforcedUpdate(state: ClientUpdateState): boolean {
   return Boolean(state.info?.enforce) && state.status !== 'idle' && state.status !== 'checking' && state.status !== 'uptodate'
+}
+
+/**
+ * 已下载完成待安装的安装包路径（status=downloaded 时非空）。
+ */
+export function downloadedInstallerPath(): string | null {
+  const state = $clientUpdate.get()
+  return state.status === 'downloaded' ? state.installerPath ?? null : null
 }
 
 /**
@@ -82,19 +96,33 @@ export async function checkClientUpdate(options: { manual?: boolean } = {}): Pro
       return
     }
 
+    // 上次会话已下载完这个版本：直接恢复 downloaded 态（文件可能已被
+    // 系统清理，装的时候主进程会报"安装包不存在"，届时自然回落重下）
+    try {
+      const savedPath = window.localStorage.getItem(downloadedPathKey(info.newversion))
+
+      if (savedPath) {
+        patch({ status: 'downloaded', installerPath: savedPath })
+        return
+      }
+    } catch {
+      // localStorage 不可用就当没下载过
+    }
+
     // 手动检查：结果展示在关于页，不重复弹 toast
     if (options.manual) {
       return
     }
 
     try {
-      const last = Number(window.localStorage.getItem(LAST_TOAST_KEY) || 0)
+      const key = toastCooldownKey(info.newversion)
+      const last = Number(window.localStorage.getItem(key) || 0)
 
       if (Date.now() - last < TOAST_COOLDOWN_MS) {
         return
       }
 
-      window.localStorage.setItem(LAST_TOAST_KEY, String(Date.now()))
+      window.localStorage.setItem(key, String(Date.now()))
     } catch {
       // localStorage 不可用就直接弹
     }
@@ -123,7 +151,8 @@ export async function checkClientUpdate(options: { manual?: boolean } = {}): Pro
 }
 
 /**
- * 下载新安装包并启动安装（主进程执行，下载完成后应用自动退出）。
+ * 后台静默下载新安装包（主进程执行，不阻断界面）。
+ * 下载完成后弹常驻提醒，用户点「立即安装」才真正运行安装程序。
  */
 export async function startClientUpdate(): Promise<void> {
   const state = $clientUpdate.get()
@@ -134,13 +163,13 @@ export async function startClientUpdate(): Promise<void> {
     return
   }
 
-  if (state.status === 'downloading') {
+  if (state.status === 'downloading' || state.status === 'downloaded') {
     return
   }
 
   const bridge = window.hermesDesktop?.clientUpdate
 
-  if (!bridge) {
+  if (!bridge?.download) {
     // 理论上到不了这里（preload 一定有）；兜底走浏览器下载
     notify({ kind: 'warning', title: '无法自动更新', message: '已在浏览器打开下载页面，请手动下载安装' })
     window.hermesDesktop?.openExternal?.(url)
@@ -166,8 +195,26 @@ export async function startClientUpdate(): Promise<void> {
     }) ?? null
 
   try {
-    await bridge.downloadAndRun(url)
-    // 安装程序已启动，应用即将退出；这里不用再改状态
+    const result = await bridge.download(url)
+
+    patch({ status: 'downloaded', installerPath: result.path, progressPercent: 100, progressIndeterminate: false })
+
+    try {
+      window.localStorage.setItem(downloadedPathKey(state.info?.newversion ?? ''), result.path)
+    } catch {
+      // 存不进 localStorage 不影响本次会话安装
+    }
+
+    notify({
+      kind: 'success',
+      title: `新版本 v${state.info?.newversion ?? ''} 已下载完成`,
+      message: '点击「立即安装」完成升级',
+      durationMs: 0,
+      action: {
+        label: '立即安装',
+        onClick: () => void installClientUpdate()
+      }
+    })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
 
@@ -175,13 +222,89 @@ export async function startClientUpdate(): Promise<void> {
 
     notify({
       kind: 'error',
-      title: '更新失败',
+      title: '更新下载失败',
       message,
       action: {
         label: '手动下载',
         onClick: () => window.hermesDesktop?.openExternal?.(url)
       }
     })
+  } finally {
+    progressUnsub?.()
+    progressUnsub = null
+  }
+}
+
+/**
+ * 运行已下载的安装包（主进程执行，应用随即退出让安装器覆盖安装）。
+ */
+export async function installClientUpdate(): Promise<void> {
+  const state = $clientUpdate.get()
+  const filePath = state.status === 'downloaded' ? state.installerPath : null
+
+  if (!filePath) {
+    return
+  }
+
+  const bridge = window.hermesDesktop?.clientUpdate
+
+  if (!bridge?.runInstaller) {
+    return
+  }
+
+  try {
+    await bridge.runInstaller(filePath)
+    // 安装程序已启动，应用即将退出
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+
+    notify({ kind: 'error', title: '启动安装失败', message })
+  }
+}
+
+/**
+ * 强制更新专用：下载并立即运行安装（downloadAndRun 一体通道）。
+ * enforce 没有「稍后」的余地，下载完直接装、应用退出。
+ */
+export async function runEnforcedClientUpdate(): Promise<void> {
+  const state = $clientUpdate.get()
+  const url = state.info?.downloadurl
+
+  if (!url) {
+    return
+  }
+
+  const bridge = window.hermesDesktop?.clientUpdate
+
+  if (!bridge) {
+    window.hermesDesktop?.openExternal?.(url)
+    return
+  }
+
+  patch({ status: 'downloading', progressPercent: 0, progressIndeterminate: true, error: undefined })
+
+  progressUnsub?.()
+  progressUnsub =
+    bridge.onProgress(progress => {
+      const cur = $clientUpdate.get()
+
+      if (cur.status !== 'downloading') {
+        return
+      }
+
+      $clientUpdate.set({
+        ...cur,
+        progressPercent: progress.percent,
+        progressIndeterminate: progress.total <= 0 && progress.percent < 100
+      })
+    }) ?? null
+
+  try {
+    await bridge.downloadAndRun(url)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+
+    patch({ status: 'error', info: state.info, progressPercent: 0, error: message })
   } finally {
     progressUnsub?.()
     progressUnsub = null

@@ -8,27 +8,27 @@ import {
   $clientUpdate,
   isEnforcedUpdate,
   openClientUpdateDownloadPage,
-  startClientUpdate
+  runEnforcedClientUpdate
 } from '@/store/client-update'
 
 /**
  * 客户端更新覆盖层（URL 更新通道）。
  *
- * - enforce 强制更新：全屏阻断，不能关闭，必须更新
- * - 非强制下载中：显示进度（toast 点了「立即更新」后）
- * - 下载完成：主进程自动启动安装程序并退出应用
+ * - enforce 强制更新：全屏阻断，不能关闭，必须更新（下载+安装一体的
+ *   downloadAndRun 通道，装完即重启——强制场景没有"稍后"的余地）
+ * - 非强制：后台静默下载（toast / 关于页显示进度），下载完成由常驻
+ *   通知提醒安装，不再全屏阻断
  */
 export function ClientUpdateOverlay() {
   const state = useStore($clientUpdate)
   const enforced = isEnforcedUpdate(state)
-  const downloading = state.status === 'downloading'
-  const downloadingNonEnforced = downloading && !enforced
 
-  // 非强制 + 没在下载 → 不渲染（非强制提示由 toast 负责）
-  if (!enforced && !downloadingNonEnforced) {
+  // 只有强制更新才全屏阻断；非强制下载完全在后台进行
+  if (!enforced) {
     return null
   }
 
+  const downloading = state.status === 'downloading'
   const info = state.info
   const indeterminate = downloading && state.progressIndeterminate
 
@@ -104,7 +104,7 @@ export function ClientUpdateOverlay() {
             </Button>
           ) : state.status === 'error' ? (
             <>
-              <Button onClick={() => void startClientUpdate()} size="sm">
+              <Button onClick={() => void runEnforcedClientUpdate()} size="sm">
                 <RefreshCw className="size-3.5" />
                 重试下载
               </Button>
@@ -113,7 +113,7 @@ export function ClientUpdateOverlay() {
               </Button>
             </>
           ) : (
-            <Button autoFocus onClick={() => void startClientUpdate()} size="sm">
+            <Button autoFocus onClick={() => void runEnforcedClientUpdate()} size="sm">
               立即更新{info?.packagesize ? `（约 ${info.packagesize}）` : ''}
             </Button>
           )}

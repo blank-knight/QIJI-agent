@@ -11,6 +11,7 @@ import { clearAuth, $auth } from '@/store/auth'
 import {
   $clientUpdate,
   checkClientUpdate,
+  installClientUpdate,
   openClientUpdateDownloadPage,
   startClientUpdate
 } from '@/store/client-update'
@@ -189,6 +190,7 @@ export function AboutSettings() {
   const checking = clientUpdate.status === 'checking'
   const available = clientUpdate.status === 'available' && clientUpdate.info
   const downloading = clientUpdate.status === 'downloading'
+  const downloaded = clientUpdate.status === 'downloaded'
   const failed = clientUpdate.status === 'error'
 
   let statusLine: string
@@ -196,8 +198,11 @@ export function AboutSettings() {
 
   if (downloading) {
     statusLine = clientUpdate.progressIndeterminate
-      ? '正在下载新版本…'
-      : `正在下载新版本 ${clientUpdate.progressPercent}%`
+      ? '正在后台下载新版本…'
+      : `正在后台下载新版本 ${clientUpdate.progressPercent}%`
+    statusTone = 'available'
+  } else if (downloaded) {
+    statusLine = `新版本 v${clientUpdate.info?.newversion} 已下载完成`
     statusTone = 'available'
   } else if (available) {
     statusLine = `有新版本 v${clientUpdate.info?.newversion}`
@@ -252,12 +257,10 @@ export function AboutSettings() {
               className="mt-1 w-full text-destructive hover:text-destructive"
               onClick={() => {
                 clearAuth()
-                // 退出登录：先拆老后端再重载（resetBootstrap 不触发重装，
-                // 只 SIGTERM 后端+清内存失败态），重登必得全新后端。
-                void window.hermesDesktop
-                  ?.resetBootstrap()
-                  .catch(() => undefined)
-                  .finally(() => window.location.reload())
+                // 退出登录：不再 reload 窗口（reload 是登出闪屏的来源）。
+                // needLogin 置位后登录层原地覆盖；后端留在原地，下一个账号
+                // 登录时按需热切换（selectProfile 池化路径）。$auth 订阅与
+                // use-gateway-boot 的登录门控保证登录页期间无多余后端活动。
               }}
             >
               退出登录
@@ -306,14 +309,21 @@ export function AboutSettings() {
               {checking ? a.checking : a.checkNow}
             </Button>
 
-            {available && !downloading && (
+            {available && !downloading && !downloaded && (
               <Button onClick={() => void startClientUpdate()} size="sm">
                 <Download className="size-3" />
                 {a.updateNow}
               </Button>
             )}
 
-            {(available || failed) && !downloading && (
+            {downloaded && (
+              <Button onClick={() => void installClientUpdate()} size="sm">
+                <Download className="size-3" />
+                立即安装 v{clientUpdate.info?.newversion}
+              </Button>
+            )}
+
+            {(available || failed) && !downloading && !downloaded && (
               <Button onClick={openClientUpdateDownloadPage} size="sm" variant="textStrong">
                 手动下载
               </Button>

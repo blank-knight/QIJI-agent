@@ -12,6 +12,7 @@ import { ChevronDown, Loader2, X } from '@/lib/icons'
 import { BackendError, backendFetch } from '@/lib/backend'
 import { loadSavedAccounts, removeSavedAccount, saveAccount, type SavedAccount } from '@/lib/saved-accounts'
 import { registerAccountProfile } from '@/lib/account-profile'
+import { selectProfile } from '@/store/profile'
 import { notify } from '@/store/notifications'
 import { $auth, devSkipLogin, login, register } from '@/store/auth'
 
@@ -41,6 +42,9 @@ export function LoginOverlay({ onLoggedIn }: LoginOverlayProps) {
   // 历史账号下拉
   const [savedList, setSavedList] = useState<SavedAccount[]>(() => loadSavedAccounts())
   const [dropdownOpen, setDropdownOpen] = useState(false)
+  // 用户手动输入的过滤词。程序填入（挂载自动填充/选账号）不算——否则
+  // 自动填充的上次账号会把下拉列表过滤得只剩它自己。
+  const [typedFilter, setTypedFilter] = useState('')
   const [rememberPwd, setRememberPwd] = useState(false)
   const usernameRef = useRef<HTMLInputElement>(null)
   const mobileRef = useRef<HTMLInputElement>(null)
@@ -100,12 +104,16 @@ export function LoginOverlay({ onLoggedIn }: LoginOverlayProps) {
     return () => document.removeEventListener('mousedown', onDocMouseDown)
   }, [dropdownOpen])
 
-  const filteredAccounts = username.trim()
-    ? savedList.filter(a => a.username.includes(username.trim()))
+  // 只按用户手动敲的字过滤；点箭头展开（typedFilter 为空）显示全部
+  const filteredAccounts = typedFilter.trim()
+    ? savedList.filter(a => a.username.includes(typedFilter.trim()))
     : savedList
 
   function pickAccount(a: SavedAccount) {
+    // 只做填充，绝不代替用户登录——选号 ≠ 确认登录。
     setUsername(a.username)
+    setDropdownOpen(false)
+
     if (a.password) {
       try {
         setPassword(atob(a.password))
@@ -117,8 +125,8 @@ export function LoginOverlay({ onLoggedIn }: LoginOverlayProps) {
       setPassword('')
       setRememberPwd(false)
     }
-    setDropdownOpen(false)
-    // 选完聚焦密码框，方便直接登录
+
+    // 聚焦登录按钮/密码框，用户确认后再登录
     requestAnimationFrame(() => document.getElementById('login-password')?.focus())
   }
 
@@ -149,6 +157,9 @@ export function LoginOverlay({ onLoggedIn }: LoginOverlayProps) {
     return doRegister()
   }
 
+  /**
+   * 登录。读表单 state（下拉选号只做填充，不直接触发登录）。
+   */
   async function doLogin() {
     const u = username.trim()
     const p = password.trim()
@@ -166,17 +177,22 @@ export function LoginOverlay({ onLoggedIn }: LoginOverlayProps) {
       const data = await login(u, p)
 
       // 记住该账号（置顶）；未勾“记住密码”时抹掉已存密码。
-      // 必须在 profile 切换之前——profile.set 会 reload 窗口，之后的代码不再执行。
       saveAccount(u, p, rememberPwd)
       setSavedList(loadSavedAccounts())
 
-      // 用户隔离（方案A）：登录成功即切到该账号的专属 profile（独立会话库）。
-      // 已在本账号的 profile 上则跳过（同账号重复登录不闪屏）。
-      // 切换后窗口 reload，api_key 推送由 reload 后的 ensureAccountApiKey 兜底。
+      // 用户隔离（方案A）：登录成功后热切换到该账号的专属 profile。
+      // 走池化路径（selectProfile → ensureGatewayForProfile）：不杀后端、
+      // 不 reload 窗口——旧实现的 profile.set（teardown + reload）就是
+      // 切换账号时界面闪烁的根源。$activeGatewayProfile 订阅会自动完成
+      // REST 路由切换与缓存失效；主进程按需拉起目标 profile 的后端。
       const accountProfile = registerAccountProfile(u)
       const currentProfile = await window.hermesDesktop?.profile?.get?.().then(r => r?.profile ?? null).catch(() => null)
-      if (accountProfile !== 'default' && accountProfile !== currentProfile) {
-        await window.hermesDesktop?.profile?.set?.(accountProfile).catch(() => undefined)
+
+      if (accountProfile !== currentProfile) {
+        selectProfile(accountProfile)
+        // 热切换后立即刷新配置/模型/会话列表，避免登录层收起后短暂显示
+        // 上一个账号的残留数据
+        onLoggedIn?.()
         return
       }
 
@@ -305,9 +321,9 @@ export function LoginOverlay({ onLoggedIn }: LoginOverlayProps) {
                   id="login-username"
                   onChange={e => {
                     setUsername(e.target.value)
+                    setTypedFilter(e.target.value)
                     setDropdownOpen(true)
                   }}
-                  onFocus={() => setDropdownOpen(true)}
                   placeholder="请输入用户名"
                   ref={usernameRef}
                   value={username}

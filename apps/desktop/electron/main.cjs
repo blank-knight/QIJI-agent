@@ -747,6 +747,20 @@ let connectionPromise = null
 // after, so the exit must NOT be broadcast as a failure — otherwise the
 // boot-failure overlay flashes for a frame before the reload clears it.
 let plannedPrimaryTeardown = false
+// Generation guard against stale teardowns killing the SUCCESSOR backend.
+// Race (seen in desktop.log 2026-08-28): renderer reloads after a profile
+// switch → new backend spawns → a stale reconnect/reset from the old page
+// (or an overlapping teardown) calls resetHermesConnection() and SIGTERMs
+// the FRESH child before it announces its port → "boot failed" overlay
+// flashes. Each teardown now captures the generation of the child it intends
+// to kill; a child spawned after that teardown started belongs to a newer
+// generation and must be left alone.
+let primaryBackendGeneration = 0
+// Sentinel rejection for deliberate teardowns (logout / profile switch /
+// stale teardown racing a successor). startHermes()'s catch re-throws it as
+// a silent "cancelled" so neither the boot-progress error latch nor the
+// renderer's failure overlay fires — the pending reload takes over.
+const PLANNED_TEARDOWN = Object.freeze({ plannedTeardown: true })
 // Additional per-profile backends, keyed by profile name. The PRIMARY backend
 // (the desktop's launch profile) stays managed by hermesProcess +
 // connectionPromise + startHermes(); this pool only holds EXTRA profile
@@ -5178,6 +5192,12 @@ function resetBootProgressForReconnect() {
 function resetHermesConnection() {
   connectionPromise = null
 
+  // Bump the generation: any child spawned from now on is a SUCCESSOR and
+  // must not be touched by this reset. A stale reset racing a fresh spawn
+  // (profile-switch reload) previously SIGTERMed the new backend before it
+  // announced its port — the "boot failed" overlay flash.
+  primaryBackendGeneration += 1
+
   if (hermesProcess && !hermesProcess.killed) {
     hermesProcess.kill('SIGTERM')
   }
@@ -5635,6 +5655,11 @@ async function startHermes() {
 
     hermesProcess.stdout.on('data', rememberLog)
     hermesProcess.stderr.on('data', rememberLog)
+    // This child belongs to the current generation. The exit handler uses
+    // the snapshot below to IGNORE teardowns from older generations (they
+    // were aimed at a predecessor, not at this child).
+    const childGeneration = primaryBackendGeneration
+    const self = hermesProcess
     let backendReady = false
     let rejectBackendStart = null
     const backendStartFailed = new Promise((_resolve, reject) => {
@@ -5658,13 +5683,35 @@ async function startHermes() {
     })
     hermesProcess.once('exit', (code, signal) => {
       rememberLog(`奇计 backend exited (${signal || code})`)
-      hermesProcess = null
-      connectionPromise = null
-      if (plannedPrimaryTeardown) {
+      // Only clear the global slots when they still point at THIS child.
+      // A stale teardown may SIGTERM the successor spawn while the global
+      // hermesProcess already references it — clearing unconditionally also
+      // destroyed the successor's state and triggered chain respawns.
+      if (hermesProcess === self) {
+        hermesProcess = null
+        connectionPromise = null
+      }
+      // A teardown from an OLDER generation aimed at a predecessor child, not
+      // at this one. If this child died right after such a stale SIGTERM (the
+      // profile-switch race), treat it as planned: no failure broadcast, no
+      // boot-error latch — the successor spawn (already running) takes over.
+      const staleTeardown =
+        plannedPrimaryTeardown && primaryBackendGeneration > childGeneration
+
+      if (plannedPrimaryTeardown && !staleTeardown) {
         // Deliberate teardown (logout / profile switch): the renderer is
         // about to reload. Broadcasting the exit would flash the boot
         // failure overlay for a frame — skip both the broadcast and the
-        // boot error latch.
+        // boot error latch. Also quietly unblock the pending startHermes
+        // waiters — the "backend exited" rejection would otherwise latch
+        // "Desktop boot failed" via the catch path (broadcast suppression
+        // alone was not enough; seen in desktop.log 2026-08-28).
+        rejectBackendStart?.(PLANNED_TEARDOWN)
+        return
+      }
+      if (staleTeardown) {
+        rememberLog('[boot] stale teardown killed a successor backend; suppressing failure broadcast')
+        rejectBackendStart?.(PLANNED_TEARDOWN)
         return
       }
       sendBackendExit({ code, signal })
@@ -5719,6 +5766,13 @@ async function startHermes() {
       ...getWindowState()
     }
   })().catch(error => {
+    // Planned teardown (logout / profile switch / stale teardown racing this
+    // spawn): stay silent — the renderer reload or the successor spawn takes
+    // over. Latching an error here is what flashed the failure overlay.
+    if (error === PLANNED_TEARDOWN) {
+      connectionPromise = null
+      throw Object.assign(new Error('backend torn down (planned)'), { plannedTeardown: true })
+    }
     const message = error instanceof Error ? error.message : String(error)
     updateBootProgress(
       {
@@ -6831,7 +6885,9 @@ function downloadInstallerFile(rawUrl, onProgress, redirectsLeft = 5) {
       }
 
       const total = Number(res.headers['content-length'] || 0)
-      const dir = path.join(app.getPath('userData'), 'updates')
+      // temp 目录（而非安装目录旁的 userData/updates）——下载中的文件
+      // 不能出现在安装器要覆盖的目录树附近，且 temp 由系统负责清理。
+      const dir = path.join(app.getPath('temp'), 'qiji-updates')
       const filePath = path.join(dir, sanitizeInstallerName(rawUrl))
       let received = 0
       let lastReported = 0
@@ -6920,6 +6976,63 @@ ipcMain.handle('hermes:clientUpdate:downloadAndRun', async (_event, rawUrl) => {
   setTimeout(() => app.quit(), 1500)
 
   return { ok: true, path: filePath }
+})
+
+// —— Chrome 式静默更新：下载与安装拆开 ——
+
+// 只下载不运行。完成后渲染层常驻提醒，用户点了才装。
+ipcMain.handle('hermes:clientUpdate:download', async (_event, rawUrl) => {
+  const url = String(rawUrl || '').trim()
+
+  if (!/^https?:\/\//i.test(url)) {
+    throw new Error('无效的下载地址')
+  }
+
+  const sendProgress = payload => {
+    try {
+      mainWindow?.webContents?.send?.('hermes:clientUpdate:progress', payload)
+    } catch { /* window may be mid-teardown while quitting */ }
+  }
+
+  const filePath = await downloadInstallerFile(url, sendProgress)
+
+  rememberLog(`[client-update] installer downloaded (silent): ${url} -> ${filePath}`)
+
+  return { ok: true, path: filePath }
+})
+
+// 运行已下载的安装包并退出应用（安装器覆盖安装目录需要独占）。
+ipcMain.handle('hermes:clientUpdate:runInstaller', async (_event, filePath) => {
+  const target = String(filePath || '').trim()
+
+  if (!target || !path.isAbsolute(target)) {
+    throw new Error('无效的安装包路径')
+  }
+
+  // 必须落在主进程自己管理的下载目录里，防止渲染层被攻破后执行任意 exe
+  const downloadDir = path.join(app.getPath('temp'), 'qiji-updates')
+
+  if (path.dirname(target) !== downloadDir) {
+    throw new Error('安装包路径不在下载目录内')
+  }
+
+  try {
+    await fs.promises.access(target)
+  } catch {
+    throw new Error('安装包不存在，请重新下载')
+  }
+
+  rememberLog(`[client-update] running installer: ${target}`)
+
+  const openError = await shell.openPath(target)
+
+  if (openError) {
+    throw new Error(`无法启动安装程序: ${openError}`)
+  }
+
+  setTimeout(() => app.quit(), 1500)
+
+  return { ok: true }
 })
 
 ipcMain.handle('hermes:openPreviewInBrowser', async (_event, url) => {

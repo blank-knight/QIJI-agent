@@ -5,6 +5,7 @@ import { HermesGateway } from '@/hermes'
 import { translateNow } from '@/i18n'
 import { desktopDefaultCwd } from '@/lib/desktop-fs'
 import { isGatewayReauthRequired, resolveGatewayWsUrl } from '@/lib/gateway-ws-url'
+import { isAuthenticated, $auth } from '@/store/auth'
 import {
   $desktopBoot,
   applyDesktopBootProgress,
@@ -76,6 +77,32 @@ export function useGatewayBoot({
   useEffect(() => {
     let cancelled = false
     const desktop = window.hermesDesktop
+
+    // 登录门控：未登录（登出→reload 后停在登录页）不启动后端。旧逻辑在
+    // 登录页背后照样 boot 旧 profile 的后端，登录切档时 profile.set 再把它
+    // 杀掉、reload、重新 spawn——一次切换 = 双 spawn + 击杀 + 双 reload，
+    // 每一步都是一次界面闪烁。effect 主体（监听器/清理函数）保持完整执行，
+    // 只有 boot() 的启动受门控；登录成功（含同账号重登不 reload 的路径）
+    // 由 $auth 订阅补启动。
+    // ⚠ nanostores 的 subscribe 会同步先触发一次回调（初始通知）——那时
+    // 下方的 async function boot 还未声明（TDZ）。回调必须整体 defer 到
+    // 微任务/宏任务之后执行，否则启动即 ReferenceError（登录门控失效，
+    // 表现为"每次重启都弹登录页"）。
+    let wantBoot = isAuthenticated()
+    let authUnsub: (() => void) | null = null
+
+    if (!wantBoot) {
+      authUnsub = $auth.subscribe(() => {
+        queueMicrotask(() => {
+          if (!wantBoot && isAuthenticated()) {
+            wantBoot = true
+            authUnsub?.()
+            authUnsub = null
+            void boot()
+          }
+        })
+      })
+    }
 
     const publish = (next: HermesConnection | null) => {
       callbacksRef.current.onConnectionReady(next)
@@ -452,6 +479,14 @@ export function useGatewayBoot({
           }
 
           const message = err instanceof Error ? err.message : String(err)
+          // 计划内拆除（登出/切档reload）：主进程已经或马上要 reload 窗口，
+          // 这里锁失败层只会闪现一下被 reload 收掉。保持 boot 进度态静默
+          // 等待 reload 即可。
+          const planned = (err as { plannedTeardown?: boolean } | null)?.plannedTeardown === true
+          if (planned) {
+            console.warn('[boot] backend torn down (planned); waiting for reload')
+            return
+          }
           failDesktopBoot(message)
           notifyError(err, translateNow('boot.errors.desktopBootFailed'))
           setSessionsLoading(false)
@@ -474,10 +509,13 @@ export function useGatewayBoot({
       }
     }
 
-    void boot()
+    if (wantBoot) {
+      void boot()
+    }
 
     return () => {
       cancelled = true
+      authUnsub?.()
       clearReconnectTimer()
       if (bootRetryTimer !== null) {
         clearTimeout(bootRetryTimer)

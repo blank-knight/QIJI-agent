@@ -71,12 +71,34 @@ const INITIAL: AuthState = readPersisted()
 
 export const $auth = atom<AuthState>(INITIAL)
 
+// 启动自愈（2026-08-28 实案）：模块求值期 readPersisted 偶发读空（渲染进程
+// 极早期 localStorage 不可用/抛异常被 catch 吞掉）→ INITIAL 全空 → needLogin
+// =true 弹登录页；而几毫秒后 LoginOverlay 挂载时 localStorage 又正常了
+// （用户名框能自动填充）——同一个 store 两种结果。auth 读取的公共入口
+// isAuthenticated 在这里兜底：内存无 token 但磁盘有时，就地补读一次。
+// 幂等：读成功后内存即有值，后续调用直接走内存。
+function hydrateAuthFromDiskIfEmpty(): void {
+  const s = $auth.get()
+
+  if (s.token) {
+    return
+  }
+
+  const fromDisk = readPersisted()
+
+  if (fromDisk.token) {
+    $auth.set(fromDisk)
+  }
+}
+
 const patch = (update: Partial<AuthState>) => {
   $auth.set({ ...$auth.get(), ...update })
 }
 
 /** 是否已登录（有 token 且未过期） */
 export function isAuthenticated(): boolean {
+  hydrateAuthFromDiskIfEmpty()
+
   const s = $auth.get()
 
   return Boolean(s.token) && !isTokenExpired()

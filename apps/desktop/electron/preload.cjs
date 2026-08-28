@@ -187,6 +187,9 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   // URL-based client update: download the published installer and run it.
   clientUpdate: {
     downloadAndRun: url => ipcRenderer.invoke('hermes:clientUpdate:downloadAndRun', url),
+    // Chrome 式：先静默下载，用户确认后再运行安装包
+    download: url => ipcRenderer.invoke('hermes:clientUpdate:download', url),
+    runInstaller: filePath => ipcRenderer.invoke('hermes:clientUpdate:runInstaller', filePath),
     onProgress: callback => {
       const listener = (_event, payload) => callback(payload)
       ipcRenderer.on('hermes:clientUpdate:progress', listener)
