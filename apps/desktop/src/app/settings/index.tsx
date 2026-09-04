@@ -6,7 +6,7 @@ import { Tip } from '@/components/ui/tooltip'
 import { getHermesConfigDefaults, getHermesConfigRecord, saveHermesConfig } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { triggerHaptic } from '@/lib/haptics'
-import { Archive, Bell, Globe, Info, KeyRound, Settings2, Sparkles, Wrench, Zap } from '@/lib/icons'
+import { Archive, Bell, Globe, Info, KeyRound, Settings2, Sparkles, Users, Wrench, Zap } from '@/lib/icons'
 import { notifyError } from '@/store/notifications'
 import { $auth } from '@/store/auth'
 
@@ -16,6 +16,7 @@ import { OverlayMain, OverlayNavItem, OverlaySidebar, OverlaySplitLayout } from 
 import { OverlayView } from '../overlays/overlay-view'
 
 import { AboutSettings } from './about-settings'
+import { AccountSettings } from './account-settings'
 import { AppearanceSettings } from './appearance-settings'
 import { ConfigSettings } from './config-settings'
 import { SECTIONS } from './constants'
@@ -35,13 +36,14 @@ const SETTINGS_VIEWS: readonly SettingsViewId[] = [
   'mcp',
   'notifications',
   'sessions',
+  'account',
   'about'
 ]
 
 export function SettingsView({ gateway, onClose, onConfigSaved, onMainModelChanged }: SettingsPageProps) {
   const { t } = useI18n()
   // 奇计后端联动：is_custom_key=0 时隐藏模型/提供方/密钥三个入口
-  const { isCustomKey } = useStore($auth)
+  const { isCustomKey, token: authToken } = useStore($auth)
   // 非自定义 key 用户隐藏的设置项（model 配置段 + providers + keys）
   const hiddenSections = isCustomKey ? [] : ['model']
   const hiddenViews = isCustomKey ? new Set<string>() : new Set(['config:model', 'providers', 'keys'])
@@ -194,6 +196,14 @@ export function SettingsView({ gateway, onClose, onConfigSaved, onMainModelChang
             onClick={() => setActiveView('sessions')}
           />
           <div className="my-2 h-px bg-border/30" />
+          {authToken && (
+            <OverlayNavItem
+              active={activeView === 'account'}
+              icon={Users}
+              label={t.settings.nav.account}
+              onClick={() => setActiveView('account')}
+            />
+          )}
           <OverlayNavItem
             active={activeView === 'about'}
             icon={Info}
@@ -235,6 +245,8 @@ export function SettingsView({ gateway, onClose, onConfigSaved, onMainModelChang
             <AppearanceSettings />
           ) : activeView === 'about' ? (
             <AboutSettings />
+          ) : activeView === 'account' ? (
+            <AccountSettings />
           ) : activeView === 'gateway' ? (
             <GatewaySettings />
           ) : activeView.startsWith('config:') ? (

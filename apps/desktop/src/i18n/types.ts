@@ -178,6 +178,7 @@ export interface Translations {
     unmuteHaptics: string
     openSettings: string
     openKeybinds: string
+    accountPill: (name: string, score: number) => string
   }
 
   keybinds: {
@@ -223,6 +224,7 @@ export interface Translations {
       archivedChats: string
       about: string
       notifications: string
+      account: string
     }
     notifications: {
       title: string
@@ -323,6 +325,51 @@ export interface Translations {
       minAgo: (count: number) => string
       hoursAgo: (count: number) => string
       daysAgo: (count: number) => string
+    }
+    account: {
+      heading: string
+      notLoggedIn: string
+      loadFailed: string
+      retry: string
+      profile: {
+        title: string
+        nickname: string
+        nicknamePlaceholder: string
+        email: string
+        emailPlaceholder: string
+        mobile: string
+        agent: string
+        joinedAt: string
+        save: string
+        saving: string
+        saved: string
+      }
+      avatar: {
+        title: string
+        desc: string
+      }
+      score: {
+        title: string
+        balance: string
+        mode: string
+        modeFormal: string
+        modeTrial: string
+      }
+      recharge: {
+        title: string
+        desc: string
+        placeholder: string
+        submit: string
+        submitting: string
+        success: (added: number, remain: number) => string
+      }
+      scorelogs: {
+        title: string
+        empty: string
+        loadMore: string
+        noMore: string
+        cols: { time: string; memo: string; change: string; balance: string }
+      }
     }
     config: {
       none: string

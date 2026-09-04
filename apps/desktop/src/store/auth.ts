@@ -2,6 +2,7 @@ import { atom } from 'nanostores'
 
 import {
   AUTH_API_KEY_STORE_KEY,
+  AUTH_AVATAR_KEY,
   AUTH_IS_CUSTOM_KEY,
   AUTH_LOGIN_AT_KEY,
   AUTH_MODE_KEY,
@@ -23,11 +24,13 @@ export interface AuthState {
   loginAt: number | null
   /** 后端下发的 api_key（is_custom_key=0 时服务端代理用） */
   apiKey: string | null
+  /** 头像（avatar://emoji/... 形态；个人中心设置后同步，登录响应不含则空） */
+  avatar: string | null
 }
 
 function readPersisted(): AuthState {
   if (typeof window === 'undefined') {
-    return { token: null, username: null, isCustomKey: false, mode: 'trial', score: 0, loginAt: null, apiKey: null }
+    return { token: null, username: null, isCustomKey: false, mode: 'trial', score: 0, loginAt: null, apiKey: null, avatar: null }
   }
 
   try {
@@ -40,10 +43,11 @@ function readPersisted(): AuthState {
       loginAt: Number(window.localStorage.getItem(AUTH_LOGIN_AT_KEY)) || null,
       // 用户隔离（方案A）：api_key 持久化——切 profile 触发 reload 后，
       // desktop-controller 的 gateway-ready 兜底推送依赖它（内存态会丢）。
-      apiKey: window.localStorage.getItem(AUTH_API_KEY_STORE_KEY) || null
+      apiKey: window.localStorage.getItem(AUTH_API_KEY_STORE_KEY) || null,
+      avatar: window.localStorage.getItem(AUTH_AVATAR_KEY) || null
     }
   } catch {
-    return { token: null, username: null, isCustomKey: false, mode: 'trial', score: 0, loginAt: null, apiKey: null }
+    return { token: null, username: null, isCustomKey: false, mode: 'trial', score: 0, loginAt: null, apiKey: null, avatar: null }
   }
 }
 
@@ -61,6 +65,11 @@ function persist(state: AuthState) {
       window.localStorage.setItem(AUTH_API_KEY_STORE_KEY, state.apiKey)
     } else {
       window.localStorage.removeItem(AUTH_API_KEY_STORE_KEY)
+    }
+    if (state.avatar) {
+      window.localStorage.setItem(AUTH_AVATAR_KEY, state.avatar)
+    } else {
+      window.localStorage.removeItem(AUTH_AVATAR_KEY)
     }
   } catch {
     // best-effort
@@ -93,6 +102,11 @@ function hydrateAuthFromDiskIfEmpty(): void {
 
 const patch = (update: Partial<AuthState>) => {
   $auth.set({ ...$auth.get(), ...update })
+}
+
+/** 设置头像（个人中心保存后同步，标题栏账号胶囊用） */
+export function setAvatar(avatar: string | null) {
+  patch({ avatar })
 }
 
 /** 是否已登录（有 token 且未过期） */
@@ -137,7 +151,8 @@ export async function login(username: string, password: string): Promise<LoginRe
     mode: data.mode,
     score: data.score ?? 0,
     loginAt: Date.now(),
-    apiKey: data.api_key ?? null
+    apiKey: data.api_key ?? null,
+    avatar: $auth.get().avatar ?? null
   }
 
   persist(next)
@@ -167,7 +182,8 @@ export async function register(mobile: string, password: string, inviteCode?: st
     mode: data.mode,
     score: data.score ?? 0,
     loginAt: Date.now(),
-    apiKey: data.api_key ?? null
+    apiKey: data.api_key ?? null,
+    avatar: $auth.get().avatar ?? null
   }
 
   persist(next)
@@ -178,7 +194,7 @@ export async function register(mobile: string, password: string, inviteCode?: st
 
 /** 登出 / 清空 auth 状态（401 时也调这个） */
 export function clearAuth() {
-  patch({ token: null, username: null, isCustomKey: false, mode: 'trial', score: 0, loginAt: null, apiKey: null })
+  patch({ token: null, username: null, isCustomKey: false, mode: 'trial', score: 0, loginAt: null, apiKey: null, avatar: null })
 
   if (typeof window !== 'undefined') {
     try {
@@ -222,7 +238,8 @@ export function devSkipLogin() {
     mode: 'trial',
     score: 100,
     loginAt: Date.now(),
-    apiKey: null
+    apiKey: null,
+    avatar: null
   }
 
   persist(devState)

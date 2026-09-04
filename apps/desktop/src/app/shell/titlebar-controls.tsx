@@ -21,6 +21,7 @@ import {
 
 import { appViewForPath, isOverlayView } from '../routes'
 
+import { AccountAvatarButton } from './account-pill'
 import { titlebarButtonClass } from './titlebar'
 
 export interface TitlebarTool {
@@ -157,6 +158,7 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
         aria-label={t.shell.windowControls}
         className="fixed left-(--titlebar-controls-left) top-(--titlebar-controls-top) z-70 flex translate-y-0.5 flex-row items-center gap-x-1 pointer-events-auto select-none [-webkit-app-region:no-drag]"
       >
+        <AccountAvatarButton />
         {leftToolbarTools
           .filter(tool => !tool.hidden)
           .map(tool => (

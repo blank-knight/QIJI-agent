@@ -160,7 +160,8 @@ export const zh: Translations = {
     muteHaptics: '关闭触感反馈',
     unmuteHaptics: '开启触感反馈',
     openSettings: '打开设置',
-    openKeybinds: '键盘快捷键'
+    openKeybinds: '键盘快捷键',
+    accountPill: (name, score) => `${name} · 积分 ${score}（点击打开个人中心）`
   },
 
   keybinds: {
@@ -279,7 +280,8 @@ export const zh: Translations = {
       mcp: 'MCP',
       archivedChats: '已归档对话',
       about: '关于',
-      notifications: '通知'
+      notifications: '通知',
+      account: '个人中心'
     },
     notifications: {
       title: '通知',
@@ -624,6 +626,51 @@ export const zh: Translations = {
       minAgo: count => `${count} 分钟前`,
       hoursAgo: count => `${count} 小时前`,
       daysAgo: count => `${count} 天前`
+    },
+    account: {
+      heading: '个人中心',
+      notLoggedIn: '未登录，请先登录奇计账号',
+      loadFailed: '加载个人信息失败',
+      retry: '重试',
+      profile: {
+        title: '个人信息',
+        nickname: '昵称',
+        nicknamePlaceholder: '设置一个昵称',
+        email: '邮箱',
+        emailPlaceholder: '用于接收通知（选填）',
+        mobile: '手机号',
+        agent: '所属代理',
+        joinedAt: '注册时间',
+        save: '保存修改',
+        saving: '保存中…',
+        saved: '已保存'
+      },
+      avatar: {
+        title: '头像',
+        desc: '选择一个喜欢的头像'
+      },
+      score: {
+        title: '积分',
+        balance: '剩余积分',
+        mode: '账号模式',
+        modeFormal: '正式',
+        modeTrial: '体验'
+      },
+      recharge: {
+        title: '积分充值',
+        desc: '输入代理发放的充值码，兑换后积分立即到账',
+        placeholder: '请输入充值码',
+        submit: '兑换',
+        submitting: '兑换中…',
+        success: (added, remain) => `充值成功：+${added} 积分，当前余额 ${remain}`
+      },
+      scorelogs: {
+        title: '积分明细',
+        empty: '暂无记录',
+        loadMore: '加载更多',
+        noMore: '没有更多了',
+        cols: { time: '时间', memo: '说明', change: '变动', balance: '余额' }
+      }
     },
     config: {
       none: '无',

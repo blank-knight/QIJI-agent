@@ -165,7 +165,8 @@ export const en: Translations = {
     muteHaptics: 'Mute haptics',
     unmuteHaptics: 'Unmute haptics',
     openSettings: 'Open settings',
-    openKeybinds: 'Keyboard shortcuts'
+    openKeybinds: 'Keyboard shortcuts',
+    accountPill: (name, score) => `${name} · credits ${score} (open account)`
   },
 
   keybinds: {
@@ -284,7 +285,8 @@ export const en: Translations = {
       mcp: 'MCP',
       archivedChats: 'Archived Chats',
       about: 'About',
-      notifications: 'Notifications'
+      notifications: 'Notifications',
+      account: 'Account'
     },
     notifications: {
       title: 'Notifications',
@@ -429,6 +431,51 @@ export const en: Translations = {
       minAgo: count => `${count} min ago`,
       hoursAgo: count => `${count} hours ago`,
       daysAgo: count => `${count} days ago`
+    },
+    account: {
+      heading: 'Account',
+      notLoggedIn: 'Not logged in. Please sign in first.',
+      loadFailed: 'Failed to load profile',
+      retry: 'Retry',
+      profile: {
+        title: 'Profile',
+        nickname: 'Nickname',
+        nicknamePlaceholder: 'Set a nickname',
+        email: 'Email',
+        emailPlaceholder: 'For notifications (optional)',
+        mobile: 'Mobile',
+        agent: 'Agent',
+        joinedAt: 'Joined',
+        save: 'Save',
+        saving: 'Saving…',
+        saved: 'Saved'
+      },
+      avatar: {
+        title: 'Avatar',
+        desc: 'Pick an avatar you like'
+      },
+      score: {
+        title: 'Credits',
+        balance: 'Balance',
+        mode: 'Mode',
+        modeFormal: 'Formal',
+        modeTrial: 'Trial'
+      },
+      recharge: {
+        title: 'Redeem',
+        desc: 'Enter a recharge code from your agent. Credits arrive instantly.',
+        placeholder: 'Enter recharge code',
+        submit: 'Redeem',
+        submitting: 'Redeeming…',
+        success: (added, remain) => `Success: +${added} credits, balance ${remain}`
+      },
+      scorelogs: {
+        title: 'History',
+        empty: 'No records yet',
+        loadMore: 'Load more',
+        noMore: 'No more',
+        cols: { time: 'Time', memo: 'Description', change: 'Change', balance: 'Balance' }
+      }
     },
     config: {
       none: 'None',

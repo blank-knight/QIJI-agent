@@ -167,3 +167,4 @@ export const AUTH_MODE_KEY = 'qiji-auth-mode'
 export const AUTH_USERNAME_KEY = 'qiji-auth-username'
 /** 用户隔离（方案A）：api_key 持久化，reload/切 profile 后兜底推送用 */
 export const AUTH_API_KEY_STORE_KEY = 'qiji-auth-api-key'
+export const AUTH_AVATAR_KEY = 'qiji-auth-avatar'

@@ -16,7 +16,7 @@ describe('account-profile（账号↔profile 映射，用户隔离方案A）', (
 
   afterEach(() => {
     _resetAccountProfileMapForTest()
-    $auth.set({ token: null, username: null, isCustomKey: false, mode: 'trial', score: 0, loginAt: null, apiKey: null })
+    $auth.set({ token: null, username: null, isCustomKey: false, mode: 'trial', score: 0, loginAt: null, apiKey: null, avatar: null })
   })
 
   it('纯 ASCII 账号名映射为 acc_<sanitized>', () => {
@@ -77,13 +77,13 @@ describe('account-profile（账号↔profile 映射，用户隔离方案A）', (
 
   it('accountLockedProfile：登录账号已登记返回其 profile key', () => {
     registerAccountProfile('13800138000')
-    $auth.set({ token: 't', username: '13800138000', isCustomKey: false, mode: 'trial', score: 0, loginAt: Date.now(), apiKey: null })
+    $auth.set({ token: 't', username: '13800138000', isCustomKey: false, mode: 'trial', score: 0, loginAt: Date.now(), apiKey: null, avatar: null })
 
     expect(accountLockedProfile()).toBe('default')
   })
 
   it('accountLockedProfile：登录账号未登记返回 null（老 token 未走新登录流）', () => {
-    $auth.set({ token: 't', username: 'ghost', isCustomKey: false, mode: 'trial', score: 0, loginAt: Date.now(), apiKey: null })
+    $auth.set({ token: 't', username: 'ghost', isCustomKey: false, mode: 'trial', score: 0, loginAt: Date.now(), apiKey: null, avatar: null })
 
     expect(accountLockedProfile()).toBeNull()
   })
