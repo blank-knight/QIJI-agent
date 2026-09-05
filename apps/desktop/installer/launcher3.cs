@@ -583,9 +583,32 @@ class Launcher
                 AutoSize = true
             };
 
-            string defaultPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Programs", "Qiji");
+            // 默认目录优先回读上次安装位置（注册表 InstallLocation），
+            // 装过 D 盘的用户更新时默认仍是 D 盘；没装过才用 C 盘默认。
+            // 防「更新后 C/D 两份客户端」。
+            string defaultPath = null;
+            try
+            {
+                using (var prevKey = Registry.CurrentUser.OpenSubKey(
+                    "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\" + BrandInfo.UserDataDir))
+                {
+                    if (prevKey != null)
+                    {
+                        var prevDir = prevKey.GetValue("InstallLocation") as string;
+                        if (!string.IsNullOrWhiteSpace(prevDir) && Directory.Exists(prevDir))
+                        {
+                            defaultPath = prevDir;
+                        }
+                    }
+                }
+            }
+            catch { /* 读注册表失败 → 走默认 */ }
+            if (string.IsNullOrEmpty(defaultPath))
+            {
+                defaultPath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "Programs", "Qiji");
+            }
 
             _dirTextBox = new TextBox
             {
