@@ -258,8 +258,33 @@ export async function installClientUpdate(): Promise<void> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
 
+    // 安装包已不存在（如系统清理了临时目录）→ 清掉记录，回到可重下状态
+    if (message.includes('安装包不存在')) {
+      try {
+        window.localStorage.removeItem(downloadedPathKey(state.info?.newversion ?? ''))
+      } catch { /* ignore */ }
+      patch({ status: 'available', installerPath: undefined })
+      notify({ kind: 'warning', title: '安装包已失效', message: '请重新下载更新包' })
+      return
+    }
+
     notify({ kind: 'error', title: '启动安装失败', message })
   }
+}
+
+/** 丢弃已下载的安装包，回到可重新下载状态（本地缓存可能过期/损坏时用）。 */
+export async function discardDownloadedInstaller(): Promise<void> {
+  const state = $clientUpdate.get()
+
+  if (state.status !== 'downloaded') {
+    return
+  }
+
+  try {
+    window.localStorage.removeItem(downloadedPathKey(state.info?.newversion ?? ''))
+  } catch { /* ignore */ }
+
+  patch({ status: 'available', installerPath: undefined, progressPercent: 0 })
 }
 
 /**

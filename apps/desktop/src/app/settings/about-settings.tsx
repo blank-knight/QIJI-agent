@@ -11,6 +11,7 @@ import { clearAuth, $auth } from '@/store/auth'
 import {
   $clientUpdate,
   checkClientUpdate,
+  discardDownloadedInstaller,
   installClientUpdate,
   openClientUpdateDownloadPage,
   startClientUpdate
@@ -317,10 +318,15 @@ export function AboutSettings() {
             )}
 
             {downloaded && (
-              <Button onClick={() => void installClientUpdate()} size="sm">
-                <Download className="size-3" />
-                立即安装 v{clientUpdate.info?.newversion}
-              </Button>
+              <>
+                <Button onClick={() => void installClientUpdate()} size="sm">
+                  <Download className="size-3" />
+                  立即安装 v{clientUpdate.info?.newversion}
+                </Button>
+                <Button onClick={() => void discardDownloadedInstaller()} size="sm" variant="text">
+                  重新下载
+                </Button>
+              </>
             )}
 
             {(available || failed) && !downloading && !downloaded && (
