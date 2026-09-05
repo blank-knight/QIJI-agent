@@ -469,6 +469,17 @@ export const en: Translations = {
         submitting: 'Redeeming…',
         success: (added, remain) => `Success: +${added} credits, balance ${remain}`
       },
+      plans: {
+        title: 'Plans',
+        empty: 'No plans available',
+        buy: 'Buy',
+        buying: 'Creating order…',
+        payDisabled: 'Online payment unavailable',
+        payOpened: 'Payment page opened, credits arrive automatically',
+        paid: 'Paid, credits delivered',
+        unit: 'credits',
+        contactAgent: 'Contact your provider'
+      },
       scorelogs: {
         title: 'History',
         empty: 'No records yet',

@@ -664,6 +664,17 @@ export const zh: Translations = {
         submitting: '兑换中…',
         success: (added, remain) => `充值成功：+${added} 积分，当前余额 ${remain}`
       },
+      plans: {
+        title: '套餐购买',
+        empty: '暂无可购套餐',
+        buy: '购买',
+        buying: '下单中…',
+        payDisabled: '暂未开通在线支付',
+        payOpened: '已打开支付页面，完成后积分自动到账',
+        paid: '支付成功，积分已到账',
+        unit: '积分',
+        contactAgent: '联系服务商开通'
+      },
       scorelogs: {
         title: '积分明细',
         empty: '暂无记录',

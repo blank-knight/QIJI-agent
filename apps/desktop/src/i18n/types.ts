@@ -363,6 +363,17 @@ export interface Translations {
         submitting: string
         success: (added: number, remain: number) => string
       }
+      plans: {
+        title: string
+        empty: string
+        buy: string
+        buying: string
+        payDisabled: string
+        payOpened: string
+        paid: string
+        unit: string
+        contactAgent: string
+      }
       scorelogs: {
         title: string
         empty: string

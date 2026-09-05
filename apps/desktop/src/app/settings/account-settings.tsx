@@ -73,6 +73,13 @@ export function AccountSettings() {
 
   // 充值
   const [code, setCode] = useState('')
+  // 套餐购买
+  type Plan = { id: number; name: string; score: number; price: number; remark: string }
+  const [plans, setPlans] = useState<Plan[]>([])
+  const [payEnabled, setPayEnabled] = useState(false)
+  const [buyingId, setBuyingId] = useState<number | null>(null)
+  const [planMsg, setPlanMsg] = useState<string | null>(null)
+  const [planMsgOk, setPlanMsgOk] = useState(false)
   const [redeeming, setRedeeming] = useState(false)
   const [rechargeMsg, setRechargeMsg] = useState<string | null>(null)
   const [rechargeOk, setRechargeOk] = useState(false)
@@ -125,10 +132,21 @@ export function AccountSettings() {
     }
   }, [])
 
+  const loadPlans = useCallback(async () => {
+    try {
+      const res = await backendGet<{ plans: Plan[]; pay_enabled: number }>('/api/client/v1/plan/index')
+      setPlans(res.data?.plans ?? [])
+      setPayEnabled(!!res.data?.pay_enabled)
+    } catch {
+      // 静默
+    }
+  }, [])
+
   useEffect(() => {
     if (authState.token) {
       void reloadProfile()
       void loadLogs(1, false)
+      void loadPlans()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authState.token])
@@ -156,6 +174,52 @@ export function AccountSettings() {
       setProfileError(err instanceof BackendError ? err.message : '保存失败，请稍后重试')
     } finally {
       setSavingProfile(false)
+    }
+  }
+
+  async function buyPlan(plan: Plan) {
+    if (buyingId !== null) return
+    setBuyingId(plan.id)
+    setPlanMsg(null)
+    try {
+      const res = await backendPost<{ order_no: string; pay_url: string }>('/api/client/v1/plan/order', {
+        plan_id: plan.id,
+        pay_type: 'alipay',
+      })
+      const payUrl = res.data?.pay_url
+      if (payUrl && window.hermesDesktop?.openExternal) {
+        await window.hermesDesktop.openExternal(payUrl)
+        setPlanMsgOk(true)
+        setPlanMsg(a.plans.payOpened)
+        // 轮询支付结果（最多 5 分钟，每 5 秒）
+        const orderNo = res.data?.order_no ?? ''
+        let paid = false
+        for (let i = 0; i < 60 && !paid; i++) {
+          await new Promise(r => setTimeout(r, 5000))
+          try {
+            const st = await backendGet<{ status: string; score: number }>(
+              `/api/client/v1/plan/status?order_no=${encodeURIComponent(orderNo)}`
+            )
+            if (st.data?.status === 'paid') {
+              paid = true
+              setPlanMsg(a.plans.paid)
+              // 刷新余额与流水
+              void reloadProfile()
+              void loadLogs(1, false)
+            }
+          } catch {
+            // 继续
+          }
+        }
+      } else {
+        setPlanMsgOk(false)
+        setPlanMsg(a.plans.contactAgent)
+      }
+    } catch (err) {
+      setPlanMsgOk(false)
+      setPlanMsg(err instanceof Error ? err.message : '下单失败，请稍后重试')
+    } finally {
+      setBuyingId(null)
     }
   }
 
@@ -305,6 +369,50 @@ export function AccountSettings() {
           )}
           {profileError && <span className="text-xs text-destructive">{profileError}</span>}
         </div>
+
+        {/* 套餐购买 */}
+        <SectionHeading icon={Sparkles} title={a.plans.title} />
+        {plans.length === 0 ? (
+          <p className="mb-4 text-xs text-muted-foreground">{a.plans.empty}</p>
+        ) : (
+          <div className="mb-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+            {plans.map(p => (
+              <div
+                className="flex flex-col justify-between rounded-xl border border-border/70 bg-muted/20 px-3.5 py-3"
+                key={p.id}
+              >
+                <div>
+                  <p className="text-sm font-medium">{p.name}</p>
+                  <p className="mt-0.5 text-xl font-semibold">
+                    {p.price > 0 ? `¥${p.price.toFixed(2)}` : '免费'}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {p.score.toLocaleString()} {a.plans.unit}
+                  </p>
+                  {p.remark ? <p className="mt-1 text-xs text-muted-foreground/80">{p.remark}</p> : null}
+                </div>
+                <Button
+                  className="mt-2.5"
+                  disabled={!payEnabled || buyingId !== null}
+                  onClick={() => void buyPlan(p)}
+                  size="sm"
+                  variant="textStrong"
+                >
+                  {buyingId === p.id ? <Loader2 className="size-3 animate-spin" /> : null}
+                  {buyingId === p.id ? a.plans.buying : a.plans.buy}
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+        {!payEnabled && plans.length > 0 ? (
+          <p className="mb-4 text-xs text-muted-foreground">{a.plans.payDisabled}</p>
+        ) : null}
+        {planMsg ? (
+          <p className={cn('mb-4 text-xs', planMsgOk ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive')}>
+            {planMsg}
+          </p>
+        ) : null}
 
         {/* 积分充值 */}
         <SectionHeading icon={Sparkles} title={a.recharge.title} />
