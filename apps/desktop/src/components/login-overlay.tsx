@@ -12,6 +12,7 @@ import { ChevronDown, Loader2, X } from '@/lib/icons'
 import { BackendError, backendFetch } from '@/lib/backend'
 import { loadSavedAccounts, removeSavedAccount, saveAccount, type SavedAccount } from '@/lib/saved-accounts'
 import { registerAccountProfile } from '@/lib/account-profile'
+import { applyAgentModelConfig, extractAgentModelConfig } from '@/lib/agent-model-config'
 import { selectProfile } from '@/store/profile'
 import { notify } from '@/store/notifications'
 import { $auth, devSkipLogin, login, register } from '@/store/auth'
@@ -205,6 +206,16 @@ export function LoginOverlay({ onLoggedIn }: LoginOverlayProps) {
         }
       }
 
+      // 代理自定义模型配置（A 方案：限定 models 时锁定 custom 端点+默认模型）
+      const agentCfg = extractAgentModelConfig(data)
+      if (agentCfg) {
+        try {
+          await applyAgentModelConfig(agentCfg, data.api_key || undefined)
+        } catch {
+          // 模型配置失败不阻塞登录，进应用后可手动配
+        }
+      }
+
       notify({ kind: 'success', title: '登录成功', message: `欢迎，${data.username ?? u}` })
       if (!data.api_key) {
         notify({ kind: 'info', title: '未配置 AI 服务', message: '请联系代理/上级开通，或在设置页面手动配置 API Key' })
@@ -266,6 +277,16 @@ export function LoginOverlay({ onLoggedIn }: LoginOverlayProps) {
           await setEnvVar('OPENAI_API_KEY', data.api_key)
         } catch {
           // gateway 还没 ready
+        }
+      }
+
+      // 注册同样应用代理模型配置
+      const regCfg = extractAgentModelConfig(data)
+      if (regCfg) {
+        try {
+          await applyAgentModelConfig(regCfg, data.api_key || undefined)
+        } catch {
+          // 不阻塞
         }
       }
 

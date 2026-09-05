@@ -22,6 +22,10 @@ export interface LoginResponse {
   score: number
   mode: 'trial' | 'formal'
   quota?: Record<string, unknown>
+  /** 代理自定义 API 地址（allow_model_config 授权链下发，空=系统默认） */
+  base_url?: string
+  /** 代理限定的可用模型（A 方案：非空=只能用这些，第一个为默认） */
+  models?: string[]
 }
 
 export interface QuotaResponse {
