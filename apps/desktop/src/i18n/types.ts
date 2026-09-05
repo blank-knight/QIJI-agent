@@ -380,6 +380,18 @@ export interface Translations {
         loadMore: string
         noMore: string
         cols: { time: string; memo: string; change: string; balance: string }
+      },
+      skillmarket: {
+        title: string
+        desc: string
+        empty: string
+        install: string
+        installing: string
+        installed: string
+        installOk: string
+        installFail: string
+        loadFail: string
+        downloads: string
       }
     }
     config: {

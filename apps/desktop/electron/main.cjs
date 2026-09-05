@@ -6947,6 +6947,93 @@ function downloadInstallerFile(rawUrl, onProgress, redirectsLeft = 5) {
   })
 }
 
+// —— 技能市场辅助：列目录 / 后端地址 ——
+ipcMain.handle('hermes:listDir', async (_event, relPath) => {
+  const rel = String(relPath || '').replace(/\\/g, '/')
+  if (rel.includes('..')) throw new Error('invalid path')
+  const dir = path.join(HERMES_HOME, rel)
+  if (!fs.existsSync(dir)) return []
+  return fs.readdirSync(dir, { withFileTypes: true }).map(d => ({ name: d.name, isDirectory: d.isDirectory() }))
+})
+
+ipcMain.handle('hermes:backendOrigin', async () => {
+  try {
+    const { getBackendConfig } = require('./backend-env.cjs')
+    const cfg = getBackendConfig()
+    return cfg && cfg.baseUrl ? String(cfg.baseUrl).replace(/\/$/, '') : ''
+  } catch { return '' }
+})
+
+// —— 技能市场：下载 zip 并解压到 skills 目录 ——
+ipcMain.handle('hermes:skillMarket:install', async (_event, rawUrl, rawName) => {
+  const url = String(rawUrl || '').trim()
+  const name = String(rawName || '').trim()
+
+  if (!/^https?:\/\//i.test(url)) {
+    throw new Error('无效的下载地址')
+  }
+  if (!/^[a-z0-9][a-z0-9-_]*$/i.test(name)) {
+    throw new Error('无效的技能标识')
+  }
+
+  // 下载到临时目录
+  const tmpDir = path.join(app.getPath('temp'), 'qiji-skills')
+  fs.mkdirSync(tmpDir, { recursive: true })
+  const zipPath = path.join(tmpDir, name + '-' + Date.now() + '.zip')
+  const filePath = await downloadInstallerFile(url, () => {})
+
+  // downloadInstallerFile 落在 qiji-updates 目录，直接用其返回值
+  const srcPath = filePath || zipPath
+  if (!srcPath || !fs.existsSync(srcPath)) {
+    throw new Error('下载失败')
+  }
+
+  // 解压用系统自带工具：Windows 10+ 自带 tar(bsdtar 支持 zip)，macOS/Linux 自带 unzip
+  // 先解到临时目录，校验 SKILL.md 后搬到 skills/market/{name}/
+  const skillsRoot = path.join(HERMES_HOME, 'skills')
+  const destDir = path.join(skillsRoot, 'market', name)
+  const extractDir = path.join(app.getPath('temp'), 'qiji-skill-extract-' + Date.now())
+  fs.mkdirSync(extractDir, { recursive: true })
+
+  const tarCmd = process.platform === 'win32'
+    ? ['tar', '-xf', srcPath, '-C', extractDir]
+    : ['unzip', '-q', srcPath, '-d', extractDir]
+  await new Promise((resolve, reject) => {
+    const child = require('child_process').spawn(tarCmd[0], tarCmd.slice(1), { stdio: 'ignore' })
+    child.on('error', reject)
+    child.on('exit', code => code === 0 ? resolve() : reject(new Error('解压失败(exit ' + code + ')')))
+  })
+
+  // 定位 SKILL.md：根级 或 一级子目录
+  const walk = dir => fs.readdirSync(dir, { withFileTypes: true })
+  let srcDir = null
+  const rootSkill = path.join(extractDir, 'SKILL.md')
+  if (fs.existsSync(rootSkill)) {
+    srcDir = extractDir
+  } else {
+    for (const d of walk(extractDir)) {
+      if (d.isDirectory() && fs.existsSync(path.join(extractDir, d.name, 'SKILL.md'))) {
+        srcDir = path.join(extractDir, d.name)
+        break
+      }
+    }
+  }
+  if (!srcDir) {
+    throw new Error('压缩包内缺少 SKILL.md')
+  }
+
+  // 搬运（覆盖旧版）
+  fs.rmSync(destDir, { recursive: true, force: true })
+  fs.mkdirSync(path.dirname(destDir), { recursive: true })
+  fs.cpSync(srcDir, destDir, { recursive: true })
+
+  // 清理
+  try { fs.rmSync(extractDir, { recursive: true, force: true }); fs.unlinkSync(srcPath) } catch { /* best effort */ }
+
+  rememberLog(`[skill-market] installed skill: ${name} -> ${destDir}`)
+  return { ok: true, dir: destDir }
+})
+
 ipcMain.handle('hermes:clientUpdate:downloadAndRun', async (_event, rawUrl) => {
   const url = String(rawUrl || '').trim()
 

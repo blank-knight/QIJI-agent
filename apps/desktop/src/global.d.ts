@@ -134,7 +134,12 @@ declare global {
         onProgress: (callback: (payload: DesktopUpdateProgress) => void) => () => void
       }
       // URL-based client update: download the published installer and run it.
-      clientUpdate: {
+      listDir: (relPath: string) => Promise<Array<{ name: string; isDirectory: boolean }>>
+  backendOrigin: () => string
+  skillMarket: {
+    install: (url: string, name: string) => Promise<{ ok: boolean; dir: string }>
+  }
+  clientUpdate: {
         downloadAndRun: (url: string) => Promise<{ ok: boolean; path: string }>
         download: (url: string) => Promise<{ ok: boolean; path: string }>
         runInstaller: (filePath: string) => Promise<{ ok: boolean }>

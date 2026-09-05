@@ -681,6 +681,18 @@ export const zh: Translations = {
         loadMore: '加载更多',
         noMore: '没有更多了',
         cols: { time: '时间', memo: '说明', change: '变动', balance: '余额' }
+      },
+      skillmarket: {
+        title: '技能市场',
+        desc: '浏览并安装平台提供的扩展技能，安装后重启生效',
+        empty: '暂无上架技能',
+        install: '安装',
+        installing: '安装中…',
+        installed: '已安装',
+        installOk: '安装成功，重启客户端后生效',
+        installFail: '安装失败',
+        loadFail: '技能列表加载失败',
+        downloads: '次下载'
       }
     },
     config: {

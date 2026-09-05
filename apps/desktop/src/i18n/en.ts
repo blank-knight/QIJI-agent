@@ -486,6 +486,18 @@ export const en: Translations = {
         loadMore: 'Load more',
         noMore: 'No more',
         cols: { time: 'Time', memo: 'Description', change: 'Change', balance: 'Balance' }
+      },
+      skillmarket: {
+        title: 'Skill Market',
+        desc: 'Browse and install platform skills. Restart to activate',
+        empty: 'No skills yet',
+        install: 'Install',
+        installing: 'Installing…',
+        installed: 'Installed',
+        installOk: 'Installed. Restart the app to activate',
+        installFail: 'Install failed',
+        loadFail: 'Failed to load skills',
+        downloads: 'downloads'
       }
     },
     config: {

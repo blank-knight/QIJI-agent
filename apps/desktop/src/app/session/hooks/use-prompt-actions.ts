@@ -554,9 +554,10 @@ export function usePromptActions({
   const submitPromptText = useCallback(
     async (rawText: string, options?: SubmitTextOptions) => {
       // 奇计后端联动：额度不足时拦截发送，不发起 LLM 调用
-      const { score } = $auth.get()
+      // （自定义 Key 用户走自己的资源，不受平台积分限制）
+      const { score, isCustomKey } = $auth.get()
 
-      if (score <= 0) {
+      if (score <= 0 && !isCustomKey) {
         notify({
           kind: 'warning',
           title: '额度不足',
