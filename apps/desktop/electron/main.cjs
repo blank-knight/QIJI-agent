@@ -5417,6 +5417,23 @@ async function spawnPoolBackend(profile, entry) {
         ...process.env,
         HERMES_HOME,
         QIJI_HOME: HERMES_HOME,
+        // qiji: 兜底——dev 模式下若环境缺 GLM_API_KEY，从 Windows 用户环境变量(注册表)补读注入，
+        // 避免「老终端/服务上下文继承不到 setx 新值」导致 agent init failed: no API key。
+        ...(IS_WINDOWS && !process.env.GLM_API_KEY
+          ? (() => {
+              try {
+                const out = require('child_process')
+                  .execSync(
+                    "[Environment]::GetEnvironmentVariable('GLM_API_KEY','User')",
+                    { shell: 'powershell.exe', timeout: 5000, encoding: 'utf8' }
+                  )
+                  .trim()
+                return out ? { GLM_API_KEY: out } : {}
+              } catch {
+                return {}
+              }
+            })()
+          : {}),
         ...backend.env,
         // Pin the gateway's tool/terminal cwd to the same directory we chose for
         // the child process. Inherited TERMINAL_CWD (or a stale config bridge)
