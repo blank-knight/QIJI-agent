@@ -475,6 +475,7 @@ export function ChatView({
       >
         <div
           className="relative min-h-0 max-w-full flex-1 overflow-hidden bg-(--ui-chat-surface-background) contain-[layout_paint]"
+          data-intro-center={showIntro ? '' : undefined}
           data-slot="composer-bounds"
           {...dropHandlers}
         >

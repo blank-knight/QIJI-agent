@@ -216,7 +216,7 @@ export function Intro({ personality, seed, quickSkills, examples, onPickSkill, o
 export function ExamplesStrip({ examples, onPick }: { examples: IntroExample[]; onPick: (prompt: string) => void }) {
   if (examples.length === 0) return null
   return (
-    <div className="pointer-events-auto absolute bottom-[calc(var(--composer-measured-height,160px)+1rem)] left-1/2 z-20 w-[min(var(--composer-width),calc(100%-2rem))] max-w-full -translate-x-1/2 px-1 pb-1">
+    <div className="pointer-events-auto absolute top-[calc(42%+var(--composer-measured-height,160px)+0.75rem)] left-1/2 z-20 w-[min(var(--composer-width),calc(100%-2rem))] max-w-full -translate-x-1/2 px-1 pb-1">
       <div className="mb-1.5 text-center text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-(--ui-text-tertiary)">试试这样用</div>
       <div className="flex flex-col gap-1">
         {examples.map(ex => (

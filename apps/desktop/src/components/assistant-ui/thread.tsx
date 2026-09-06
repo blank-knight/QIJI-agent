@@ -198,7 +198,7 @@ export const Thread: FC<{
   )
 
   const emptyPlaceholder = intro ? (
-    <div className="pointer-events-none flex min-h-0 w-full flex-col items-center justify-center overflow-y-auto pt-[var(--composer-measured-height)]">
+    <div className="pointer-events-none flex min-h-0 w-full flex-col items-center justify-start overflow-y-auto pt-[12vh]">
       <Intro {...intro} />
     </div>
   ) : undefined

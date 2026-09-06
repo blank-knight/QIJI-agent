@@ -1426,3 +1426,9 @@ canvas {
     animation: none;
   }
 }
+
+/* 空会话主页：输入框上移居中（夹在快捷技能与最佳实践之间） */
+[data-intro-center] [data-slot='composer-root']:not([data-popped-out]) {
+  bottom: auto !important;
+  top: 42% !important;
+}
