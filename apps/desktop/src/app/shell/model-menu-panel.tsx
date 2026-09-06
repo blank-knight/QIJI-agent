@@ -1,4 +1,5 @@
 import { useStore } from '@nanostores/react'
+import { $auth } from '@/store/auth'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createContext, useContext, useMemo, useState } from 'react'
 
@@ -169,9 +170,24 @@ export function ModelMenuPanel({ gateway, onSelectModel, requestGateway }: Model
     )
   }
 
+  const { platformModels } = useStore($auth)
+
+  // 奇计平台限定：代理链 models 非空时，菜单只显示清单内的模型
+  const filteredProviders = useMemo(() => {
+    const list = providers ?? []
+    if (!platformModels.length) return list
+    const allow = new Set(platformModels.map(m => m.toLowerCase()))
+    return list
+      .map(p => ({
+        ...p,
+        models: (p.models ?? []).filter(m => allow.has(String(m).toLowerCase()))
+      }))
+      .filter(p => (p.models ?? []).length > 0)
+  }, [providers, platformModels])
+
   const groups = useMemo(
-    () => groupModels(providers ?? [], search, { model: optionsModel, provider: optionsProvider }, effectiveVisibleModels),
-    [providers, search, optionsModel, optionsProvider, effectiveVisibleModels]
+    () => groupModels(filteredProviders, search, { model: optionsModel, provider: optionsProvider }, effectiveVisibleModels),
+    [filteredProviders, search, optionsModel, optionsProvider, effectiveVisibleModels]
   )
 
   return (

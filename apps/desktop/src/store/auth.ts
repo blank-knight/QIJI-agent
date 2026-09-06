@@ -17,6 +17,10 @@ export interface AuthState {
   token: string | null
   username: string | null
   isCustomKey: boolean
+  /** 平台是否允许平台用户自选模型（后端 site.allow_model_select） */
+  allowModelSelect: boolean
+  /** 代理链限定的模型清单（空=不限定） */
+  platformModels: string[]
   mode: 'trial' | 'formal'
   /** 内存中的额度，每次查 quota 或上报后刷新；不持久化 */
   score: number
@@ -30,7 +34,7 @@ export interface AuthState {
 
 function readPersisted(): AuthState {
   if (typeof window === 'undefined') {
-    return { token: null, username: null, isCustomKey: false, mode: 'trial', score: 0, loginAt: null, apiKey: null, avatar: null }
+    return { token: null, username: null, isCustomKey: false, allowModelSelect: true, platformModels: [], mode: 'trial', score: 0, loginAt: null, apiKey: null, avatar: null }
   }
 
   try {
@@ -38,6 +42,9 @@ function readPersisted(): AuthState {
       token: window.localStorage.getItem(AUTH_TOKEN_KEY),
       username: window.localStorage.getItem(AUTH_USERNAME_KEY),
       isCustomKey: window.localStorage.getItem(AUTH_IS_CUSTOM_KEY) === '1',
+      // 模型选择权限不持久化：登录后由 login/apikey 响应刷新（默认允许）
+      allowModelSelect: true,
+      platformModels: [],
       mode: (window.localStorage.getItem(AUTH_MODE_KEY) as 'trial' | 'formal') ?? 'trial',
       score: 0, // 不持久化，每次启动后由 quota 查询刷新
       loginAt: Number(window.localStorage.getItem(AUTH_LOGIN_AT_KEY)) || null,
@@ -47,7 +54,7 @@ function readPersisted(): AuthState {
       avatar: window.localStorage.getItem(AUTH_AVATAR_KEY) || null
     }
   } catch {
-    return { token: null, username: null, isCustomKey: false, mode: 'trial', score: 0, loginAt: null, apiKey: null, avatar: null }
+    return { token: null, username: null, isCustomKey: false, allowModelSelect: true, platformModels: [], mode: 'trial', score: 0, loginAt: null, apiKey: null, avatar: null }
   }
 }
 
@@ -148,6 +155,8 @@ export async function login(username: string, password: string): Promise<LoginRe
     token: data.token,
     username: data.username ?? username,
     isCustomKey: data.is_custom_key === 1,
+    allowModelSelect: data.allow_model_select === undefined ? true : data.allow_model_select === 1,
+    platformModels: Array.isArray(data.models) ? data.models.filter((m: unknown): m is string => typeof m === 'string' && m !== '') : [],
     mode: data.mode,
     score: data.score ?? 0,
     loginAt: Date.now(),
@@ -179,6 +188,8 @@ export async function register(mobile: string, password: string, inviteCode?: st
     token: data.token,
     username: data.username ?? mobile,
     isCustomKey: data.is_custom_key === 1,
+    allowModelSelect: data.allow_model_select === undefined ? true : data.allow_model_select === 1,
+    platformModels: Array.isArray(data.models) ? data.models.filter((m: unknown): m is string => typeof m === 'string' && m !== '') : [],
     mode: data.mode,
     score: data.score ?? 0,
     loginAt: Date.now(),
@@ -194,7 +205,7 @@ export async function register(mobile: string, password: string, inviteCode?: st
 
 /** 登出 / 清空 auth 状态（401 时也调这个） */
 export function clearAuth() {
-  patch({ token: null, username: null, isCustomKey: false, mode: 'trial', score: 0, loginAt: null, apiKey: null, avatar: null })
+  patch({ token: null, username: null, isCustomKey: false, allowModelSelect: true, platformModels: [], mode: 'trial', score: 0, loginAt: null, apiKey: null, avatar: null })
 
   if (typeof window !== 'undefined') {
     try {
@@ -235,6 +246,8 @@ export function devSkipLogin() {
     token: 'dev-skip-token',
     username: 'dev',
     isCustomKey: false,
+    allowModelSelect: true,
+    platformModels: [],
     mode: 'trial',
     score: 100,
     loginAt: Date.now(),

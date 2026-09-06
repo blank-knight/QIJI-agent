@@ -45,7 +45,7 @@ export function ModelPill({
   const currentProvider = useStore($currentProvider)
   const fastMode = useStore($currentFastMode)
   const reasoningEffort = useStore($currentReasoningEffort)
-  const { isCustomKey } = useStore($auth)
+  const { isCustomKey, allowModelSelect } = useStore($auth)
   const [open, setOpen] = useState(false)
 
   // The model resolves a beat after the gateway/session comes up. Rather than
@@ -75,9 +75,11 @@ export function ModelPill({
 
   const title = currentProvider ? copy.modelTitle(currentProvider, currentModel || copy.modelNone) : copy.switchModel
 
-  // 奇计后端联动：is_custom_key=0 时模型由后端下发，用户不能手动切换。
-  // 渲染只读标签，不弹下拉菜单，不打开 picker。
-  if (!isCustomKey) {
+  // 奇计后端联动：模型选择权限 =
+  //   自配 key（is_custom_key=1）→ 完全自由
+  //   平台用户（is_custom_key=0）→ 看 site.allow_model_select（后台可关）；
+  //     代理链 models 非空时后端强制 allow=1 且前端只允许清单内模型（菜单过滤在 ModelMenuPanel）。
+  if (!isCustomKey && !allowModelSelect) {
     return (
       <div className={cn(PILL, 'cursor-default pointer-events-none')}>
         {currentModel.trim() ? (

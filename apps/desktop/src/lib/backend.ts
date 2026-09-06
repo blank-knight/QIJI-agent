@@ -19,6 +19,8 @@ export interface LoginResponse {
   username: string
   api_key: string
   is_custom_key: 0 | 1
+  /** 平台是否允许平台用户自选模型（site 配置，代理 models 非空时强制允许+限定清单） */
+  allow_model_select?: 0 | 1
   score: number
   mode: 'trial' | 'formal'
   quota?: Record<string, unknown>
@@ -40,6 +42,10 @@ export interface QuotaReportResponse {
 export interface ApiKeyResponse {
   api_key: string
   is_custom_key: 0 | 1
+  /** 平台是否允许平台用户自选模型（site 配置，代理 models 非空时强制允许+限定清单） */
+  allow_model_select?: 0 | 1
+  /** 代理链限定的模型清单（空=不限定） */
+  models?: string[]
   key_source?: string
   can_customize?: boolean
 }
