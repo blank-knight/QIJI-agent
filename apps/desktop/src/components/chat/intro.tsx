@@ -181,7 +181,7 @@ export function Intro({ personality, seed, quickSkills, examples, onPickSkill, o
       <div className="w-full min-w-0">
         <p
           aria-label={WORDMARK}
-          className="text-lg font-semibold tracking-[0.08em] text-midground dark:text-foreground/80"
+          className="text-6xl font-bold tracking-[0.08em] text-midground dark:text-foreground/85"
         >
           {WORDMARK}
         </p>
@@ -191,16 +191,16 @@ export function Intro({ personality, seed, quickSkills, examples, onPickSkill, o
         {quickSkills && quickSkills.length > 0 && onPickSkill ? (
           <div className="pointer-events-auto mt-3 w-full max-w-xl">
             <div className="mb-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-(--ui-text-tertiary)">快捷技能</div>
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="flex justify-center gap-1.5">
               {quickSkills.map(sk => (
                 <button
-                  className="group rounded-lg border border-border/60 bg-muted/20 px-2 py-1.5 text-left transition-colors hover:border-primary/50 hover:bg-muted/40"
+                  className="group shrink-0 rounded-lg border border-border/60 bg-muted/20 px-2.5 py-1 text-center transition-colors hover:border-primary/50 hover:bg-muted/40"
                   key={sk.name}
                   onClick={() => onPickSkill(sk.name)}
+                  title={sk.desc}
                   type="button"
                 >
-                  <div className="truncate text-[0.8rem] font-medium text-foreground">{sk.title}</div>
-                  <div className="mt-0.5 line-clamp-1 text-[0.68rem] text-muted-foreground">{sk.desc}</div>
+                  <span className="text-[0.75rem] font-medium text-foreground">{sk.title}</span>
                 </button>
               ))}
             </div>

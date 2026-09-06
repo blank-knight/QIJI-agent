@@ -1,4 +1,5 @@
 import type { Unstable_TriggerAdapter, Unstable_TriggerItem } from '@assistant-ui/core'
+import type { IntroProps } from '@/components/chat/intro'
 import {
   ActionBarPrimitive,
   BranchPickerPrimitive,
@@ -72,7 +73,6 @@ import { useElapsedSeconds } from '@/components/chat/activity-timer'
 import { ActivityTimerText } from '@/components/chat/activity-timer-text'
 import { DisclosureRow } from '@/components/chat/disclosure-row'
 import { GeneratedImage } from '@/components/chat/generated-image-result'
-import { Intro, type IntroProps } from '@/components/chat/intro'
 import { PreviewAttachment } from '@/components/chat/preview-attachment'
 import { Codicon } from '@/components/ui/codicon'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -197,11 +197,8 @@ export const Thread: FC<{
     [cwd, gateway, onBranchInNewChat, onCancel, onDismissError, onRestoreToMessage, sessionId]
   )
 
-  const emptyPlaceholder = intro ? (
-    <div className="pointer-events-none flex min-h-0 w-full flex-col items-center justify-start overflow-y-auto pt-[12vh]">
-      <Intro {...intro} />
-    </div>
-  ) : undefined
+  // intro(标题+快捷技能)已上移到 chat/index.tsx 的 composer-bounds 容器内渲染（与输入框同坐标系，紧贴上沿）
+  const emptyPlaceholder = undefined
 
   return (
     <div className="relative grid h-full min-h-0 max-w-full grid-rows-[minmax(0,1fr)] overflow-hidden bg-transparent contain-[layout_paint]">

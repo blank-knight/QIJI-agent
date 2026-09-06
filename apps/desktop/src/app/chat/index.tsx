@@ -12,7 +12,7 @@ import { useLocation } from 'react-router-dom'
 
 import { Thread } from '@/components/assistant-ui/thread'
 import type { QuickSkill, IntroExample } from '@/components/chat/intro'
-import { ExamplesStrip } from '@/components/chat/intro'
+import { ExamplesStrip, Intro } from '@/components/chat/intro'
 import { Backdrop } from '@/components/Backdrop'
 import { PromptOverlays } from '@/components/prompt-overlays'
 import { Button } from '@/components/ui/button'
@@ -483,21 +483,6 @@ export function ChatView({
             clampToComposer={showChatBar}
             cwd={currentCwd}
             gateway={gateway}
-            intro={
-              showIntro
-                ? {
-                    personality: introPersonality,
-                    seed: introSeed,
-                    quickSkills: INTRO_QUICK_SKILLS,
-                    examples: INTRO_EXAMPLES,
-                    onPickSkill: name => {
-                      window.dispatchEvent(new CustomEvent('qiji:insert-text', { detail: { text: `/${name} ` } }))
-                    },
-                    onPickExample: prompt => {
-                      void onSubmit(prompt)
-                    }
-                  }
-                : undefined
             }
             loading={threadLoading}
             onBranchInNewChat={onBranchInNewChat}
@@ -534,6 +519,20 @@ export function ChatView({
             anchors to the outer relative container instead: docked is absolute
             (identical placement), floating resolves against the viewport. Both
             states stay mounted here, so dock⇄float never remounts the editor. */}
+        {showIntro ? (
+          <div className="pointer-events-none absolute inset-x-0 bottom-[calc(58%+0.5rem)] z-10 flex w-full flex-col items-center">
+            <Intro
+              examples={INTRO_EXAMPLES}
+              onPickExample={prompt => void onSubmit(prompt)}
+              onPickSkill={name => {
+                window.dispatchEvent(new CustomEvent('qiji:insert-text', { detail: { text: `/${name} ` } }))
+              }}
+              personality={introPersonality}
+              quickSkills={INTRO_QUICK_SKILLS}
+              seed={introSeed}
+            />
+          </div>
+        ) : null}
         {showChatBar && (
           <Suspense fallback={<ChatBarFallback />}>
             <ChatBar
