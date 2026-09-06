@@ -2015,6 +2015,28 @@ export function ChatBar({
               : undefined
           }
         >
+          {state.introCenter && state.introTop ? (
+            <div className="absolute inset-x-0 bottom-full mb-1.5 flex w-full flex-col items-center px-2">
+              <div className="text-6xl font-bold tracking-[0.08em] text-midground dark:text-foreground/85">{state.introTop.headline}</div>
+              <p className="m-0 mt-1 text-center text-sm leading-normal tracking-tight text-muted-foreground">{state.introTop.body}</p>
+              <div className="pointer-events-auto mt-3 flex w-full max-w-xl flex-col items-center">
+                <div className="mb-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-(--ui-text-tertiary)">快捷技能</div>
+                <div className="flex justify-center gap-1.5">
+                  {state.introTop.skills.map(sk => (
+                    <button
+                      className="group shrink-0 rounded-lg border border-border/60 bg-muted/20 px-2.5 py-1 text-center transition-colors hover:border-primary/50 hover:bg-muted/40"
+                      key={sk.name}
+                      onClick={() => state.onSkillPick?.(sk.name)}
+                      title={sk.desc}
+                      type="button"
+                    >
+                      <span className="text-[0.75rem] font-medium text-foreground">{sk.title}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : null}
           {state.introCenter && state.introExamples && state.introExamples.length > 0 ? (
             <div className="absolute inset-x-0 top-full mt-1.5 flex w-full flex-col gap-1 px-2">
               <div className="text-center text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-(--ui-text-tertiary)">试试这样用</div>

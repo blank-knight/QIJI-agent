@@ -23,6 +23,13 @@ export interface ChatBarState {
   /** 主页最佳实践案例（introCenter 时渲染在输入框正下方） */
   introExamples?: { title: string; prompt: string }[]
   onIntroPick?: (prompt: string) => void
+  /** 主页顶部区（奇计标题+欢迎语+快捷技能，introCenter 时渲染在输入框正上方） */
+  introTop?: {
+    headline: string
+    body: string
+    skills: { name: string; title: string; desc: string }[]
+  }
+  onSkillPick?: (name: string) => void
   model: {
     model: string
     provider: string
