@@ -2972,6 +2972,23 @@ function createActiveBackend(dashboardArgs) {
   }
 }
 
+// qiji: 兜底——从 Windows 用户环境变量(注册表)读 GLM_API_KEY，避免终端继承链断裂。
+// 启动时算一次，所有 dashboard/gateway spawn 共用。
+function qijiRegistryEnvFallback() {
+  if (!IS_WINDOWS || process.env.GLM_API_KEY) return {}
+  try {
+    const out = require('child_process')
+      .execSync("[Environment]::GetEnvironmentVariable('GLM_API_KEY','User')", {
+        shell: 'powershell.exe', timeout: 5000, encoding: 'utf8', windowsHide: true
+      })
+      .trim()
+    return out ? { GLM_API_KEY: out } : {}
+  } catch {
+    return {}
+  }
+}
+const QIJI_ENV_FALLBACK = qijiRegistryEnvFallback()
+
 function resolveHermesBackend(dashboardArgs) {
   // 1. Explicit override -- HERMES_DESKTOP_HERMES_ROOT points at a developer
   //    checkout. Honour it as-is (no bootstrap; the user is driving).
@@ -5417,29 +5434,14 @@ async function spawnPoolBackend(profile, entry) {
         ...process.env,
         HERMES_HOME,
         QIJI_HOME: HERMES_HOME,
-        // qiji: 兜底——dev 模式下若环境缺 GLM_API_KEY，从 Windows 用户环境变量(注册表)补读注入，
-        // 避免「老终端/服务上下文继承不到 setx 新值」导致 agent init failed: no API key。
-        ...(IS_WINDOWS && !process.env.GLM_API_KEY
-          ? (() => {
-              try {
-                const out = require('child_process')
-                  .execSync(
-                    "[Environment]::GetEnvironmentVariable('GLM_API_KEY','User')",
-                    { shell: 'powershell.exe', timeout: 5000, encoding: 'utf8' }
-                  )
-                  .trim()
-                return out ? { GLM_API_KEY: out } : {}
-              } catch {
-                return {}
-              }
-            })()
-          : {}),
+        ...QIJI_ENV_FALLBACK,
         ...backend.env,
         // Pin the gateway's tool/terminal cwd to the same directory we chose for
         // the child process. Inherited TERMINAL_CWD (or a stale config bridge)
         // can still point at the install dir even when spawn cwd is home.
         TERMINAL_CWD: hermesCwd,
         HERMES_DASHBOARD_SESSION_TOKEN: token,
+        ...QIJI_ENV_FALLBACK,
         // Marks this dashboard backend as desktop-spawned so it runs the cron
         // scheduler tick loop (the gateway isn't running under the app).
         HERMES_DESKTOP: '1',
@@ -5666,6 +5668,7 @@ async function startHermes() {
           ...backend.env,
           TERMINAL_CWD: hermesCwd,
           HERMES_DASHBOARD_SESSION_TOKEN: token,
+        ...QIJI_ENV_FALLBACK,
           // Marks this dashboard backend as desktop-spawned so it runs the cron
           // scheduler tick loop (the gateway isn't running under the app).
           HERMES_DESKTOP: '1',
