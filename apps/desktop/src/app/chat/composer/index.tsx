@@ -1869,8 +1869,10 @@ export function ChatBar({
       disabled={disabled}
       hasComposerPayload={hasComposerPayload}
       onDictate={dictate}
-      onSelectSkill={async (command) => {
-        await onSubmit(command)
+      onSelectSkill={command => {
+        // 选中技能不立即发送：填入输入框，用户补充内容后一起发送
+        insertText(command.endsWith(' ') ? command : command + ' ')
+        focusComposerInput(editorRef.current)
       }}
       onSteer={steerDraft}
       state={state}
