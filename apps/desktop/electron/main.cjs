@@ -1356,7 +1356,8 @@ function findPythonForRoot(root) {
 
   // qiji: dev 模式下 repo 根往往没有自己的 venv，回落到用户已安装的 QIJI_HOME venv
   // （完整依赖），避免误用系统 Python（如 veighna/conda）导致 agent init failed。
-  const devFallback = !IS_PACKAGED ? path.join(HERMES_HOME, 'hermes-agent', 'venv', IS_WINDOWS ? 'Scripts\python.exe' : 'bin/python') : null
+  const devFallback = !IS_PACKAGED ? path.join(HERMES_HOME, 'hermes-agent', 'venv', IS_WINDOWS ? path.join('Scripts', 'python.exe') : 'bin/python') : null
+  console.log('[qiji-dev] findPythonForRoot fallback:', devFallback, 'exists=', devFallback ? fileExists(devFallback) : false)
   if (devFallback && fileExists(devFallback)) return devFallback
 
   return findSystemPython()
