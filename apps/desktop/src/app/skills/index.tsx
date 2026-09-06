@@ -75,6 +75,23 @@ interface SkillsViewProps extends React.ComponentProps<'section'> {
 }
 
 export function SkillsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...props }: SkillsViewProps) {
+  /** 点「使用」→ 跳新会话，输入框预填 /技能名（未启用的先自动启用） */
+  async function useSkillNow(skill: SkillInfo) {
+    if (!skill.enabled) {
+      try {
+        await toggleSkill(skill.name, true)
+        setSkills(current => current?.map(row => (row.name === skill.name ? { ...row, enabled: true } : row)) ?? current)
+      } catch {
+        // 启用失败不阻塞——slash 命令仍会触发技能加载
+      }
+    }
+    window.location.hash = '#/'
+    // 等新会话视图挂载后注入文本
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('qiji:insert-text', { detail: { text: `/${skill.name} ` } }))
+    }, 350)
+  }
+
   const { t, locale } = useI18n()
   const isZh = locale === 'zh' || locale === 'zh-hant'
   const [mode, setMode] = useRouteEnumParam('tab', SKILLS_MODES, 'skills')
@@ -272,11 +289,21 @@ export function SkillsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...p
                               : (asText(skill.description) || t.skills.noDescription)}
                           </p>
                         </div>
-                        <Switch
-                          checked={skill.enabled}
-                          disabled={savingSkill === skill.name}
-                          onCheckedChange={checked => void handleToggleSkill(skill, checked)}
-                        />
+                        <div className="flex items-center gap-2">
+                          <Button
+                            onClick={() => void useSkillNow(skill)}
+                            size="sm"
+                            type="button"
+                            variant="outline"
+                          >
+                            {isZh ? '使用' : 'Use'}
+                          </Button>
+                          <Switch
+                            checked={skill.enabled}
+                            disabled={savingSkill === skill.name}
+                            onCheckedChange={checked => void handleToggleSkill(skill, checked)}
+                          />
+                        </div>
                       </div>
                     ))}
                   </div>

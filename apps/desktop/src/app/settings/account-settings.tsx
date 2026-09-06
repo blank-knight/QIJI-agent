@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { useI18n } from '@/i18n'
 import { CheckCircle2, Download, Loader2, Sparkles, Users } from '@/lib/icons'
-import { BackendError, backendGet, backendPost } from '@/lib/backend'
+import { BackendError, BACKEND_BASE_URL, backendGet, backendPost } from '@/lib/backend'
 import { cn } from '@/lib/utils'
 import { $auth, setAvatar as setGlobalAvatar, setScore } from '@/store/auth'
 
@@ -159,13 +159,9 @@ export function AccountSettings() {
     setInstallingSkill(sk.name)
     setSkillMsg('')
     try {
-      const base = await backendGet<{ url: string }>('/api/client/v1/config')
-        .catch(() => null)
-      // 下载地址 = 服务端 download 接口（302 到 zip 直链）
-      const dlPath = `/api/client/v1/skill/download?id=${sk.id}`
-      const origin = (window.hermesDesktop?.backendOrigin?.() as string | undefined) || ''
-      const url = origin ? origin + dlPath : dlPath
-      await window.hermesDesktop.skillMarket.install(url, sk.name)
+      // 下载地址 = 服务端 download 接口（302 到 zip 直链）；token 由 main 进程下载时带 header
+      const url = `${BACKEND_BASE_URL}/api/client/v1/skill/download?id=${sk.id}`
+      await window.hermesDesktop.skillMarket.install(url, sk.name, authState.token || '')
       setInstalledSkills(prev => new Set(prev).add(sk.name))
       setSkillMsgOk(true)
       setSkillMsg(t.settings.account.skillmarket.installOk)

@@ -11,9 +11,24 @@ type IntroCopyRecord = IntroCopy & {
   personality: string
 }
 
+export type QuickSkill = {
+  name: string
+  title: string
+  desc: string
+}
+
+export type IntroExample = {
+  title: string
+  prompt: string
+}
+
 export type IntroProps = {
   personality?: string
   seed?: number
+  quickSkills?: QuickSkill[]
+  examples?: IntroExample[]
+  onPickSkill?: (name: string) => void
+  onPickExample?: (prompt: string) => void
 }
 
 const NEUTRAL_PERSONALITIES = new Set(['', 'default', 'none', 'neutral'])
@@ -154,7 +169,7 @@ function resolveCopy(personality?: string, seed?: number): IntroCopy {
   return pickCopy(copies, seed)
 }
 
-export function Intro({ personality, seed }: IntroProps) {
+export function Intro({ personality, seed, quickSkills, examples, onPickSkill, onPickExample }: IntroProps) {
   const [mountSeed] = useState(() => Math.floor(Math.random() * 100000))
   const copy = resolveCopy(personality, mountSeed + (seed ?? 0))
 
@@ -166,16 +181,55 @@ export function Intro({ personality, seed }: IntroProps) {
       <div className="w-full min-w-0">
         <p
           aria-label={WORDMARK}
-          className="fit-text mx-auto mb-1 w-[calc(100%-1rem)] font-['Collapse'] font-bold uppercase leading-[0.9] tracking-[0.08em] text-midground mix-blend-plus-lighter dark:text-foreground/90"
-          style={{ '--fit-min': '2rem' } as CSSProperties}
+          className="text-lg font-semibold tracking-[0.08em] text-midground dark:text-foreground/80"
         >
-          <span>
-            <span>{WORDMARK}</span>
-          </span>
-          <span aria-hidden="true">{WORDMARK}</span>
+          {WORDMARK}
         </p>
 
         <p className="m-0 text-center leading-normal tracking-tight">{copy.body}</p>
+
+        {quickSkills && quickSkills.length > 0 && onPickSkill ? (
+          <div className="pointer-events-auto mt-3 w-full max-w-xl">
+            <div className="mb-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-(--ui-text-tertiary)">快捷技能</div>
+            <div className="grid grid-cols-3 gap-1.5">
+              {quickSkills.map(sk => (
+                <button
+                  className="group rounded-lg border border-border/60 bg-muted/20 px-2 py-1.5 text-left transition-colors hover:border-primary/50 hover:bg-muted/40"
+                  key={sk.name}
+                  onClick={() => onPickSkill(sk.name)}
+                  type="button"
+                >
+                  <div className="truncate text-[0.8rem] font-medium text-foreground">{sk.title}</div>
+                  <div className="mt-0.5 line-clamp-1 text-[0.68rem] text-muted-foreground">{sk.desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+      </div>
+    </div>
+  )
+}
+
+/** 最佳实践条：挂载在输入框下方（仅空会话主页显示） */
+export function ExamplesStrip({ examples, onPick }: { examples: IntroExample[]; onPick: (prompt: string) => void }) {
+  if (examples.length === 0) return null
+  return (
+    <div className="pointer-events-auto absolute bottom-[calc(var(--composer-measured-height,160px)+1rem)] left-1/2 z-20 w-[min(var(--composer-width),calc(100%-2rem))] max-w-full -translate-x-1/2 px-1 pb-1">
+      <div className="mb-1.5 text-center text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-(--ui-text-tertiary)">试试这样用</div>
+      <div className="flex flex-col gap-1">
+        {examples.map(ex => (
+          <button
+            className="w-full truncate rounded-lg border border-border/50 bg-transparent px-3 py-1.5 text-left text-[0.8rem] text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+            key={ex.title}
+            onClick={() => onPick(ex.prompt)}
+            title={ex.prompt}
+            type="button"
+          >
+            {ex.title}
+          </button>
+        ))}
       </div>
     </div>
   )

@@ -6956,16 +6956,8 @@ ipcMain.handle('hermes:listDir', async (_event, relPath) => {
   return fs.readdirSync(dir, { withFileTypes: true }).map(d => ({ name: d.name, isDirectory: d.isDirectory() }))
 })
 
-ipcMain.handle('hermes:backendOrigin', async () => {
-  try {
-    const { getBackendConfig } = require('./backend-env.cjs')
-    const cfg = getBackendConfig()
-    return cfg && cfg.baseUrl ? String(cfg.baseUrl).replace(/\/$/, '') : ''
-  } catch { return '' }
-})
-
 // —— 技能市场：下载 zip 并解压到 skills 目录 ——
-ipcMain.handle('hermes:skillMarket:install', async (_event, rawUrl, rawName) => {
+ipcMain.handle('hermes:skillMarket:install', async (_event, rawUrl, rawName, rawToken) => {
   const url = String(rawUrl || '').trim()
   const name = String(rawName || '').trim()
 
@@ -6976,17 +6968,38 @@ ipcMain.handle('hermes:skillMarket:install', async (_event, rawUrl, rawName) => 
     throw new Error('无效的技能标识')
   }
 
-  // 下载到临时目录
+  // 下载到临时目录（带 Authorization 头——下载接口需登录态）
   const tmpDir = path.join(app.getPath('temp'), 'qiji-skills')
   fs.mkdirSync(tmpDir, { recursive: true })
-  const zipPath = path.join(tmpDir, name + '-' + Date.now() + '.zip')
-  const filePath = await downloadInstallerFile(url, () => {})
-
-  // downloadInstallerFile 落在 qiji-updates 目录，直接用其返回值
-  const srcPath = filePath || zipPath
-  if (!srcPath || !fs.existsSync(srcPath)) {
-    throw new Error('下载失败')
-  }
+  const srcPath = path.join(tmpDir, name + '-' + Date.now() + '.zip')
+  const headers = {}
+  if (rawToken) headers['Authorization'] = 'Bearer ' + String(rawToken)
+  await new Promise((resolve, reject) => {
+    const sendErr = (msg) => reject(new Error(msg))
+    const doGet = (u, redirects) => {
+      const req = electronNet.request(u)
+      for (const k of Object.keys(headers)) req.setHeader(k, headers[k])
+      req.on('response', (res) => {
+        const st = res.statusCode
+        const loc = res.headers.location
+        if (st >= 300 && st < 400 && loc && redirects > 0) {
+          res.resume()
+          return doGet(new URL(loc, u).toString(), redirects - 1)
+        }
+        if (st !== 200) {
+          res.resume()
+          return sendErr('下载失败(HTTP ' + st + ')')
+        }
+        const out = fs.createWriteStream(srcPath)
+        res.pipe(out)
+        out.on('finish', () => out.close(resolve))
+        out.on('error', () => sendErr('写文件失败'))
+      })
+      req.on('error', () => sendErr('网络错误'))
+      req.end()
+    }
+    doGet(url, 5)
+  })
 
   // 解压用系统自带工具：Windows 10+ 自带 tar(bsdtar 支持 zip)，macOS/Linux 自带 unzip
   // 先解到临时目录，校验 SKILL.md 后搬到 skills/market/{name}/

@@ -11,6 +11,8 @@ import { Suspense, useCallback, useMemo, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 
 import { Thread } from '@/components/assistant-ui/thread'
+import type { QuickSkill, IntroExample } from '@/components/chat/intro'
+import { ExamplesStrip } from '@/components/chat/intro'
 import { Backdrop } from '@/components/Backdrop'
 import { PromptOverlays } from '@/components/prompt-overlays'
 import { Button } from '@/components/ui/button'
@@ -62,6 +64,36 @@ import { useFileDropZone } from './hooks/use-file-drop-zone'
 import { ScrollToBottomButton } from './scroll-to-bottom-button'
 import { SessionActionsMenu } from './sidebar/session-actions-menu'
 import { threadLoadingState } from './thread-loading'
+
+// 主页快捷技能（精选常用；点击填入 /技能名 到输入框，用户补内容后发送）
+const INTRO_QUICK_SKILLS: QuickSkill[] = [
+  { name: 'powerpoint', title: '📄 PPT 制作', desc: '生成/编辑演示文稿' },
+  { name: 'xlsx-master', title: '📊 Excel 表格', desc: '建表/公式/透视汇总' },
+  { name: 'whisper', title: '🎙️ 语音转文字', desc: '录音/视频转文字稿' },
+  { name: 'ocr-and-documents', title: '📑 文档提取', desc: 'PDF/扫描件取文字' },
+  { name: 'youtube-content', title: '🎬 视频总结', desc: '视频转写+提炼要点' },
+  { name: 'obsidian', title: '📝 笔记管理', desc: '读写搜索笔记库' }
+]
+
+// 最佳实践案例（点击直接发送）
+const INTRO_EXAMPLES: IntroExample[] = [
+  {
+    title: '✅ 帮我把这份销售数据按地区做透视汇总表，算出环比增长',
+    prompt: '帮我把这份销售数据按地区做透视汇总表，算出环比增长'
+  },
+  {
+    title: '✅ 把这个会议录音整理成会议纪要，分出结论和待办',
+    prompt: '把这个会议录音整理成会议纪要，分出结论和待办'
+  },
+  {
+    title: '✅ 给我做一个10页的产品介绍PPT，面向小白用户',
+    prompt: '给我做一个10页的产品介绍PPT，面向小白用户'
+  },
+  {
+    title: '✅ 这份PDF报告帮我提炼要点，写一份300字摘要',
+    prompt: '这份PDF报告帮我提炼要点，写一份300字摘要'
+  }
+]
 
 interface ChatViewProps extends Omit<React.ComponentProps<'div'>, 'onSubmit'> {
   gateway: HermesGateway | null
@@ -450,7 +482,22 @@ export function ChatView({
             clampToComposer={showChatBar}
             cwd={currentCwd}
             gateway={gateway}
-            intro={showIntro ? { personality: introPersonality, seed: introSeed } : undefined}
+            intro={
+              showIntro
+                ? {
+                    personality: introPersonality,
+                    seed: introSeed,
+                    quickSkills: INTRO_QUICK_SKILLS,
+                    examples: INTRO_EXAMPLES,
+                    onPickSkill: name => {
+                      window.dispatchEvent(new CustomEvent('qiji:insert-text', { detail: { text: `/${name} ` } }))
+                    },
+                    onPickExample: prompt => {
+                      void onSubmit(prompt)
+                    }
+                  }
+                : undefined
+            }
             loading={threadLoading}
             onBranchInNewChat={onBranchInNewChat}
             onCancel={onCancel}
@@ -514,6 +561,9 @@ export function ChatView({
             />
           </Suspense>
         )}
+        {showChatBar && showIntro ? (
+          <ExamplesStrip examples={INTRO_EXAMPLES} onPick={prompt => void onSubmit(prompt)} />
+        ) : null}
       </ChatRuntimeBoundary>
     </div>
   )

@@ -610,6 +610,19 @@ export function ChatBar({
     requestMainFocus()
   }
 
+  // 外部注入文本（主页快捷技能/案例 → 输入框），并聚焦
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ text: string }>).detail
+      if (detail?.text) {
+        insertText(detail.text)
+        focusComposerInput(editorRef.current)
+      }
+    }
+    window.addEventListener('qiji:insert-text', handler)
+    return () => window.removeEventListener('qiji:insert-text', handler)
+  }, [])
+
   const insertInlineRefs = (refs: InlineRefInput[]) => {
     const editor = editorRef.current
 

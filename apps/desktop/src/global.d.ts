@@ -135,9 +135,8 @@ declare global {
       }
       // URL-based client update: download the published installer and run it.
       listDir: (relPath: string) => Promise<Array<{ name: string; isDirectory: boolean }>>
-  backendOrigin: () => string
   skillMarket: {
-    install: (url: string, name: string) => Promise<{ ok: boolean; dir: string }>
+    install: (url: string, name: string, token: string) => Promise<{ ok: boolean; dir: string }>
   }
   clientUpdate: {
         downloadAndRun: (url: string) => Promise<{ ok: boolean; path: string }>

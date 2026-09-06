@@ -186,10 +186,9 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   },
   // URL-based client update: download the published installer and run it.
   skillMarket: {
-    install: (url, name) => ipcRenderer.invoke('hermes:skillMarket:install', url, name)
+    install: (url, name, token) => ipcRenderer.invoke('hermes:skillMarket:install', url, name, token)
   },
   listDir: relPath => ipcRenderer.invoke('hermes:listDir', relPath),
-  backendOrigin: () => ipcRenderer.invoke('hermes:backendOrigin'),
   clientUpdate: {
     downloadAndRun: url => ipcRenderer.invoke('hermes:clientUpdate:downloadAndRun', url),
     // Chrome 式：先静默下载，用户确认后再运行安装包
