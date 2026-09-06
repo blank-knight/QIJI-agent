@@ -483,7 +483,6 @@ export function ChatView({
             clampToComposer={showChatBar}
             cwd={currentCwd}
             gateway={gateway}
-            }
             loading={threadLoading}
             onBranchInNewChat={onBranchInNewChat}
             onCancel={onCancel}
