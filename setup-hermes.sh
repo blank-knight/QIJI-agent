@@ -233,6 +233,18 @@ else
             || $UV_CMD pip install -e "."
     }
 
+    # qiji: win32-only 包兜底（concurrent-log-handler 等被 uv.lock 跳过时补装，幂等不阻塞）
+    _qiji_clh_fallback() {
+        _V_PY=""
+        [ -x "$SCRIPT_DIR/venv/Scripts/python.exe" ] && _V_PY="$SCRIPT_DIR/venv/Scripts/python.exe"
+        [ -z "$_V_PY" ] && [ -x "$SCRIPT_DIR/venv/bin/python" ] && _V_PY="$SCRIPT_DIR/venv/bin/python"
+        if [ -n "$_V_PY" ] && ! "$_V_PY" -c "import concurrent_log_handler" >/dev/null 2>&1; then
+            echo -e "${YELLOW}⚠${NC} concurrent_log_handler missing, installing fallback..."
+            "$_V_PY" -m pip install --break-system-packages "concurrent-log-handler==0.9.29" \
+                || $UV_CMD pip install "concurrent-log-handler==0.9.29"
+        fi
+    }
+
     if [ -f "uv.lock" ]; then
         # Hash-verified install (preferred). The lockfile records SHA256
         # hashes for every transitive — a compromised transitive would have
@@ -253,15 +265,19 @@ else
         # progress UI instead of staring at a frozen prompt.
         if UV_PROJECT_ENVIRONMENT="$SCRIPT_DIR/venv" $UV_CMD sync --extra all --locked; then
             echo -e "${GREEN}✓${NC} Dependencies installed (hash-verified via uv.lock)"
+            # qiji: win32-only 包兜底
+            _qiji_clh_fallback
         else
             echo -e "${YELLOW}⚠${NC} Lockfile sync failed (see uv output above)."
             echo -e "${YELLOW}⚠${NC} Falling back to PyPI resolve — transitives will NOT be hash-verified."
             _try_install
+            _qiji_clh_fallback
             echo -e "${GREEN}✓${NC} Dependencies installed (transitives re-resolved, not hash-verified)"
         fi
     else
         echo -e "${YELLOW}⚠${NC} uv.lock not found — installing without hash verification of transitives."
         _try_install
+        _qiji_clh_fallback
         echo -e "${GREEN}✓${NC} Dependencies installed (transitives re-resolved, not hash-verified)"
     fi
 fi
