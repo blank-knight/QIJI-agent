@@ -18,6 +18,8 @@ export interface QuickModelOption {
 }
 
 export interface ChatBarState {
+  /** 空会话主页：输入框上移居中（快捷技能与最佳实践之间） */
+  introCenter?: boolean
   model: {
     model: string
     provider: string

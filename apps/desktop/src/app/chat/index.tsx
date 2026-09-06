@@ -396,6 +396,7 @@ export function ChatView({
 
   const chatBarState = useMemo<ChatBarState>(
     () => ({
+      introCenter: showIntro,
       model: {
         model: currentModel,
         provider: currentProvider,
@@ -414,7 +415,7 @@ export function ChatView({
         active: false
       }
     }),
-    [contextSuggestions, currentModel, currentProvider, gatewayOpen, modelMenuContent, quickModels]
+    [contextSuggestions, currentModel, currentProvider, gatewayOpen, modelMenuContent, quickModels, showIntro]
   )
 
   // Drop files anywhere in the conversation area, not just on the composer
@@ -475,7 +476,6 @@ export function ChatView({
       >
         <div
           className="relative min-h-0 max-w-full flex-1 overflow-hidden bg-(--ui-chat-surface-background) contain-[layout_paint]"
-          data-intro-center={showIntro ? '' : undefined}
           data-slot="composer-bounds"
           {...dropHandlers}
         >
