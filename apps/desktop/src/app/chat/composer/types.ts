@@ -20,6 +20,9 @@ export interface QuickModelOption {
 export interface ChatBarState {
   /** 空会话主页：输入框上移居中（快捷技能与最佳实践之间） */
   introCenter?: boolean
+  /** 主页最佳实践案例（introCenter 时渲染在输入框正下方） */
+  introExamples?: { title: string; prompt: string }[]
+  onIntroPick?: (prompt: string) => void
   model: {
     model: string
     provider: string

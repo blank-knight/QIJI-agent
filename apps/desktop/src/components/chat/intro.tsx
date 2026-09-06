@@ -175,7 +175,7 @@ export function Intro({ personality, seed, quickSkills, examples, onPickSkill, o
 
   return (
     <div
-      className="pointer-events-none flex w-full min-w-0 flex-col items-center justify-center px-0.5 py-6 text-center text-muted-foreground sm:px-6 lg:px-8"
+      className="pointer-events-none flex w-full min-w-0 flex-col items-center justify-end px-0.5 pt-4 pb-0 text-center text-muted-foreground sm:px-6 lg:px-8"
       data-slot="aui_intro"
     >
       <div className="w-full min-w-0">

@@ -12,7 +12,7 @@ import { useLocation } from 'react-router-dom'
 
 import { Thread } from '@/components/assistant-ui/thread'
 import type { QuickSkill, IntroExample } from '@/components/chat/intro'
-import { ExamplesStrip, Intro } from '@/components/chat/intro'
+import { Intro } from '@/components/chat/intro'
 import { Backdrop } from '@/components/Backdrop'
 import { PromptOverlays } from '@/components/prompt-overlays'
 import { Button } from '@/components/ui/button'
@@ -397,6 +397,10 @@ export function ChatView({
   const chatBarState = useMemo<ChatBarState>(
     () => ({
       introCenter: showIntro,
+      introExamples: showIntro ? INTRO_EXAMPLES : undefined,
+      onIntroPick: (prompt: string) => {
+        void onSubmit(prompt)
+      },
       model: {
         model: currentModel,
         provider: currentProvider,
@@ -560,9 +564,6 @@ export function ChatView({
             />
           </Suspense>
         )}
-        {showChatBar && showIntro ? (
-          <ExamplesStrip examples={INTRO_EXAMPLES} onPick={prompt => void onSubmit(prompt)} />
-        ) : null}
       </ChatRuntimeBoundary>
     </div>
   )

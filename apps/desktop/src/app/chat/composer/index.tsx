@@ -1983,6 +1983,7 @@ export function ChatBar({
                 : 'absolute bottom-0 left-1/2 w-[min(var(--composer-width),calc(100%-2rem))] max-w-full -translate-x-1/2 pt-2 pb-[var(--composer-shell-pad-block-end)]',
             dragging && 'cursor-grabbing select-none touch-none'
           )}
+
           data-drag-active={dragActive ? '' : undefined}
           data-popped-out={poppedOut ? '' : undefined}
           data-slot="composer-root"
@@ -2014,6 +2015,22 @@ export function ChatBar({
               : undefined
           }
         >
+          {state.introCenter && state.introExamples && state.introExamples.length > 0 ? (
+            <div className="absolute inset-x-0 top-full mt-1.5 flex w-full flex-col gap-1 px-2">
+              <div className="text-center text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-(--ui-text-tertiary)">试试这样用</div>
+              {state.introExamples.map(ex => (
+                <button
+                  className="w-full truncate rounded-lg border border-border/50 bg-transparent px-3 py-1.5 text-left text-[0.8rem] text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+                  key={ex.title}
+                  onClick={() => state.onIntroPick?.(ex.prompt)}
+                  title={ex.prompt}
+                  type="button"
+                >
+                  {ex.title}
+                </button>
+              ))}
+            </div>
+          ) : null}
           {showHelpHint && <HelpHint />}
           {trigger && !argStageEmpty && (
             <ComposerTriggerPopover
