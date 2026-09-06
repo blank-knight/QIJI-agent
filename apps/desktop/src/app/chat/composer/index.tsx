@@ -2018,8 +2018,7 @@ export function ChatBar({
           {state.introCenter && state.introTop ? (
             <div className="absolute inset-x-0 bottom-full mb-1.5 flex w-full flex-col items-center px-2">
               <div className="text-6xl font-bold tracking-[0.08em] text-midground dark:text-foreground/85">{state.introTop.headline}</div>
-              <p className="m-0 mt-1 text-center text-sm leading-normal tracking-tight text-muted-foreground">{state.introTop.body}</p>
-              <div className="pointer-events-auto mt-3 flex w-full max-w-xl flex-col items-center">
+              <div className="pointer-events-auto mt-2 flex w-full max-w-xl flex-col items-center">
                 <div className="flex justify-center gap-1.5">
                   {state.introTop.skills.map(sk => (
                     <button
