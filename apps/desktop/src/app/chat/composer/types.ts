@@ -29,7 +29,9 @@ export interface ChatBarState {
     body: string
     skills: { name: string; title: string; desc: string }[]
   }
-  onSkillPick?: (name: string) => void
+  /** OPC 专属技能条（星标，渲染在快捷技能下方独立一排） */
+  introOpc?: { name: string; title: string; desc: string }[]
+  onSkillPick?: (name: string, title?: string) => void
   model: {
     model: string
     provider: string

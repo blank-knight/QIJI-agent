@@ -101,7 +101,7 @@ export const SKILL_ZH: Record<string, { name: string; description: string }> = {
   'nano-pdf': { name: 'PDF 编辑', description: '通过 nano-pdf CLI 编辑 PDF 文字/标题（自然语言）。' },
   'notion': { name: 'Notion', description: 'Notion API + ntn CLI：页面、数据库、Markdown、Workers。' },
   'ocr-and-documents': { name: 'OCR 文档', description: '从 PDF/扫描件提取文字（pymupdf、marker-pdf）。' },
-  'powerpoint': { name: 'PowerPoint', description: '创建、读取、编辑 .pptx 演示文稿、幻灯片、备注。' },
+  'powerpoint': { name: 'PPT制作', description: '创建、读取、编辑 .pptx 演示文稿、幻灯片、备注。' },
   'teams-meeting-pipeline': { name: 'Teams 会议', description: '通过奇计 CLI 操作 Teams 会议摘要流水线。' },
 
   // product

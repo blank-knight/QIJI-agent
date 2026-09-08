@@ -610,6 +610,30 @@ export function ChatBar({
     requestMainFocus()
   }
 
+  /** 插入技能芯片：显示中文标签，提交时还原为 /命令；多次选择同行追加 */
+  const insertSkillChip = (command: string, label: string) => {
+    const editor = editorRef.current
+
+    if (!editor) {
+      insertText(command)
+      return
+    }
+
+    // 归一化：命令自身去尾空格，分隔统一由后面的空格节点承担（避免双空格）
+    const cmd = command.replace(/\s+$/, '')
+    const current = composerPlainText(editor)
+    const needsSpace = current.trim() && !/\s$/.test(current)
+    editor.append(
+      ...(needsSpace ? [document.createTextNode(' ')] : []),
+      slashChipElement(cmd, 'skill', label),
+      document.createTextNode(' ')
+    )
+    placeCaretEnd(editor)
+    draftRef.current = composerPlainText(editor)
+    aui.composer().setText(draftRef.current)
+    requestMainFocus()
+  }
+
   // 外部注入文本（主页快捷技能/案例 → 输入框），并聚焦
   useEffect(() => {
     const handler = (e: Event) => {
@@ -621,6 +645,18 @@ export function ChatBar({
     }
     window.addEventListener('qiji:insert-text', handler)
     return () => window.removeEventListener('qiji:insert-text', handler)
+  }, [])
+
+  // 外部注入技能芯片（主页快捷胶囊/技能页「使用」→ 输入框），显示中文标签
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ command: string; label?: string }>).detail
+      if (detail?.command) {
+        insertSkillChip(detail.command, detail.label || detail.command)
+      }
+    }
+    window.addEventListener('qiji:insert-skill', handler)
+    return () => window.removeEventListener('qiji:insert-skill', handler)
   }, [])
 
   const insertInlineRefs = (refs: InlineRefInput[]) => {
@@ -1869,11 +1905,7 @@ export function ChatBar({
       disabled={disabled}
       hasComposerPayload={hasComposerPayload}
       onDictate={dictate}
-      onSelectSkill={command => {
-        // 选中技能不立即发送：填入输入框，用户补充内容后一起发送
-        insertText(command.endsWith(' ') ? command : command + ' ')
-        focusComposerInput(editorRef.current)
-      }}
+      onSelectSkill={({ command, label }) => insertSkillChip(command, label)}
       onSteer={steerDraft}
       state={state}
       voiceStatus={voiceStatus}
@@ -2026,7 +2058,7 @@ export function ChatBar({
                     <button
                       className="group shrink-0 rounded-lg border border-border/60 bg-muted/20 px-2.5 py-1 text-center transition-colors hover:border-primary/50 hover:bg-muted/40"
                       key={sk.name}
-                      onClick={() => state.onSkillPick?.(sk.name)}
+                      onClick={() => state.onSkillPick?.(sk.name, sk.title)}
                       title={sk.desc}
                       type="button"
                     >
@@ -2034,6 +2066,21 @@ export function ChatBar({
                     </button>
                   ))}
                 </div>
+                {state.introOpc && state.introOpc.length > 0 ? (
+                  <div className="mt-1.5 flex justify-center gap-1.5">
+                    {state.introOpc.map(sk => (
+                      <button
+                        className="shrink-0 rounded-lg border border-primary/40 bg-primary/10 px-2.5 py-1 text-center transition-colors hover:border-primary/70 hover:bg-primary/20"
+                        key={sk.name}
+                        onClick={() => state.onSkillPick?.(sk.name, sk.title)}
+                        title={sk.desc}
+                        type="button"
+                      >
+                        <span className="text-[0.75rem] font-semibold text-foreground">{sk.title}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             </div>
           ) : null}

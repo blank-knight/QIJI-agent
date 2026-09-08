@@ -65,7 +65,7 @@ export function ComposerControls({
   state: ChatBarState
   voiceStatus: VoiceStatus
   onDictate: () => void
-  onSelectSkill?: (command: string) => void
+  onSelectSkill?: (payload: { command: string; label: string }) => void
   onSteer: () => void
 }) {
   const { t } = useI18n()

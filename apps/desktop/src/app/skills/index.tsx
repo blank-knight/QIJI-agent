@@ -86,9 +86,10 @@ export function SkillsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...p
       }
     }
     window.location.hash = '#/'
-    // 等新会话视图挂载后注入文本
+    // 等新会话视图挂载后注入技能芯片（显示中文名，提交时还原 /命令）
     setTimeout(() => {
-      window.dispatchEvent(new CustomEvent('qiji:insert-text', { detail: { text: `/${skill.name} ` } }))
+      const label = isZh ? translateSkillField(skill.name, 'name', skill.name) : skill.name
+      window.dispatchEvent(new CustomEvent('qiji:insert-skill', { detail: { command: `/${skill.name} `, label } }))
     }, 350)
   }
 

@@ -18,8 +18,8 @@ import { translateCategory, translateSkillField } from '@/app/skills/translation
 import { cn } from '@/lib/utils'
 
 interface SkillPickerProps {
-  /** Called with the slash command text (e.g. "/qiji-geo") when user picks a skill. */
-  onSelect: (command: string) => void
+  /** Called with the picked skill's slash command and display label (e.g. { command: '/powerpoint ', label: 'PPT制作' }). */
+  onSelect: (payload: { command: string; label: string }) => void
   disabled?: boolean
 }
 
@@ -70,8 +70,7 @@ export function SkillPicker({ onSelect, disabled }: SkillPickerProps) {
   }, [skills, query])
 
   const handlePick = (skill: SkillInfo) => {
-    const cmd = `/${skill.name}`
-    onSelect(cmd)
+    onSelect({ command: `/${skill.name} `, label: displayName(skill) })
     setOpen(false)
     setQuery('')
   }
