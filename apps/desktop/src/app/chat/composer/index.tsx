@@ -16,6 +16,8 @@ import {
 import { hermesDirectiveFormatter, type SlashChipKind } from '@/components/assistant-ui/directive-text'
 import { composerFill, composerSurfaceGlass } from '@/components/chat/composer-dock'
 import { Button } from '@/components/ui/button'
+import { Codicon } from '@/components/ui/codicon'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { useResizeObserver } from '@/hooks/use-resize-observer'
 import { useI18n } from '@/i18n'
@@ -268,6 +270,7 @@ export function ChatBar({
   const urlInputRef = useRef<HTMLInputElement | null>(null)
 
   const [urlOpen, setUrlOpen] = useState(false)
+  const [opcOpen, setOpcOpen] = useState(false)
   const [urlValue, setUrlValue] = useState('')
   const [expanded, setExpanded] = useState(false)
   const [voiceConversationActive, setVoiceConversationActive] = useState(false)
@@ -2053,7 +2056,7 @@ export function ChatBar({
             <div className="absolute inset-x-0 bottom-full mb-1.5 flex w-full flex-col items-center px-2">
               <div className="text-6xl font-bold tracking-[0.08em] text-midground dark:text-foreground/85">{state.introTop.headline}</div>
               <div className="pointer-events-auto mt-2 flex w-full max-w-xl flex-col items-center">
-                <div className="flex justify-center gap-1.5">
+                <div className="flex flex-wrap justify-center gap-1.5">
                   {state.introTop.skills.map(sk => (
                     <button
                       className="group shrink-0 rounded-lg border border-border/60 bg-muted/20 px-2.5 py-1 text-center transition-colors hover:border-primary/50 hover:bg-muted/40"
@@ -2065,22 +2068,40 @@ export function ChatBar({
                       <span className="text-[0.75rem] font-medium text-foreground">{sk.title}</span>
                     </button>
                   ))}
+                  {state.introOpc && state.introOpc.length > 0 ? (
+                    <Popover open={opcOpen} onOpenChange={setOpcOpen}>
+                      <PopoverTrigger asChild>
+                        <button
+                          className="shrink-0 rounded-lg border border-primary/40 bg-primary/10 px-2.5 py-1 text-center transition-colors hover:border-primary/70 hover:bg-primary/20"
+                          type="button"
+                        >
+                          <span className="text-[0.75rem] font-semibold text-foreground">
+                            ⭐ OPC 技能 <Codicon className="inline-block align-[-0.125em]" name="chevron-down" size="0.625rem" />
+                          </span>
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent align="center" className="w-64 max-h-72 overflow-y-auto p-1" side="bottom" sideOffset={6}>
+                        {state.introOpc.map(sk => (
+                          <button
+                            className="flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-muted/50"
+                            key={sk.name}
+                            onClick={() => {
+                              state.onSkillPick?.(sk.name, sk.title)
+                              setOpcOpen(false)
+                            }}
+                            title={sk.desc}
+                            type="button"
+                          >
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-[0.8rem] font-medium text-foreground">{sk.title}</span>
+                              <span className="block truncate text-[0.7rem] text-muted-foreground">{sk.desc}</span>
+                            </span>
+                          </button>
+                        ))}
+                      </PopoverContent>
+                    </Popover>
+                  ) : null}
                 </div>
-                {state.introOpc && state.introOpc.length > 0 ? (
-                  <div className="mt-1.5 flex justify-center gap-1.5">
-                    {state.introOpc.map(sk => (
-                      <button
-                        className="shrink-0 rounded-lg border border-primary/40 bg-primary/10 px-2.5 py-1 text-center transition-colors hover:border-primary/70 hover:bg-primary/20"
-                        key={sk.name}
-                        onClick={() => state.onSkillPick?.(sk.name, sk.title)}
-                        title={sk.desc}
-                        type="button"
-                      >
-                        <span className="text-[0.75rem] font-semibold text-foreground">{sk.title}</span>
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
               </div>
             </div>
           ) : null}
