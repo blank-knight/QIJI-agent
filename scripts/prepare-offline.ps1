@@ -166,12 +166,22 @@ if (Test-Path (Join-Path $venvPath "Scripts\python.exe")) {
 
     # venv Scripts
     $venvScripts = Join-Path $venvPath "Scripts"
-    if (Test-Path $venvScripts) {
-        $vendorVS = Join-Path $VendorDir "venv-scripts"
-        Copy-Item $venvScripts $vendorVS -Recurse -Force
-        Write-Host "[6c/8] Venv Scripts ✅" -ForegroundColor Cyan
+        if (Test-Path $venvScripts) {
+            $vendorVS = Join-Path $VendorDir "venv-scripts"
+            Copy-Item $venvScripts $vendorVS -Recurse -Force
+            Write-Host "[6c/8] Venv Scripts ✅" -ForegroundColor Cyan
+        }
+
+        # 6d. Vendor runtime stamp — install.ps1 compares this against the stamp
+        # beside an existing venv; mismatch => force venv rebuild (upgrade path).
+        # Without it, "venv exists" short-circuits staging and an old hermes
+        # runtime survives every reinstall (0.17.7 P0 fix).
+        $stampSrc = Join-Path $PSScriptRoot "..\apps\desktop\build\install-stamp.json"
+        if (Test-Path $stampSrc) {
+            Copy-Item $stampSrc (Join-Path $VendorDir "vendor-runtime-stamp.json") -Force
+            Write-Host "[6d/8] Vendor runtime stamp ✅" -ForegroundColor Cyan
+        }
     }
-}
 
 # 7. node_modules (named "nm" because electron-builder strips "node_modules")
 # IMPORTANT: Use robocopy /XJ to NOT follow junctions/symlinks.

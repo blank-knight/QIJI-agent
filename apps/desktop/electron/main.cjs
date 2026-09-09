@@ -50,7 +50,7 @@ const { canImportHermesCli, verifyHermesCli } = require('./backend-probes.cjs')
 const { createLinkTitleWindow } = require('./link-title-window.cjs')
 const { probeGatewayWebSocket } = require('./gateway-ws-probe.cjs')
 const { adoptServedDashboardToken } = require('./dashboard-token.cjs')
-const { waitForDashboardPort } = require('./backend-ready.cjs')
+const { waitForDashboardPort, detectColdStartWindow, resolvePortAnnounceTimeoutMs } = require('./backend-ready.cjs')
 const { serializeJsonBody, setJsonRequestHeaders } = require('./oauth-net-request.cjs')
 const { fetchMarketplaceThemes, searchMarketplaceThemes } = require('./vscode-marketplace.cjs')
 const { buildDesktopBackendEnv, normalizeHermesHomeRoot } = require('./backend-env.cjs')
@@ -2749,6 +2749,26 @@ function readBootstrapMarker() {
   return readJson(BOOTSTRAP_COMPLETE_MARKER)
 }
 
+// qiji 0.17.7: 运行时版本比对。比较两个 semver (x.y.z), a<b 返回 -1, 相等 0, a>b 1。
+// 非法输入按 0.0.0 处理——宁可触发重装也不留旧码。
+function qijiCompareVersions(a, b) {
+  const parse = v => String(v || '').split('.').map(x => parseInt(x, 10) || 0)
+  const [a1, a2, a3] = parse(a); const [b1, b2, b3] = parse(b)
+  if (a1 !== b1) return a1 < b1 ? -1 : 1
+  if (a2 !== b2) return a2 < b2 ? -1 : 1
+  if (a3 !== b3) return a3 < b3 ? -1 : 1
+  return 0
+}
+
+// qiji 0.17.7: 已装运行时是否旧于当前安装包。true = 需要重新bootstrap铺新码。
+// 判定链: marker缺失/无版本字段(老marker) -> 视为旧(触发一次升级铺码);
+//         marker.desktopVersion >= 包版本 -> 新,直接用。
+function isRuntimeOutdated() {
+  const marker = readBootstrapMarker()
+  if (!marker || typeof marker !== 'object') return true
+  return qijiCompareVersions(marker.desktopVersion, app.getVersion()) < 0
+}
+
 function isBootstrapComplete() {
   const marker = readBootstrapMarker()
   if (!marker || typeof marker !== 'object') return false
@@ -3013,8 +3033,15 @@ function resolveHermesBackend(dashboardArgs) {
   //    completed initial configuration; we trust the install and go straight
   //    to spawning hermes. Updates flow through the in-app update path
   //    (applyUpdates -> git pull) or `hermes update` from the CLI.
-  if (isBootstrapComplete()) {
+  if (isBootstrapComplete() && !isRuntimeOutdated()) {
     return createActiveBackend(dashboardArgs)
+  }
+  // qiji 0.17.7: 已装运行时版本旧于本安装包(或老marker无版本)——落回bootstrap路径
+  // 重新铺码(install.ps1幂等,vendor强制覆盖源码,用户数据目录不动)。
+  if (isBootstrapComplete() && isRuntimeOutdated()) {
+    rememberLog(
+      `[bootstrap] 已装运行时(${(readBootstrapMarker() || {}).desktopVersion || '未知'})旧于本包(${app.getVersion()}); 重新铺码`
+    )
   }
 
   // 4. Existing `hermes` on PATH -- installed via install.ps1 / install.sh from
@@ -5761,8 +5788,17 @@ async function startHermes() {
     })
 
     await advanceBootProgress('backend.port', 'Waiting for 奇计 backend to launch', 86)
+    // qiji 0.17.7: 冷启动(重铺后首启)放宽端口等待到300s,避免健康后端被90s超时误杀
+    const qijiColdStart = detectColdStartWindow(readBootstrapMarker())
+    if (qijiColdStart) {
+      rememberLog('[boot] 冷启动窗口内——端口等待放宽至300s')
+      advanceBootProgress({ message: '正在安装运行环境，首次启动需要几分钟，请勿关闭…' })
+    }
     // Discover the ephemeral port the child bound to
-    const port = await Promise.race([waitForDashboardPort(hermesProcess), backendStartFailed])
+    const port = await Promise.race([
+      waitForDashboardPort(hermesProcess, resolvePortAnnounceTimeoutMs(process.env, qijiColdStart)),
+      backendStartFailed
+    ])
 
     const baseUrl = `http://127.0.0.1:${port}`
     await advanceBootProgress('backend.wait', 'Waiting for 奇计 backend to become ready', 90)

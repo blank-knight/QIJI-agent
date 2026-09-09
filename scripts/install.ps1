@@ -315,8 +315,36 @@ function Stage-VendorFiles {
     $vendorPython = Join-Path $VendorDir "python"
     $vendorSitePackages = Join-Path $VendorDir "site-packages"
     $vendorVenvScripts = Join-Path $VendorDir "venv-scripts"
+    $vendorRuntimeStamp = Join-Path $VendorDir "vendor-runtime-stamp.json"
     $managedVenv = Join-Path $InstallDir "venv"
     $managedPython = Join-Path $InstallDir "python"
+
+    # qiji 0.17.7: vendor runtime upgrade gate. Old installs skipped python/
+    # site-packages staging whenever a venv existed, so an outdated hermes
+    # runtime survived every reinstall. Compare the vendor stamp against the
+    # stamp written beside the installed venv; on mismatch, retire the old
+    # venv (rename, not delete — keeps a rollback path) so staging rebuilds it.
+    if ((Test-Path $vendorRuntimeStamp) -and (Test-Path (Join-Path $managedVenv "Scripts\python.exe"))) {
+        $installedStampPath = Join-Path $InstallDir "vendor-runtime-stamp.json"
+        $installedCommit = ""
+        if (Test-Path $installedStampPath) {
+            try { $installedCommit = (Get-Content $installedStampPath -Raw | ConvertFrom-Json).commit } catch { $installedCommit = "" }
+        }
+        $vendorCommit = ""
+        try { $vendorCommit = (Get-Content $vendorRuntimeStamp -Raw | ConvertFrom-Json).commit } catch { $vendorCommit = "" }
+        if ($installedCommit -ne $vendorCommit) {
+            Write-Host "[vendor] Vendor runtime changed ($installedCommit -> $vendorCommit); rebuilding venv" -ForegroundColor Cyan
+            $retiredVenv = Join-Path $InstallDir ("venv.old-" + (Get-Date -Format "yyyyMMdd-HHmmss"))
+            Move-Item $managedVenv $retiredVenv -Force
+            # Keep only the most recent retired venv; older ones are dead weight.
+            Get-ChildItem (Split-Path $managedVenv) -Directory -Filter "venv.old-*" |
+                Sort-Object Name -Descending | Select-Object -Skip 1 | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+            Copy-Item $vendorRuntimeStamp $installedStampPath -Force
+        }
+    } elseif ((Test-Path $vendorRuntimeStamp) -and -not (Test-Path (Join-Path $InstallDir "vendor-runtime-stamp.json"))) {
+        # Fresh install or pre-0.17.7 install with no stamp: record it now.
+        Copy-Item $vendorRuntimeStamp (Join-Path $InstallDir "vendor-runtime-stamp.json") -Force
+    }
 
     if ((Test-Path $vendorPython) -and (Test-Path $vendorSitePackages) -and -not (Test-Path (Join-Path $managedVenv "Scripts\python.exe"))) {
         # a) Copy Python interpreter into InstallDir\python\

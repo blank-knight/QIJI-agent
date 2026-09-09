@@ -22,8 +22,9 @@ import { asText, includesQuery, prettyName, toolNames, toolsetDisplayLabel } fro
 import { ToolsetConfigPanel } from '../settings/toolset-config-panel'
 import type { SetStatusbarItemGroup } from '../shell/statusbar-controls'
 import { translateSkillField, translateToolsetField, translateCategory } from './translations'
+import { MarketPanel } from './market-panel'
 
-const SKILLS_MODES = ['skills', 'toolsets'] as const
+const SKILLS_MODES = ['skills', 'toolsets', 'market'] as const  // qiji 0.17.7: +market=技能广场
 type SkillsMode = (typeof SKILLS_MODES)[number]
 
 function categoryFor(skill: SkillInfo): string {
@@ -256,11 +257,18 @@ export function SkillsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...p
           <TextTab active={mode === 'toolsets'} onClick={() => setMode('toolsets')}>
             {t.skills.tabToolsets}
           </TextTab>
+          <TextTab active={mode === 'market'} onClick={() => setMode('market')}>
+            技能广场
+          </TextTab>
         </>
       }
     >
       {!skills || !toolsets ? (
         <PageLoader label={t.skills.loading} />
+      ) : mode === 'market' ? (
+        <div className={cn('h-full overflow-y-auto py-3', PAGE_INSET_X)}>
+          <MarketPanel />
+        </div>
       ) : mode === 'skills' ? (
         <div className={cn('h-full overflow-y-auto py-3', PAGE_INSET_X)}>
           {visibleSkills.length === 0 ? (

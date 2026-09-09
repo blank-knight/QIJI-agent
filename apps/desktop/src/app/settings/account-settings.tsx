@@ -5,20 +5,9 @@ import { Button } from '@/components/ui/button'
 import { useI18n } from '@/i18n'
 import { CheckCircle2, Download, Loader2, Sparkles, Users } from '@/lib/icons'
 import { BackendError, BACKEND_BASE_URL, backendGet, backendPost } from '@/lib/backend'
+import { useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { $auth, setAvatar as setGlobalAvatar, setScore } from '@/store/auth'
-
-interface MarketSkill {
-  id: number
-  name: string
-  title: string
-  description: string
-  category: string
-  version: string
-  filesize: number
-  download_count: number
-  updatetime_text: string
-}
 
 import { ListRow, SectionHeading, SettingsContent } from './primitives'
 
@@ -93,12 +82,8 @@ export function AccountSettings() {
   const [planMsg, setPlanMsg] = useState<string | null>(null)
   const [planMsgOk, setPlanMsgOk] = useState(false)
   const [redeeming, setRedeeming] = useState(false)
-  const [skills, setSkills] = useState<MarketSkill[]>([])
-  const [loadingSkills, setLoadingSkills] = useState(true)
-  const [installingSkill, setInstallingSkill] = useState<string | null>(null)
-  const [installedSkills, setInstalledSkills] = useState<Set<string>>(new Set())
-  const [skillMsg, setSkillMsg] = useState('')
-  const [skillMsgOk, setSkillMsgOk] = useState(true)
+  const navigate = useNavigate()
+  const goSkillsMarket = () => navigate('/skills?tab=market')
   const [rechargeMsg, setRechargeMsg] = useState<string | null>(null)
   const [rechargeOk, setRechargeOk] = useState(false)
 
@@ -132,46 +117,6 @@ export function AccountSettings() {
     }
   }, [])
 
-  // 技能市场：加载列表（installed 标记：本地 skills/market/{name} 目录存在即算已装）
-  const loadSkills = useCallback(async () => {
-    setLoadingSkills(true)
-    try {
-      const res = await backendGet<{ total: number; rows: MarketSkill[] }>('/api/client/v1/skill/list')
-      const rows = res.data?.rows ?? []
-      const installed: string[] = []
-      try {
-        const r = await window.hermesDesktop.listDir('skills/market')
-        for (const item of r) {
-          if (item.isDirectory) installed.push(item.name)
-        }
-      } catch { /* 目录不存在=没装过 */ }
-      setSkills(rows)
-      setInstalledSkills(new Set(installed))
-    } catch {
-      setSkills([])
-    } finally {
-      setLoadingSkills(false)
-    }
-  }, [])
-
-  async function installSkill(sk: MarketSkill) {
-    if (installingSkill) return
-    setInstallingSkill(sk.name)
-    setSkillMsg('')
-    try {
-      // 下载地址 = 服务端 download 接口（302 到 zip 直链）；token 由 main 进程下载时带 header
-      const url = `${BACKEND_BASE_URL}/api/client/v1/skill/download?id=${sk.id}`
-      await window.hermesDesktop.skillMarket.install(url, sk.name, authState.token || '')
-      setInstalledSkills(prev => new Set(prev).add(sk.name))
-      setSkillMsgOk(true)
-      setSkillMsg(t.settings.account.skillmarket.installOk)
-    } catch (err) {
-      setSkillMsgOk(false)
-      setSkillMsg(`${t.settings.account.skillmarket.installFail}: ${err instanceof Error ? err.message : String(err)}`)
-    } finally {
-      setInstallingSkill(null)
-    }
-  }
 
   const loadLogs = useCallback(async (page: number, append: boolean) => {
     setLoadingLogs(true)
@@ -203,7 +148,6 @@ export function AccountSettings() {
 
   useEffect(() => {
     if (authState.token) {
-      void loadSkills()
       void reloadProfile()
       void loadLogs(1, false)
       void loadPlans()
@@ -500,57 +444,18 @@ export function AccountSettings() {
           )}
         </div>
 
-        {/* 技能市场 */}
+        {/* 技能市场（qiji 0.17.7：已整体迁至「技能广场」一级入口，此处仅留引导） */}
         <SectionHeading icon={Download} title={a.skillmarket.title} />
-        <p className="mb-3 text-xs text-muted-foreground">{a.skillmarket.desc}</p>
-        {skillMsg ? (
-          <p className={cn('mb-3 text-xs', skillMsgOk ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive')}>
-            {skillMsg}
-          </p>
-        ) : null}
-        {loadingSkills ? (
-          <p className="mb-4 text-xs text-muted-foreground">
-            <Loader2 className="mr-1 inline size-3 animate-spin" />
-          </p>
-        ) : skills.length === 0 ? (
-          <p className="mb-4 text-xs text-muted-foreground">{a.skillmarket.empty}</p>
-        ) : (
-          <div className="mb-4 grid grid-cols-2 gap-2.5">
-            {skills.map(sk => {
-              const installed = installedSkills.has(sk.name)
-              return (
-                <div
-                  className="flex flex-col justify-between rounded-xl border border-border/70 bg-muted/20 px-3.5 py-3"
-                  key={sk.id}
-                >
-                  <div>
-                    <p className="text-sm font-medium">{sk.title}</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      v{sk.version} · {sk.download_count} {a.skillmarket.downloads}
-                    </p>
-                    {sk.description ? (
-                      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground/80">{sk.description}</p>
-                    ) : null}
-                  </div>
-                  <Button
-                    className="mt-2.5"
-                    disabled={installed || installingSkill !== null}
-                    onClick={() => void installSkill(sk)}
-                    size="sm"
-                    variant={installed ? 'outline' : 'textStrong'}
-                  >
-                    {installingSkill === sk.name ? <Loader2 className="size-3 animate-spin" /> : null}
-                    {installed
-                      ? a.skillmarket.installed
-                      : installingSkill === sk.name
-                        ? a.skillmarket.installing
-                        : a.skillmarket.install}
-                  </Button>
-                </div>
-              )
-            })}
+        <div className="mb-4 flex items-center justify-between rounded-xl border border-border/70 bg-muted/20 px-3.5 py-3">
+          <div>
+            <p className="text-sm font-medium">浏览与安装技能</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">{a.skillmarket.desc}</p>
           </div>
-        )}
+          <Button onClick={() => goSkillsMarket()} size="sm" variant="textStrong">
+            <Download className="mr-1 size-3" />
+            前往技能广场
+          </Button>
+        </div>
 
         {/* 积分明细 */}
         <SectionHeading icon={Sparkles} title={a.scorelogs.title} />

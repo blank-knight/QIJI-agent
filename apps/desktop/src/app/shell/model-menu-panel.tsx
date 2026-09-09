@@ -357,6 +357,14 @@ function groupModels(
   const groups: ProviderGroup[] = []
 
   for (const provider of providers) {
+    // qiji 0.17.7: 只显示已配置(authenticated)的 provider 的模型。
+    // 未配置 provider(OpenRouter/Anthropic等)的模型用户点了必超时——请求发向
+    // 没有密钥的端点,重试3次后报 Request timed out。例外:用户主动搜索时保留
+    // (搜索本身就是探索行为,且结果带 setup 引导)。
+    if (!q && provider.authenticated === false) {
+      continue
+    }
+
     const allFamilies = collapseModelFamilies(provider.models ?? [])
 
     if (allFamilies.length === 0) {

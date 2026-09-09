@@ -9,6 +9,11 @@ const _READY_RE = /^HERMES_DASHBOARD_READY port=(\d+)/m
 // piling up orphaned processes (issue #50209). A roomier default absorbs the
 // cold-start cost; a warm start still announces in well under a second.
 const DEFAULT_PORT_ANNOUNCE_TIMEOUT_MS = 90_000
+// qiji 0.17.7: 冷启动(重铺运行时后的第一次启动)默认 300s。公司机案例: 首启要
+// 编译+AV扫描全部新写的 .pyc,90s 到点杀掉了健康但还在初始化的后端,弹"启动失败"
+// 吓用户。warm start 不受影响(1s 内报端口)。判定: bootstrap marker 的 completedAt
+// 在 10 分钟内 = 冷启动窗口。
+const COLD_START_PORT_ANNOUNCE_TIMEOUT_MS = 300_000
 // Never trust a deadline tighter than the warm-start path needs; floor at 45s
 // (the historical default) so a malformed override can't reintroduce the loop.
 const MIN_PORT_ANNOUNCE_TIMEOUT_MS = 45_000
@@ -19,12 +24,22 @@ const MIN_PORT_ANNOUNCE_TIMEOUT_MS = 45_000
  * disks / aggressive AV who need an even longer cold-start window), clamped
  * to a sane floor so a bad value can't make boot flakier than the default.
  */
-function resolvePortAnnounceTimeoutMs(env = process.env) {
+function resolvePortAnnounceTimeoutMs(env = process.env, coldStart = false) {
   const parsed = Number(env.HERMES_DESKTOP_PORT_ANNOUNCE_TIMEOUT_MS)
   if (Number.isFinite(parsed) && parsed > 0) {
     return Math.max(MIN_PORT_ANNOUNCE_TIMEOUT_MS, Math.round(parsed))
   }
-  return DEFAULT_PORT_ANNOUNCE_TIMEOUT_MS
+  return coldStart ? COLD_START_PORT_ANNOUNCE_TIMEOUT_MS : DEFAULT_PORT_ANNOUNCE_TIMEOUT_MS
+}
+
+// qiji 0.17.7: 冷启动判定——bootstrap marker 的 completedAt 距今 < 10 分钟。
+// 由 main.cjs 调用(它有 readBootstrapMarker);backend-ready 自身不读文件系统,
+// 保持模块纯粹(只接收布尔)。
+function detectColdStartWindow(marker, nowMs = Date.now()) {
+  if (!marker || typeof marker !== 'object' || !marker.completedAt) return false
+  const t = Date.parse(marker.completedAt)
+  if (!Number.isFinite(t)) return false
+  return (nowMs - t) < 10 * 60 * 1000
 }
 
 /**
@@ -97,6 +112,7 @@ function waitForDashboardPort(child, timeoutMs = resolvePortAnnounceTimeoutMs())
 module.exports = {
   waitForDashboardPort,
   resolvePortAnnounceTimeoutMs,
+  detectColdStartWindow,
   DEFAULT_PORT_ANNOUNCE_TIMEOUT_MS,
   MIN_PORT_ANNOUNCE_TIMEOUT_MS,
 }
