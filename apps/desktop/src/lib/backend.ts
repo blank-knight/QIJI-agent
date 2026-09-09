@@ -1,8 +1,9 @@
 import { clearAuth } from '@/store/auth'
 
 // 后端基地址。可用 VITE_BACKEND_BASE_URL 覆盖。
+// 注: 必须 https——服务端 80 口 308 跳转虽保留 POST 方法,直连 https 可省一次往返
 export const BACKEND_BASE_URL =
-  (import.meta.env.VITE_BACKEND_BASE_URL as string | undefined) ?? 'http://agent.aijiqiren.vip'
+  (import.meta.env.VITE_BACKEND_BASE_URL as string | undefined) ?? 'https://agent.aijiqiren.vip'
 
 // 登录 token 有效期（后端规定 30 天）
 export const TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000
