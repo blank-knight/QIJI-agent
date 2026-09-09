@@ -7580,7 +7580,7 @@ function showAboutPanelFresh() {
 }
 
 ipcMain.handle('hermes:version', async () => ({
-  appVersion: resolveHermesVersion(),
+  appVersion: IS_PACKAGED ? app.getVersion() : resolveHermesVersion(),
   electronVersion: process.versions.electron,
   nodeVersion: process.versions.node,
   platform: process.platform,
