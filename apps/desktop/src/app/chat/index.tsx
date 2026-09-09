@@ -65,13 +65,14 @@ import { SessionActionsMenu } from './sidebar/session-actions-menu'
 import { threadLoadingState } from './thread-loading'
 
 // 主页快捷技能（精选常用；点击填入 /技能名 到输入框，用户补内容后发送）
+// 注: powerpoint(Anthropic专有许可)已移除,由市场 pptx-maker(MIT)顶替
 const INTRO_QUICK_SKILLS: QuickSkill[] = [
-  { name: 'powerpoint', title: '📄 PPT 制作', desc: '生成/编辑演示文稿' },
+  { name: 'pptx-maker', title: '📄 PPT 制作', desc: '生成/编辑演示文稿' },
   { name: 'xlsx-master', title: '📊 Excel 表格', desc: '建表/公式/透视汇总' },
+  { name: 'docx-writer', title: '📝 Word 文档', desc: '报告/合同生成' },
   { name: 'whisper', title: '🎙️ 语音转文字', desc: '录音/视频转文字稿' },
   { name: 'ocr-and-documents', title: '📑 文档提取', desc: 'PDF/扫描件取文字' },
-  { name: 'youtube-content', title: '🎬 视频总结', desc: '视频转写+提炼要点' },
-  { name: 'obsidian', title: '📝 笔记管理', desc: '读写搜索笔记库' }
+  { name: 'img-toolkit', title: '🖼️ 图片处理', desc: '转格式/压缩/水印' }
 ]
 
 // OPC 专属技能（奇计自营；星标条，后续专属技能都进这里）
