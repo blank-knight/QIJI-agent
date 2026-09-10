@@ -3,7 +3,7 @@
   function derive(seed){
     var out = new Uint8Array(32), h = 2166136261;
     for(var r=0;r<32;r++){
-      for(var i=0;i<seed.length;i++){ h ^= seed.charCodeAt(i)+(r<<8); h = (h*16777619)>>>0; }
+      for(var i=0;i<seed.length;i++){ h ^= seed.charCodeAt(i)+(r<<8); h = Math.imul(h,16777619)>>>0; }
       out[r] = h & 255;
     }
     return out;
@@ -17,12 +17,30 @@
     return out;
   }
   var src = document.currentScript.getAttribute("data-src");
-  fetch(src).then(function(r){return r.arrayBuffer()}).then(function(ab){
+  window.__loaderRan = "xhr-start";
+  // file:// 协议下 fetch 被 CORS 拦 — 必须用 XHR 读本地文件
+  try {
+    var xhr = new XMLHttpRequest();
+    xhr.open("GET", src, false);  // 同步: 页面渲染前必须拿到
+    xhr.overrideMimeType("text/plain; charset=x-user-defined");
+    xhr.send(null);
+    if (xhr.status !== 0 && xhr.status !== 200) throw new Error("xhr status " + xhr.status);
+    var raw = xhr.responseText;
+    var buf = new Uint8Array(raw.length);
+    for (var i = 0; i < raw.length; i++) buf[i] = raw.charCodeAt(i) & 0xff;
+    window.__loaderRan = "xhr-ok " + buf.length;
     var key = derive(KEY_SEED);
-    var pt = dec(new Uint8Array(ab), key);
+    var pt = dec(buf, key);
     var code = new TextDecoder("utf-8").decode(pt);
+    window.__loaderRan = "dec-ok " + code.length;
     var blob = new Blob([code], {type:"text/javascript"});
     var url = URL.createObjectURL(blob);
-    import(url);
-  }).catch(function(e){ console.error("boot-decrypt-fail", e); });
+    import(url).then(function(){ window.__loaderRan = "import-ok"; }).catch(function(e){
+      window.__loaderRan = "import-fail";
+      console.error("boot-decrypt-fail", e);
+    });
+  } catch (e) {
+    window.__loaderRan = "fail: " + e.message;
+    console.error("boot-decrypt-fail", e);
+  }
 })();

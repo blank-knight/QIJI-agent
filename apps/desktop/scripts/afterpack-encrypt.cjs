@@ -96,7 +96,13 @@ module.exports.default = async function afterPack(context) {
   const distAssets = path.join(resDir, 'app.asar.unpacked', 'dist', 'assets');
   let encCount = 0, skipCount = 0;
   if (fs.existsSync(distAssets)) {
-    for (const f of fs.readdirSync(distAssets)) {
+    const filesList = fs.readdirSync(distAssets);
+    const hasPlainJs = filesList.some(f => f.endsWith('.js'));
+    if (!hasPlainJs && filesList.some(f => f.endsWith('.js.enc'))) {
+      // 2026-09-12 双加密事故防线: 目录里无任何明文js且已有enc = 加密已完成,整段跳过
+      console.log('[afterPack-encrypt] 渲染层已全部加密,跳过(防双加密)');
+    } else {
+    for (const f of filesList) {
       if (f.endsWith('.js')) {
         const p = path.join(distAssets, f);
         const plain = fs.readFileSync(p);
@@ -108,6 +114,7 @@ module.exports.default = async function afterPack(context) {
       }
     }
     console.log(`[afterPack-encrypt] 渲染层: 新加密${encCount} 已加密跳过${skipCount}`);
+    }
 
     const htmlPath = path.join(resDir, 'app.asar.unpacked', 'dist', 'index.html');
     if (fs.existsSync(htmlPath)) {
