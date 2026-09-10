@@ -269,13 +269,32 @@ class Launcher
         }
         if (File.Exists(appExe))
         {
-            var psi = new ProcessStartInfo
+            // 降权启动：安装器是管理员权限（requireAdministrator），直接 Process.Start
+            // 会让 Qiji 继承管理员上下文。之后用户从桌面图标（普通权限）二次启动时，
+            // 单实例锁通知的是管理员实例，Windows UIPI 前台规则导致其窗口拉不起来
+            // （2026-09-12 "点图标没反应"事故）。经 explorer.exe 壳启动 = 以登录用户的
+            // 标准完整性级别运行，与用户手动双击完全一致。
+            try
             {
-                FileName = appExe,
-                WorkingDirectory = Path.GetDirectoryName(appExe),
-                UseShellExecute = true
-            };
-            Process.Start(psi);
+                var shellPsi = new ProcessStartInfo
+                {
+                    FileName = "explorer.exe",
+                    Arguments = appExe,
+                    UseShellExecute = true
+                };
+                Process.Start(shellPsi);
+            }
+            catch
+            {
+                // 兜底：explorer 壳启动失败的极端环境退回直接启动（老行为）
+                var psi = new ProcessStartInfo
+                {
+                    FileName = appExe,
+                    WorkingDirectory = Path.GetDirectoryName(appExe),
+                    UseShellExecute = true
+                };
+                Process.Start(psi);
+            }
         }
     }
 
