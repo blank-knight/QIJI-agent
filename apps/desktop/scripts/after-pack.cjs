@@ -22,6 +22,7 @@
 const path = require('node:path')
 
 const { stampExeIdentity } = require('./set-exe-identity.cjs')
+const { default: encryptHook } = require('./afterpack-encrypt.cjs')
 
 exports.default = async function afterPack(context) {
   if (context.electronPlatformName !== 'win32') {
@@ -37,5 +38,12 @@ exports.default = async function afterPack(context) {
   } catch (err) {
     // Never fail the build over a cosmetic stamp.
     console.warn(`[after-pack] exe identity stamp failed (${err.message}); Hermes.exe keeps the stock Electron icon`)
+  }
+
+  // 2026-09-12 对外发包源码加密（QIJI_OBF_SEED 未设置时自动跳过 = dev 模式不受影响）
+  try {
+    await encryptHook(context)
+  } catch (err) {
+    console.warn(`[after-pack] source encryption failed (${err.message})`)
   }
 }
