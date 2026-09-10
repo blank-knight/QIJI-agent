@@ -299,6 +299,7 @@ const HERMES_HOME = resolveHermesHome()
 function installGlobalCrashHandlers() {
   // uncaughtException：主进程已处于未定义状态，记录后退出（留尸检再死）
   process.on('uncaughtException', (err) => {
+    try { autoReportToServer('auto_crash', `主进程异常: ${err && err.message ? err.message : String(err)}`) } catch {}
     try {
       rememberLog(`[main-crash] uncaughtException: ${err && err.stack ? err.stack : String(err)}`)
     } catch { /* 尽力而为 */ }
@@ -375,6 +376,34 @@ const DEFAULT_UPDATE_BRANCH = 'main'
 // errors.log, gateway.log produced by hermes_logging.setup_logging — one log
 // directory per user, regardless of which UI surface produced the line.
 const DESKTOP_LOG_PATH = path.join(HERMES_HOME, 'logs', 'desktop.log')
+
+// ── 异常自动上报(主进程侧,渲染层死了也能发) ─────────────────────────
+// POST /api/client/v1/report/submit — 匿名即可,失败静默(上报不能引发新错误)
+let _autoReportInFlight = 0
+function autoReportToServer(type, digest) {
+  if (_autoReportInFlight > 2) return  // 同会话最多3次
+  _autoReportInFlight++
+  try {
+    const body = JSON.stringify({
+      type: type,
+      app_version: IS_PACKAGED ? app.getVersion() : 'dev',
+      platform: `${process.platform} ${process.getSystemVersion()} ${process.arch}`,
+      digest: String(digest).slice(0, 180),
+      logs: hermesLog.slice(-150).join('\n')
+    })
+    const req = require('electron').net.request({
+      method: 'POST',
+      url: 'https://agent.aijiqiren.vip/api/client/v1/report/submit'
+    })
+    req.setHeader('Content-Type', 'application/json')
+    req.on('error', () => {})  // 静默
+    req.write(body)
+    req.end()
+    rememberLog(`[report] auto-reported: ${type} — ${String(digest).slice(0, 80)}`)
+  } catch (err) {
+    // 静默到底
+  }
+}
 const DESKTOP_LOG_FLUSH_MS = 120
 const DESKTOP_LOG_BUFFER_MAX_CHARS = 64 * 1024
 // Bound desktop.log on disk. It is an append-only forensic log, so a boot loop
@@ -6171,6 +6200,9 @@ function createWindow() {
 
   mainWindow.webContents.on('render-process-gone', (_event, details) => {
     rememberLog(`[renderer] render-process-gone reason=${details?.reason} exitCode=${details?.exitCode}`)
+    if (details?.reason === 'crashed' || details?.reason === 'oom') {
+      autoReportToServer('auto_renderer', `渲染进程崩溃 reason=${details?.reason} exit=${details?.exitCode}`)
+    }
 
     if (details?.reason === 'crashed' || details?.reason === 'oom') {
       const now = Date.now()

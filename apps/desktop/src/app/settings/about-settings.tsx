@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { BrandMark } from '@/components/brand-mark'
 import { Button } from '@/components/ui/button'
 import { type Translations, useI18n } from '@/i18n'
-import { CheckCircle2, Download, Loader2, RefreshCw, Sparkles } from '@/lib/icons'
+import { CheckCircle2, Download, Loader2, RefreshCw, Send, Sparkles } from '@/lib/icons'
 import { BackendError, backendFetch } from '@/lib/backend'
 import { cn } from '@/lib/utils'
 import { clearAuth, $auth } from '@/store/auth'
@@ -17,6 +17,7 @@ import {
   startClientUpdate
 } from '@/store/client-update'
 import { $desktopVersion, refreshDesktopVersion } from '@/store/updates'
+import { submitReport } from '@/lib/client-report'
 
 import { ListRow, SectionHeading, SettingsContent } from './primitives'
 import { UninstallSection } from './uninstall-section'
@@ -150,6 +151,20 @@ export function AboutSettings() {
   const [diagBusy, setDiagBusy] = useState(false)
   const [diagMsg, setDiagMsg] = useState<string | null>(null)
   const [diagOk, setDiagOk] = useState(false)
+  const [reportBusy, setReportBusy] = useState(false)
+  const [reportMsg, setReportMsg] = useState<string | null>(null)
+  const [reportOk, setReportOk] = useState(false)
+
+  // 一键上报: 打包最近日志直接传平台后台(用户不用自己发文件)
+  async function handleSubmitReport() {
+    if (reportBusy) return
+    setReportBusy(true)
+    setReportMsg(null)
+    const r = await submitReport('manual', '用户手动上报(设置-关于页)')
+    setReportOk(r.ok)
+    setReportMsg(r.ok ? `${r.message}，技术支持会尽快处理` : r.message)
+    setReportBusy(false)
+  }
 
   async function handleExportDiagnostics() {
     if (diagBusy) {
@@ -372,6 +387,28 @@ export function AboutSettings() {
           {diagMsg ? (
             <p className={cn('mt-2 text-xs', diagOk ? 'text-emerald-600' : 'text-destructive')}>
               {diagMsg}
+            </p>
+          ) : null}
+        </div>
+
+        {/* 一键上报：日志直接传到平台后台，用户不用自己发文件 */}
+        <div className="mb-4 rounded-xl border border-border/70 bg-muted/20 px-4 py-3 text-sm">
+          <p className="text-xs text-muted-foreground">
+            或者直接把最近日志一键上传给平台（自动附带版本与环境信息，不含密钥明文），技术支持会在后台收到。
+          </p>
+          <Button
+            className="mt-2"
+            disabled={reportBusy}
+            onClick={handleSubmitReport}
+            size="sm"
+            variant="textStrong"
+          >
+            {reportBusy ? <Loader2 className="size-3 animate-spin" /> : <Send className="size-3" />}
+            {reportBusy ? '正在上报…' : '一键上报日志'}
+          </Button>
+          {reportMsg ? (
+            <p className={cn('mt-2 text-xs', reportOk ? 'text-emerald-600' : 'text-destructive')}>
+              {reportMsg}
             </p>
           ) : null}
         </div>
