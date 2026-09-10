@@ -34,7 +34,7 @@ const INSTALLER = __dirname
 
 // Config
 const APP_NAME = 'Qiji'
-const VERSION = '0.17.8'
+const VERSION = '0.17.9'
 const PRODUCT_NAME_ZH = '奇计'
 // 品牌数据目录单一事实源 —— 与 electron/brand.cjs 同源。贴牌改名只改那里。
 const brand = require(path.join(ROOT, 'electron', 'brand.cjs'))
