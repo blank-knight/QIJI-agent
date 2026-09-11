@@ -6930,11 +6930,32 @@ function sanitizeInstallerName(rawUrl) {
   return name
 }
 
-// Stream the installer to <userData>/updates/<name>. Follows redirects
+// Stream the installer to <temp>/qiji-updates/<name>. Follows redirects
 // (CDN/OSS download links commonly 302). Reports progress as
 // { received, total, percent } — percent is 0 when the server sends no
 // Content-Length (chunked), the renderer then shows an indeterminate bar.
+//
+// 2026-09-13: 断点续传 + 自动重试。此前 573MB 单流下载，客户网络一抖
+// (readECONNRESET) 就整体报废从 0 重来。现在：
+//   - 每次尝试若本地已有部分文件，带 Range: bytes=<已收>- 续传
+//   - 网络错误自动重试（最多 8 次，间隔 2s 起指数退避到 20s）
+//   - 服务器不支持 Range（回了 200 而非 206）→ 清空重下
+//   - 最终以 Content-Length 对账，短了视为失败重试
 function downloadInstallerFile(rawUrl, onProgress, redirectsLeft = 5) {
+  const MAX_ATTEMPTS = 8
+  const attempt = n => downloadInstallerAttempt(rawUrl, onProgress, redirectsLeft, n)
+    .catch(err => {
+      if (n >= MAX_ATTEMPTS) {
+        throw new Error(`下载失败（已重试 ${MAX_ATTEMPTS} 次）: ${err.message}`)
+      }
+      const delay = Math.min(2000 * Math.pow(2, n - 1), 20000)
+      rememberLog(`[client-update] attempt ${n} failed (${err.message}), retrying in ${delay}ms`)
+      return new Promise(r => setTimeout(r, delay)).then(() => attempt(n + 1))
+    })
+  return attempt(1)
+}
+
+function downloadInstallerAttempt(rawUrl, onProgress, redirectsLeft, attemptNo) {
   return new Promise((resolve, reject) => {
     let parsed
 
@@ -6952,59 +6973,83 @@ function downloadInstallerFile(rawUrl, onProgress, redirectsLeft = 5) {
 
     const client = parsed.protocol === 'https:' ? https : http
 
-    const req = client.request(parsed, { method: 'GET' }, res => {
-      const status = res.statusCode || 0
+    const reqHeaders = {}
+    // 续传起点由文件现状决定（首次尝试也检查——上次会话的半截文件可续）
+    const dir = path.join(app.getPath('temp'), 'qiji-updates')
+    const filePath = path.join(dir, sanitizeInstallerName(rawUrl))
 
-      if (status >= 300 && status < 400 && res.headers.location) {
-        res.resume()
-
-        if (redirectsLeft <= 0) {
-          reject(new Error('下载地址重定向次数过多'))
-          return
+    fs.promises.stat(filePath)
+      .then(stat => ({ start: stat.size }))
+      .catch(() => ({ start: 0 }))
+      .then(({ start }) => {
+        if (start > 0) {
+          reqHeaders['Range'] = `bytes=${start}-`
+          rememberLog(`[client-update] resuming from ${start} bytes (attempt ${attemptNo})`)
         }
 
-        try {
-          const next = new URL(res.headers.location, parsed).toString()
-          downloadInstallerFile(next, onProgress, redirectsLeft - 1).then(resolve, reject)
-        } catch {
-          reject(new Error('无效的重定向地址'))
-        }
-        return
-      }
+        // temp 目录（而非安装目录旁的 userData/updates）——下载中的文件
+        // 不能出现在安装器要覆盖的目录树附近，且 temp 由系统负责清理。
+        return fs.promises.mkdir(dir, { recursive: true }).then(() => start)
+      })
+      .then(start => {
+        const req = client.request(parsed, { method: 'GET', headers: reqHeaders }, res => {
+          const status = res.statusCode || 0
 
-      if (status >= 400) {
-        res.resume()
-        reject(new Error(`下载失败 (HTTP ${status})`))
-        return
-      }
+          if (status >= 300 && status < 400 && res.headers.location) {
+            res.resume()
 
-      const total = Number(res.headers['content-length'] || 0)
-      // temp 目录（而非安装目录旁的 userData/updates）——下载中的文件
-      // 不能出现在安装器要覆盖的目录树附近，且 temp 由系统负责清理。
-      const dir = path.join(app.getPath('temp'), 'qiji-updates')
-      const filePath = path.join(dir, sanitizeInstallerName(rawUrl))
-      let received = 0
-      let lastReported = 0
-      let settled = false
+            if (redirectsLeft <= 0) {
+              reject(new Error('下载地址重定向次数过多'))
+              return
+            }
 
-      const done = (err, result) => {
-        if (settled) return
-        settled = true
-        resolveReject(err, result)
-      }
+            try {
+              const next = new URL(res.headers.location, parsed).toString()
+              // 重定向后 Range 头不自动跟随，交给下一轮 attempt 处理
+              downloadInstallerAttempt(next, onProgress, redirectsLeft - 1, attemptNo).then(resolve, reject)
+            } catch {
+              reject(new Error('无效的重定向地址'))
+            }
+            return
+          }
 
-      const resolveReject = (err, result) => (err ? reject(err) : resolve(result))
+          if (status >= 400) {
+            res.resume()
+            // 416 = Range 起点超过文件末尾——多半是本地文件已完整，核对大小后直接用
+            if (status === 416) {
+              const cl = Number(res.headers['content-range']?.split('/')[1] || 0)
+              if (cl > 0 && start >= cl) {
+                resolve(filePath)
+                return
+              }
+            }
+            reject(new Error(`下载失败 (HTTP ${status})`))
+            return
+          }
 
-      fs.promises
-        .mkdir(dir, { recursive: true })
-        .then(() => {
-          const out = fs.createWriteStream(filePath)
+          const resumed = status === 206 // Partial Content = 服务器接受续传
+          if (start > 0 && !resumed) {
+            // 服务器不理会 Range（回 200 全量）→ 本地半截文件作废
+            start = 0
+          }
+
+          const total = Number(res.headers['content-length'] || 0) + (resumed ? start : 0)
+          let received = resumed ? start : 0
+          let lastReported = received
+          let settled = false
+
+          const done = (err, result) => {
+            if (settled) return
+            settled = true
+            err ? reject(err) : resolve(result)
+          }
 
           const fail = err => {
-            req.destroy()
-            out.destroy()
+            try { req.destroy() } catch { /* already gone */ }
             done(err)
           }
+
+          const out = fs.createWriteStream(filePath, { flags: resumed ? 'a' : 'w' })
 
           res.on('data', chunk => {
             received += chunk.length
@@ -7022,6 +7067,11 @@ function downloadInstallerFile(rawUrl, onProgress, redirectsLeft = 5) {
           })
           res.on('error', fail)
           res.on('end', () => {
+            if (total > 0 && received < total) {
+              // 连接正常关闭但字节不够（对端提前断）——交由上层重试续传
+              fail(new Error(`下载不完整 (${received}/${total})`))
+              return
+            }
             if (onProgress) {
               onProgress({ received, total: total || received, percent: 100 })
             }
@@ -7031,13 +7081,13 @@ function downloadInstallerFile(rawUrl, onProgress, redirectsLeft = 5) {
           out.on('finish', () => done(null, filePath))
           res.pipe(out)
         })
-        .catch(err => done(err))
-    })
 
-    req.on('error', reject)
-    // Idle timeout — resets on data; a stalled CDN link aborts in 60s.
-    req.setTimeout(60_000, () => req.destroy(new Error('下载超时')))
-    req.end()
+        req.on('error', reject)
+        // Idle timeout — resets on data; a stalled CDN link aborts in 60s.
+        req.setTimeout(60_000, () => fail(new Error('下载超时')))
+        req.end()
+      })
+      .catch(reject)
   })
 }
 
