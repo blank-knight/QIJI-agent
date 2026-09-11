@@ -2,7 +2,7 @@
   "name": "hermes",
   "productName": "Qiji",
   "private": true,
-  "version": "0.18.1",
+  "version": "0.18.2",
   "description": "奇计 — AI智能助手桌面版",
   "author": "Qiji",
   "type": "module",
