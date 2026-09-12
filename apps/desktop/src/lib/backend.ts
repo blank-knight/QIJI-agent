@@ -58,6 +58,10 @@ export interface UpdateCheckResponse {
   downloadurl: string
   packagesize?: string
   upgradetext?: string
+  /** 安装包 sha256（hex）——主进程验签用 */
+  sha256?: string
+  /** 发布签名（base64 ed25519）——主进程验签用，0.19.0 起必填 */
+  signature?: string
 }
 
 /** GET /api/client/v1/update/check — 版本检查（无需登录） */

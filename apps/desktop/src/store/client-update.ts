@@ -176,6 +176,9 @@ export async function startClientUpdate(): Promise<void> {
     return
   }
 
+  // 发布签名元数据透传主进程（sha256/signature 验签用）
+  const meta = { sha256: state.info?.sha256, signature: state.info?.signature, newversion: state.info?.newversion }
+
   patch({ status: 'downloading', progressPercent: 0, progressIndeterminate: true, error: undefined })
 
   progressUnsub?.()
@@ -195,7 +198,7 @@ export async function startClientUpdate(): Promise<void> {
     }) ?? null
 
   try {
-    const result = await bridge.download(url)
+    const result = await bridge.download(url, meta)
 
     patch({ status: 'downloaded', installerPath: result.path, progressPercent: 100, progressIndeterminate: false })
 
@@ -253,7 +256,11 @@ export async function installClientUpdate(): Promise<void> {
   }
 
   try {
-    await bridge.runInstaller(filePath)
+    await bridge.runInstaller(filePath, {
+      sha256: state.info?.sha256,
+      signature: state.info?.signature,
+      newversion: state.info?.newversion
+    })
     // 安装程序已启动，应用即将退出
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -325,7 +332,11 @@ export async function runEnforcedClientUpdate(): Promise<void> {
     }) ?? null
 
   try {
-    await bridge.downloadAndRun(url)
+    await bridge.downloadAndRun(url, {
+      sha256: state.info?.sha256,
+      signature: state.info?.signature,
+      newversion: state.info?.newversion
+    })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
 

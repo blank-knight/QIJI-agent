@@ -190,10 +190,10 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   },
   listDir: relPath => ipcRenderer.invoke('hermes:listDir', relPath),
   clientUpdate: {
-    downloadAndRun: url => ipcRenderer.invoke('hermes:clientUpdate:downloadAndRun', url),
+    downloadAndRun: (url, meta) => ipcRenderer.invoke('hermes:clientUpdate:downloadAndRun', url, meta),
     // Chrome 式：先静默下载，用户确认后再运行安装包
-    download: url => ipcRenderer.invoke('hermes:clientUpdate:download', url),
-    runInstaller: filePath => ipcRenderer.invoke('hermes:clientUpdate:runInstaller', filePath),
+    download: (url, meta) => ipcRenderer.invoke('hermes:clientUpdate:download', url, meta),
+    runInstaller: (filePath, meta) => ipcRenderer.invoke('hermes:clientUpdate:runInstaller', filePath, meta),
     onProgress: callback => {
       const listener = (_event, payload) => callback(payload)
       ipcRenderer.on('hermes:clientUpdate:progress', listener)
