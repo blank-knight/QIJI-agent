@@ -42,11 +42,17 @@ def encrypt_dir(src: Path, dst: Path, key: bytes) -> int:
             if fname in WRAPPER_NAMES:
                 shutil.copy2(fpath, out)  # wrapper保持明文
                 continue
+            # 真身源命名约定: geo-cli-impl.js / geo-client-impl.py →
+            # 加密后改名为 geo-cli.js.enc / geo-client.py.enc(wrapper按此名找密文)
+            IMPL_RENAME = {'geo-cli-impl.js': 'geo-cli.js.enc',
+                           'geo-client-impl.py': 'geo-client.py.enc'}
             if fpath.suffix.lower() in TEXT_EXTS and fname not in ('package.json', 'package-lock.json'):
                 pt = fpath.read_bytes()
                 iv = os.urandom(12)
                 enc = b'SQIJ' + iv + AESGCM(key).encrypt(iv, pt, None)
-                out.with_suffix(fpath.suffix + '.enc').write_bytes(enc)
+                enc_out = dst / rel.parent / IMPL_RENAME.get(fname, fname + '.enc')
+                enc_out.parent.mkdir(parents=True, exist_ok=True)
+                enc_out.write_bytes(enc)
                 n += 1
             else:
                 shutil.copy2(fpath, out)  # 图片等二进制原样
