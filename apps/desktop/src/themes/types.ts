@@ -98,4 +98,23 @@ export interface DesktopTheme {
   terminal?: DesktopTerminalPalette
   /** Dark-variant terminal ANSI palette. Falls back to `terminal`. */
   darkTerminal?: DesktopTerminalPalette
+  /**
+   * Wallpaper — decorative background image layered under the whole app shell
+   * (body background-image). Anime/skin themes live here. Optional per-mode:
+   * pass one URL for both, or separate light/dark artworks.
+   * Supported: https:// URL, data: URL, or an `avatar://`-style local asset
+   * path the renderer can resolve. Leave undefined for flat-color themes.
+   */
+  backgroundImage?: {
+    /** Used in light mode. */
+    light?: string
+    /** Used in dark mode. Defaults to `light` when omitted. */
+    dark?: string
+    /** 0-1 overlay strength of the readability scrim (default 0.55 dark / 0.75 light). */
+    scrimOpacity?: number
+    /** CSS background-size (default "cover"). */
+    size?: string
+    /** CSS background-position (default "center"). */
+    position?: string
+  }
 }

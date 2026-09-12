@@ -222,6 +222,28 @@ function applyTheme(theme: DesktopTheme, mode: 'light' | 'dark') {
     root.style.setProperty(k, v)
   }
 
+  // Wallpaper layer (anime/skin themes): paint the image under the shell and
+  // raise a readability scrim so glass surfaces keep contrast over busy art.
+  const bg = theme.backgroundImage
+  const wallpaper = isDark ? bg?.dark ?? bg?.light : bg?.light
+  if (wallpaper) {
+    const scrim = bg?.scrimOpacity ?? (isDark ? 0.55 : 0.75)
+    root.style.setProperty('--dt-wallpaper', `url("${wallpaper}")`)
+    root.style.setProperty('--dt-wallpaper-size', bg?.size ?? 'cover')
+    root.style.setProperty('--dt-wallpaper-position', bg?.position ?? 'center')
+    // Scrim = flat color-mix of the theme background over the image.
+    root.style.setProperty('--dt-wallpaper-scrim', `linear-gradient(${c.background}ee, ${c.background}dd)`)
+    root.style.setProperty('--dt-wallpaper-opacity', String(1 - scrim))
+    root.dataset.hermesWallpaper = 'on'
+  } else {
+    root.style.removeProperty('--dt-wallpaper')
+    root.style.removeProperty('--dt-wallpaper-size')
+    root.style.removeProperty('--dt-wallpaper-position')
+    root.style.removeProperty('--dt-wallpaper-scrim')
+    root.style.removeProperty('--dt-wallpaper-opacity')
+    delete root.dataset.hermesWallpaper
+  }
+
   window.hermesDesktop?.setTitleBarTheme?.({
     background: c.background,
     foreground: c.foreground

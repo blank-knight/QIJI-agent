@@ -278,13 +278,218 @@ export const slateTheme: DesktopTheme = {
   }
 }
 
+/**
+ * Sakura — 樱花粉 anime theme. Soft spring palette; warm rose primary with
+ * petal-milk surfaces. Designed as the flagship of the skin-shop line:
+ *色板先行,壁纸接口就绪(backgroundImage 留待官方插画资产接入)。
+ */
+export const sakuraTheme: DesktopTheme = {
+  name: 'sakura',
+  label: '樱花 Sakura',
+  description: '粉色少女系主题 — 柔和樱花色调',
+  colors: {
+    background: '#FDF3F5',
+    foreground: '#4A3238',
+    card: '#FFFFFF',
+    cardForeground: '#4A3238',
+    muted: '#F9E4E9',
+    mutedForeground: '#9A7B82',
+    popover: '#FFFFFF',
+    popoverForeground: '#4A3238',
+    primary: '#E8798F',
+    primaryForeground: '#FFF7F8',
+    secondary: '#F6CBD3',
+    secondaryForeground: '#5E3F46',
+    accent: '#F4A7B9',
+    accentForeground: '#533540',
+    border: '#F0D4DA',
+    input: '#F7E3E7',
+    ring: '#E8798F',
+    midground: '#E8798F',
+    composerRing: '#E8798F',
+    destructive: '#C4485F',
+    destructiveForeground: '#FFF5F6',
+    sidebarBackground: '#FAECEF',
+    sidebarBorder: '#F0D4DA',
+    userBubble: '#F9DCE2',
+    userBubbleBorder: '#EFC6CE'
+  },
+  darkColors: {
+    background: '#2A1E22',
+    foreground: '#F3D9DE',
+    card: '#37282D',
+    cardForeground: '#F3D9DE',
+    muted: '#423036',
+    mutedForeground: '#C7A2AB',
+    popover: '#3C2C31',
+    popoverForeground: '#F3D9DE',
+    primary: '#F096A9',
+    primaryForeground: '#2A1E22',
+    secondary: '#4A353B',
+    secondaryForeground: '#EBD3D8',
+    accent: '#D97A8E',
+    accentForeground: '#FBEFF1',
+    border: '#564047',
+    input: '#241A1E',
+    ring: '#F096A9',
+    midground: '#F096A9',
+    composerRing: '#F096A9',
+    destructive: '#C05B6E',
+    destructiveForeground: '#FBEDEF',
+    sidebarBackground: '#231A1D',
+    sidebarBorder: '#4A353B',
+    userBubble: '#3F2E33',
+    userBubbleBorder: '#5C454B'
+  },
+  typography: {
+    fontSans: SYSTEM_SANS
+  }
+}
+
+/**
+ * Starnight — 星空紫 anime theme. Deep night-violet with luminous accents;
+ * the "晚空少女" mood. Wallpaper-ready like sakura.
+ */
+export const starnightTheme: DesktopTheme = {
+  name: 'starnight',
+  label: '星夜 Starnight',
+  description: '深紫星空主题 — 静谧夜色氛围',
+  colors: {
+    background: '#171233',
+    foreground: '#E4DEFA',
+    card: '#221B45',
+    cardForeground: '#E4DEFA',
+    muted: '#2B2352',
+    mutedForeground: '#A79DD6',
+    popover: '#251E4B',
+    popoverForeground: '#E4DEFA',
+    primary: '#9D7BEA',
+    primaryForeground: '#171233',
+    secondary: '#332A5F',
+    secondaryForeground: '#D5CDF2',
+    accent: '#7E5FD1',
+    accentForeground: '#F0ECFB',
+    border: '#3C3168',
+    input: '#2A2151',
+    ring: '#9D7BEA',
+    midground: '#9D7BEA',
+    composerRing: '#B79BF0',
+    destructive: '#C4586E',
+    destructiveForeground: '#FBEFF2',
+    sidebarBackground: '#120E28',
+    sidebarBorder: '#332A5F',
+    userBubble: '#2E2557',
+    userBubbleBorder: '#4A3E7E'
+  },
+  darkColors: {
+    background: '#0F0B24',
+    foreground: '#DCD5F5',
+    card: '#1A1438',
+    cardForeground: '#DCD5F5',
+    muted: '#221A44',
+    mutedForeground: '#9C92C9',
+    popover: '#1D1640',
+    popoverForeground: '#DCD5F5',
+    primary: '#8F6CE0',
+    primaryForeground: '#0F0B24',
+    secondary: '#292050',
+    secondaryForeground: '#CFC7EE',
+    accent: '#6E50BE',
+    accentForeground: '#ECE7F9',
+    border: '#312858',
+    input: '#1B1339',
+    ring: '#8F6CE0',
+    midground: '#8F6CE0',
+    composerRing: '#A98CF0',
+    destructive: '#B44F65',
+    destructiveForeground: '#F9ECEF',
+    sidebarBackground: '#0B081C',
+    sidebarBorder: '#292050',
+    userBubble: '#251D48',
+    userBubbleBorder: '#403670'
+  },
+  typography: {
+    fontSans: SYSTEM_SANS
+  }
+}
+
+/**
+ * Matcha — 抹茶绿 healing theme. Fresh tea greens on cream; the "治愈系"
+ * pick. Wallpaper-ready like the other skin-shop themes.
+ */
+export const matchaTheme: DesktopTheme = {
+  name: 'matcha',
+  label: '抹茶 Matcha',
+  description: '治愈抹茶绿 — 清新自然色调',
+  colors: {
+    background: '#F4F7EE',
+    foreground: '#33402A',
+    card: '#FFFFFF',
+    cardForeground: '#33402A',
+    muted: '#E8F0DC',
+    mutedForeground: '#7A8A6C',
+    popover: '#FFFFFF',
+    popoverForeground: '#33402A',
+    primary: '#6B9B4E',
+    primaryForeground: '#F8FBF4',
+    secondary: '#D9E8C5',
+    secondaryForeground: '#41522F',
+    accent: '#A3C487',
+    accentForeground: '#3A4A2C',
+    border: '#DCE8CC',
+    input: '#EDF4E2',
+    ring: '#6B9B4E',
+    midground: '#6B9B4E',
+    composerRing: '#6B9B4E',
+    destructive: '#B8543F',
+    destructiveForeground: '#FBF3EF',
+    sidebarBackground: '#EDF3E3',
+    sidebarBorder: '#DCE8CC',
+    userBubble: '#E2EED2',
+    userBubbleBorder: '#D2E3BC'
+  },
+  darkColors: {
+    background: '#1C2318',
+    foreground: '#DEE8D2',
+    card: '#252E20',
+    cardForeground: '#DEE8D2',
+    muted: '#2E3A27',
+    mutedForeground: '#A5B896',
+    popover: '#293323',
+    popoverForeground: '#DEE8D2',
+    primary: '#87B86A',
+    primaryForeground: '#1C2318',
+    secondary: '#35422D',
+    secondaryForeground: '#D0DEBF',
+    accent: '#5F8A46',
+    accentForeground: '#EDF4E4',
+    border: '#414F37',
+    input: '#182011',
+    ring: '#87B86A',
+    midground: '#87B86A',
+    composerRing: '#9BCB80',
+    destructive: '#A84E3A',
+    destructiveForeground: '#F7EDE9',
+    sidebarBackground: '#151C11',
+    sidebarBorder: '#35422D',
+    userBubble: '#2C3726',
+    userBubbleBorder: '#465539'
+  },
+  typography: {
+    fontSans: SYSTEM_SANS
+  }
+}
+
 export const BUILTIN_THEMES: Record<string, DesktopTheme> = {
   nous: nousTheme,
   midnight: midnightTheme,
   ember: emberTheme,
   mono: monoTheme,
   cyberpunk: cyberpunkTheme,
-  slate: slateTheme
+  slate: slateTheme,
+  sakura: sakuraTheme,
+  starnight: starnightTheme,
+  matcha: matchaTheme
 }
 
 export const BUILTIN_THEME_LIST = Object.values(BUILTIN_THEMES)

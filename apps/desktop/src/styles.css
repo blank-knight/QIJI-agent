@@ -443,6 +443,28 @@
     -webkit-font-smoothing: antialiased;
   }
 
+  /* ── Wallpaper layer (anime/skin themes) ─────────────────────────────
+     Applied by applyTheme() when a theme ships `backgroundImage`. The image
+     is painted as an extra layer UNDER the normal chat-surface color, with a
+     theme-colored scrim on top for readability. Flat-color themes never set
+     --dt-wallpaper, so this block is inert for them — zero risk to defaults. */
+  html[data-hermes-wallpaper='on'] body {
+    background-image:
+      linear-gradient(var(--theme-background-seed, transparent), var(--theme-background-seed, transparent)),
+      var(--dt-wallpaper);
+    background-size: cover, var(--dt-wallpaper-size, cover);
+    background-position: center, var(--dt-wallpaper-position, center);
+    background-repeat: no-repeat, no-repeat;
+    background-attachment: fixed, fixed;
+    background-blend-mode: normal, normal;
+  }
+
+  /* Glass surfaces get a touch more milk over busy art so text stays legible. */
+  html[data-hermes-wallpaper='on'] .glass,
+  html[data-hermes-wallpaper='on'] [class*='backdrop-blur'] {
+    background-color: color-mix(in oklab, var(--theme-card-seed) 82%, transparent);
+  }
+
   button,
   textarea {
     font: inherit;
