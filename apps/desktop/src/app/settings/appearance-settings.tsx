@@ -20,6 +20,8 @@ import { isUserTheme, removeUserTheme } from '@/themes/user-themes'
 import { MODE_OPTIONS } from './constants'
 import { PetSettings } from './pet-settings'
 import { ListRow, SectionHeading, SettingsContent } from './primitives'
+import { FONT_PRESETS, getFontPreset, readStoredFontPref, writeStoredFontPref } from '@/themes/font-presets'
+import { applyUserFont } from '@/themes/apply-user-font'
 
 function ThemePreview({ name, mode }: { name: string; mode: 'light' | 'dark' }) {
   // Preview in the *current* mode: the dark palette in Dark, and the light
@@ -208,6 +210,16 @@ function MarketplaceThemeResults({
 }
 
 export function AppearanceSettings() {
+  const [fontPreset, setFontPreset] = useState(() => readStoredFontPref() ?? 'theme-default')
+
+  // 启动时恢复用户字体（应用一打开就生效，不用先访问设置页）
+  useEffect(() => {
+    const saved = readStoredFontPref()
+    if (saved && saved !== 'theme-default') {
+      const preset = getFontPreset(saved)
+      if (preset) applyUserFont(preset.fontSans, preset.fontUrl)
+    }
+  }, [])
   const { t, isSavingLocale } = useI18n()
   const { themeName, mode, resolvedMode, availableThemes, setTheme, setMode } = useTheme()
   const toolViewMode = useStore($toolViewMode)
@@ -379,6 +391,37 @@ export function AppearanceSettings() {
               </div>
             }
             wide
+          />
+
+          <ListRow
+            action={
+              <select
+                className="rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-quinary) px-2.5 py-1.5 text-[length:var(--conversation-caption-font-size)] outline-none focus:border-(--ui-stroke-secondary)"
+                onChange={event => {
+                  const id = event.target.value
+                  setFontPreset(id)
+                  writeStoredFontPref(id === 'theme-default' ? null : id)
+                  const preset = getFontPreset(id)
+                  applyUserFont(id === 'theme-default' ? null : (preset?.fontSans ?? null), preset?.fontUrl ?? null)
+                  triggerHaptic('selection')
+                }}
+                value={fontPreset}
+              >
+                {FONT_PRESETS.map(p => (
+                  <option key={p.id} value={p.id}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            }
+            below={
+              <p className="mt-1.5 text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height) text-(--ui-text-tertiary)">
+                {getFontPreset(fontPreset)?.description}
+                {fontPreset !== 'theme-default' && getFontPreset(fontPreset)?.fontUrl ? ' · 首次切换需联网加载字体' : ''}
+              </p>
+            }
+            description="字体跟随主题，或单独指定（选择保存在本机，换主题不丢失）"
+            title="界面字体"
           />
 
           <ListRow
