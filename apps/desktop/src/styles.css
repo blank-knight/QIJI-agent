@@ -1551,3 +1551,15 @@ html[data-qiji-composer='float'] [data-slot='composer-surface'] {
 html[data-qiji-composer='float'] [data-slot='composer-root'] {
   padding-bottom: 0.6rem;
 }
+
+/* ── 空会话主页输入框位置档 ─────────────────────────────────── */
+/* center(默认): 上移居中——9月改版现状 */
+html[data-qiji-home='center'] .qiji-home-composer {
+  top: 42%;
+}
+/* bottom: 经典布局——输入框贴底,标题/技能区回到页面上部 */
+html[data-qiji-home='bottom'] .qiji-home-composer {
+  bottom: 0;
+  top: auto;
+  padding-bottom: var(--composer-shell-pad-block-end, 0.75rem);
+}

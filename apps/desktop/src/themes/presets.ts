@@ -95,6 +95,10 @@ export const nousTheme: DesktopTheme = {
     fontSans: SYSTEM_SANS,
     fontMono: `"Courier Prime", ${SYSTEM_MONO}`,
     fontUrl: 'https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap'
+  },
+  layout: {
+    vibe: 'work',
+    home: 'bottom'
   }
 }
 
