@@ -104,6 +104,23 @@ export interface DesktopThemeLayout {
   /** Chat bubble corner style. 'soft' = 大圆角软气泡, 'sharp' = 直角, 'pill' = 胶囊. */
   bubbleStyle?: 'soft' | 'sharp' | 'pill'
   /**
+   * 主界面布局插槽(C档): 只作用于聊天主界面(消息列表/用户气泡/AI回复/输入框),
+   * 其他区域(侧栏/设置/终端)不受影响。坏主题最坏=主界面丑,不会碎。
+   */
+  chatLayout?: {
+    /** 消息列表形态: 'flow'=标准流(默认) | 'forum'=论坛楼层(全宽+分隔线+无气泡感) | 'feed'=窄栏社交流 */
+    list?: 'flow' | 'forum' | 'feed'
+    /** 用户消息对齐: 'left' | 'right'(默认left——本产品用户消息是编辑卡片,右对齐仅feed形态推荐) */
+    userAlign?: 'left' | 'right'
+    /** 用户消息形态: 'card'=卡片气泡(默认) | 'bare'=无卡片裸文本 | 'quote'=缩进引用条 */
+    userStyle?: 'card' | 'bare' | 'quote'
+    /** AI回复形态: 'plain'=裸文(默认) | 'card'=卡片包裹 | 'indent'=左缩进+竖线 */
+    assistantStyle?: 'plain' | 'card' | 'indent'
+    /** 输入框形态: 'dock'=贴底全宽(默认) | 'float'=悬浮圆角居中 */
+    composer?: 'dock' | 'float'
+  }
+
+  /**
    * B档: 布局预设倾向. Presets clamp to officially-verified arrangements —
    * themes express intent, the shell maps it to safe CSS.
    * - 'chat'    居中窄栏聊天风(收窄对话区, 大留白)

@@ -1474,3 +1474,80 @@ html[data-qiji-bubble='sharp'] .composer-human-message {
 html[data-qiji-bubble='pill'] .composer-human-message {
   border-radius: 1.6rem;
 }
+
+/* ═══ C档: 主界面布局插槽 ═════════════════════════════════════════════
+   data-attrs由applyTheme写入。所有形态只动聊天主界面;默认值=现状,零影响。 */
+
+/* ── 列表形态 ─────────────────────────────────────────────── */
+/* forum: 论坛楼层——消息全宽+楼层分隔线,弱化气泡底色 */
+html[data-qiji-chat-list='forum'] .composer-human-message {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding-left: 0;
+}
+html[data-qiji-chat-list='forum'] [data-slot='aui_assistant-message-root'] {
+  border-bottom: 1px solid color-mix(in oklab, var(--dt-border, #ccc) 45%, transparent);
+  padding-bottom: 0.75rem;
+}
+
+/* feed: 窄栏社交流——对话区收窄居中(叠加chat vibe的宽度限制) */
+html[data-qiji-chat-list='feed'] [data-slot='aui_assistant-message-root'],
+html[data-qiji-chat-list='feed'] .composer-human-message {
+  max-width: 34rem;
+}
+html[data-qiji-chat-list='feed'] .composer-human-message {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* ── 用户消息对齐 ──────────────────────────────────────────── */
+html[data-qiji-user-align='right'] .composer-human-message {
+  margin-left: auto;
+  max-width: min(85%, 40rem);
+}
+
+/* ── 用户消息形态 ──────────────────────────────────────────── */
+/* bare: 无卡片裸文本 */
+html[data-qiji-user-style='bare'] .composer-human-message {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0.25rem 0;
+}
+
+/* quote: 缩进引用条(左侧竖线) */
+html[data-qiji-user-style='quote'] .composer-human-message {
+  background: transparent;
+  border: none;
+  border-left: 3px solid var(--dt-primary, var(--dt-ring));
+  border-radius: 0;
+  padding: 0.35rem 0 0.35rem 0.9rem;
+  box-shadow: none;
+}
+
+/* ── AI回复形态 ────────────────────────────────────────────── */
+/* card: 卡片包裹 */
+html[data-qiji-assistant-style='card'] [data-slot='aui_assistant-message-content'] {
+  background: color-mix(in oklab, var(--theme-card-seed, #fff) 60%, transparent);
+  border: 1px solid color-mix(in oklab, var(--dt-border, #ccc) 50%, transparent);
+  border-radius: calc(var(--radius-scalar) * 0.75rem);
+  padding: 0.85rem 1rem;
+  margin-top: 0.25rem;
+}
+
+/* indent: 左缩进+竖线 */
+html[data-qiji-assistant-style='indent'] [data-slot='aui_assistant-message-content'] {
+  border-left: 3px solid color-mix(in oklab, var(--dt-primary, #888) 55%, transparent);
+  padding-left: 1rem;
+}
+
+/* ── 输入框形态 ────────────────────────────────────────────── */
+/* float: 悬浮圆角(与底面脱开,玻璃感)——真身: composer-root/composer-surface */
+html[data-qiji-composer='float'] [data-slot='composer-surface'] {
+  border-radius: calc(var(--radius-scalar) * 1.5rem);
+  box-shadow: 0 8px 32px color-mix(in oklab, var(--dt-background, #000) 22%, transparent);
+}
+html[data-qiji-composer='float'] [data-slot='composer-root'] {
+  padding-bottom: 0.6rem;
+}

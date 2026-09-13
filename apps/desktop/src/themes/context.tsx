@@ -244,6 +244,14 @@ function applyTheme(theme: DesktopTheme, mode: 'light' | 'dark') {
 
     // vibe预设: data-attr供CSS全局微调(隐藏装饰等)
     root.dataset.qijiVibe = vibe
+
+    // C档: 主界面布局插槽(只影响聊天区)
+    const CL = L.chatLayout ?? {}
+    root.dataset.qijiChatList = CL.list ?? 'flow'
+    root.dataset.qijiUserAlign = CL.userAlign ?? 'left'
+    root.dataset.qijiUserStyle = CL.userStyle ?? 'card'
+    root.dataset.qijiAssistantStyle = CL.assistantStyle ?? 'plain'
+    root.dataset.qijiComposer = CL.composer ?? 'dock'
   }
 
   // Wallpaper layer (anime/skin themes): paint the image under the shell and

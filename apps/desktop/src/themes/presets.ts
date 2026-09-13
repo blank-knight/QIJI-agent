@@ -281,7 +281,8 @@ export const slateTheme: DesktopTheme = {
     bubbleStyle: 'sharp',
     radiusScalar: 0.15,
     spacingMul: 0.9,
-    turnGap: 0.25
+    turnGap: 0.25,
+    chatLayout: { list: 'forum', userStyle: 'bare', assistantStyle: 'indent', composer: 'dock' }
   }
 }
 
@@ -357,7 +358,8 @@ export const sakuraTheme: DesktopTheme = {
     radiusScalar: 1.3,
     spacingMul: 1.15,
     turnGap: 0.55,
-    chatMaxWidth: 42
+    chatMaxWidth: 42,
+    chatLayout: { list: 'feed', userAlign: 'right', userStyle: 'card', assistantStyle: 'card', composer: 'float' }
   }
 }
 
