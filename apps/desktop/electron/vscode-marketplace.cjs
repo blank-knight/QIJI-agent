@@ -156,9 +156,10 @@ function looksLikeIconTheme(extension) {
   return /\b(icon theme|file icons?|product icons?|icon pack|fileicons)\b/.test(text)
 }
 
-async function searchMarketplaceThemes(query, limit = 20) {
+async function searchMarketplaceThemes(query, limit = 20, page = 1) {
   const text = String(query || '').trim()
   const pageSize = Math.min(Math.max(Number(limit) || 20, 1), 50)
+  const pageNumber = Math.max(Number(page) || 1, 1)
 
   // FilterType: 8=Target, 5=Category, 10=SearchText, 12=ExcludeWithFlags.
   const criteria = [
@@ -173,7 +174,7 @@ async function searchMarketplaceThemes(query, limit = 20) {
 
   const json = await queryGallery({
     // Over-fetch so the icon-theme filter below still leaves a full page.
-    filters: [{ criteria, pageNumber: 1, pageSize: Math.min(pageSize * 2, 50), sortBy: 4, sortOrder: 0 }],
+    filters: [{ criteria, pageNumber, pageSize: Math.min(pageSize * 2, 50), sortBy: 4, sortOrder: 0 }],
     // IncludeStatistics (0x100) | IncludeLatestVersionOnly (0x200) | IncludeCategoryAndTags (0x4).
     flags: 772
   })

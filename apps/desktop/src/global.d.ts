@@ -154,7 +154,12 @@ declare global {
         fetchMarketplace: (id: string) => Promise<DesktopMarketplaceThemeResult>
         // Search the Marketplace for color-theme extensions. An empty query
         // returns the most-installed themes.
-        searchMarketplace: (query: string) => Promise<DesktopMarketplaceSearchItem[]>
+        searchMarketplace: (query: string, opts?: { limit?: number; page?: number }) => Promise<DesktopMarketplaceSearchItem[]>
+        wallpaper: {
+          pick: () => Promise<{ file: string; url: string } | null>
+          resolve: (file: string) => Promise<string | null>
+          clear: () => Promise<boolean>
+        }
       }
     }
   }

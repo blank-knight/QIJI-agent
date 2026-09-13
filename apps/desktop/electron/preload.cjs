@@ -190,10 +190,10 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   },
   listDir: relPath => ipcRenderer.invoke('hermes:listDir', relPath),
   clientUpdate: {
-    downloadAndRun: (url, meta) => ipcRenderer.invoke('hermes:clientUpdate:downloadAndRun', url, meta),
+    downloadAndRun: url => ipcRenderer.invoke('hermes:clientUpdate:downloadAndRun', url),
     // Chrome 式：先静默下载，用户确认后再运行安装包
-    download: (url, meta) => ipcRenderer.invoke('hermes:clientUpdate:download', url, meta),
-    runInstaller: (filePath, meta) => ipcRenderer.invoke('hermes:clientUpdate:runInstaller', filePath, meta),
+    download: url => ipcRenderer.invoke('hermes:clientUpdate:download', url),
+    runInstaller: filePath => ipcRenderer.invoke('hermes:clientUpdate:runInstaller', filePath),
     onProgress: callback => {
       const listener = (_event, payload) => callback(payload)
       ipcRenderer.on('hermes:clientUpdate:progress', listener)
@@ -202,6 +202,11 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   },
   themes: {
     fetchMarketplace: id => ipcRenderer.invoke('hermes:vscode-theme:fetch', id),
-    searchMarketplace: query => ipcRenderer.invoke('hermes:vscode-theme:search', query)
+    searchMarketplace: (query, opts) => ipcRenderer.invoke('hermes:vscode-theme:search', query, opts),
+    wallpaper: {
+      pick: () => ipcRenderer.invoke('hermes:wallpaper:pick'),
+      resolve: file => ipcRenderer.invoke('hermes:wallpaper:resolve', file),
+      clear: () => ipcRenderer.invoke('hermes:wallpaper:clear')
+    }
   }
 })

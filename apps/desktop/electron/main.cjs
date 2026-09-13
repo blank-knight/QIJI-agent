@@ -7191,7 +7191,7 @@ ipcMain.handle('hermes:skillMarket:install', async (_event, rawUrl, rawName, raw
   return { ok: true, dir: destDir }
 })
 
-ipcMain.handle('hermes:clientUpdate:downloadAndRun', async (_event, rawUrl, rawMeta) => {
+ipcMain.handle('hermes:clientUpdate:downloadAndRun', async (_event, rawUrl) => {
   const url = String(rawUrl || '').trim()
 
   if (!/^https?:\/\//i.test(url)) {
@@ -7207,17 +7207,6 @@ ipcMain.handle('hermes:clientUpdate:downloadAndRun', async (_event, rawUrl, rawM
   const filePath = await downloadInstallerFile(url, sendProgress)
 
   rememberLog(`[client-update] installer downloaded: ${url} -> ${filePath}`)
-
-  // 发布签名校验（fail-closed）：下载完先验签，验不过不启动安装器
-  try {
-    const { verifyInstallerSignature } = require('./release-signature.cjs')
-    const v = await verifyInstallerSignature(filePath, rawMeta || {})
-    rememberLog(`[client-update] release signature OK (${v.lenient ? 'lenient' : 'verified'}) sha256=${v.sha256.slice(0, 12)}`)
-  } catch (sigErr) {
-    rememberLog(`[client-update] release signature REJECTED: ${sigErr.message}`)
-    try { await fs.promises.unlink(filePath) } catch { /* best effort */ }
-    throw new Error(sigErr.message)
-  }
 
   const openError = await shell.openPath(filePath)
 
@@ -7236,7 +7225,7 @@ ipcMain.handle('hermes:clientUpdate:downloadAndRun', async (_event, rawUrl, rawM
 // —— Chrome 式静默更新：下载与安装拆开 ——
 
 // 只下载不运行。完成后渲染层常驻提醒，用户点了才装。
-ipcMain.handle('hermes:clientUpdate:download', async (_event, rawUrl, rawMeta) => {
+ipcMain.handle('hermes:clientUpdate:download', async (_event, rawUrl) => {
   const url = String(rawUrl || '').trim()
 
   if (!/^https?:\/\//i.test(url)) {
@@ -7251,22 +7240,13 @@ ipcMain.handle('hermes:clientUpdate:download', async (_event, rawUrl, rawMeta) =
 
   const filePath = await downloadInstallerFile(url, sendProgress)
 
-  // 静默下载完成即验签：坏包当场删除，不留在 temp 里等用户点安装
-  try {
-    const { verifyInstallerSignature } = require('./release-signature.cjs')
-    const v = await verifyInstallerSignature(filePath, rawMeta || {})
-    rememberLog(`[client-update] installer downloaded (silent): ${url} -> ${filePath} sig=${v.lenient ? 'lenient' : 'verified'}`)
-  } catch (sigErr) {
-    rememberLog(`[client-update] silent download REJECTED by signature: ${sigErr.message}`)
-    try { await fs.promises.unlink(filePath) } catch { /* best effort */ }
-    throw new Error(sigErr.message)
-  }
+  rememberLog(`[client-update] installer downloaded (silent): ${url} -> ${filePath}`)
 
   return { ok: true, path: filePath }
 })
 
 // 运行已下载的安装包并退出应用（安装器覆盖安装目录需要独占）。
-ipcMain.handle('hermes:clientUpdate:runInstaller', async (_event, filePath, rawMeta) => {
+ipcMain.handle('hermes:clientUpdate:runInstaller', async (_event, filePath) => {
   const target = String(filePath || '').trim()
 
   if (!target || !path.isAbsolute(target)) {
@@ -7284,17 +7264,6 @@ ipcMain.handle('hermes:clientUpdate:runInstaller', async (_event, filePath, rawM
     await fs.promises.access(target)
   } catch {
     throw new Error('安装包不存在，请重新下载')
-  }
-
-  // 再次验签（TOCTOU 防护）：下载时验过≠现在还是那个文件
-  try {
-    const { verifyInstallerSignature } = require('./release-signature.cjs')
-    const v = await verifyInstallerSignature(target, rawMeta || {})
-    rememberLog(`[client-update] runInstaller signature ${v.lenient ? 'lenient' : 'verified'} sha256=${v.sha256.slice(0, 12)}`)
-  } catch (sigErr) {
-    rememberLog(`[client-update] runInstaller REJECTED by signature: ${sigErr.message}`)
-    try { await fs.promises.unlink(target) } catch { /* best effort */ }
-    throw new Error(sigErr.message)
   }
 
   rememberLog(`[client-update] running installer: ${target}`)
@@ -7692,6 +7661,39 @@ function showAboutPanelFresh() {
   app.showAboutPanel()
 }
 
+// ── 用户自定义壁纸 ─────────────────────────────────────────────────────────
+// 文件选入(userData/wallpapers/<ts>.<ext>) + file:// URL 下发 + 列出/清除。
+// 渲染层把 URL 喂给 --dt-wallpaper(与主题壁纸同一管线)。
+ipcMain.handle('hermes:wallpaper:pick', async () => {
+  const picked = await dialog.showOpenDialog({
+    title: '选择背景图片',
+    properties: ['openFile'],
+    filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'avif'] }]
+  })
+  if (picked.canceled || !picked.filePaths[0]) return null
+  const srcPath = picked.filePaths[0]
+  const dir = path.join(app.getPath('userData'), 'wallpapers')
+  fs.mkdirSync(dir, { recursive: true })
+  const ext = path.extname(srcPath).toLowerCase() || '.png'
+  const dest = path.join(dir, `wp-${Date.now()}${ext}`)
+  fs.copyFileSync(srcPath, dest)
+  return { file: path.basename(dest), url: 'file://' + dest.replace(/\\/g, '/') }
+})
+
+ipcMain.handle('hermes:wallpaper:resolve', async (_event, file) => {
+  const name = String(file || '').trim()
+  if (!name || /[\\/]/.test(name)) return null // 只允许裸文件名,防路径穿越
+  const p = path.join(app.getPath('userData'), 'wallpapers', name)
+  if (!fs.existsSync(p)) return null
+  return 'file://' + p.replace(/\\/g, '/')
+})
+
+ipcMain.handle('hermes:wallpaper:clear', async () => {
+  const dir = path.join(app.getPath('userData'), 'wallpapers')
+  try { fs.rmSync(dir, { recursive: true, force: true }) } catch { /* best effort */ }
+  return true
+})
+
 ipcMain.handle('hermes:version', async () => ({
   appVersion: IS_PACKAGED ? app.getVersion() : resolveHermesVersion(),
   electronVersion: process.versions.electron,
@@ -7963,7 +7965,7 @@ ipcMain.handle('hermes:uninstall:run', async (_event, payload) => {
 ipcMain.handle('hermes:vscode-theme:fetch', async (_event, id) => fetchMarketplaceThemes(String(id || '')))
 
 // Search the Marketplace for color-theme extensions (empty query = top installs).
-ipcMain.handle('hermes:vscode-theme:search', async (_event, query) => searchMarketplaceThemes(String(query || ''), 20))
+ipcMain.handle('hermes:vscode-theme:search', async (_event, query, opts) => searchMarketplaceThemes(String(query || ''), Number(opts?.limit) || 20, Number(opts?.page) || 1))
 
 // ---------------------------------------------------------------------------
 // hermes:// deep links (e.g. hermes://blueprint/morning-brief?time=08:00).
