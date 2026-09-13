@@ -95,9 +95,9 @@ function MarketplaceThemeResults({
   const [error, setError] = useState<string | null>(null)
 
   const search = useQuery({
-    enabled: debounced.length > 0,
+    // 空查询 = 市场热门榜(安装量Top), 有词 = 定向搜索。用户无需先知道主题名。
     queryFn: () => window.hermesDesktop?.themes?.searchMarketplace(debounced) ?? Promise.resolve([]),
-    queryKey: ['marketplace-themes-settings', debounced],
+    queryKey: ['marketplace-themes-settings', debounced || '__hot__'],
     staleTime: 5 * 60 * 1000
   })
 
@@ -122,13 +122,9 @@ function MarketplaceThemeResults({
     }
   }
 
-  if (!debounced) {
-    return null
-  }
-
   const header = (
     <p className="mb-2 mt-4 text-[length:var(--conversation-caption-font-size)] font-medium text-(--ui-text-tertiary)">
-      From the VS Code Marketplace
+      {debounced ? '市场搜索结果' : '热门主题榜（来自 VS Code 市场，点一下即装）'}
     </p>
   )
 
@@ -290,7 +286,7 @@ export function AppearanceSettings() {
                   <input
                     className="w-full rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-quinary) px-3 py-1.5 text-[length:var(--conversation-caption-font-size)] outline-none placeholder:text-(--ui-text-tertiary) focus:border-(--ui-stroke-secondary)"
                     onChange={event => setQuery(event.target.value)}
-                    placeholder="Search your themes or the VS Code Marketplace…"
+                    placeholder="搜索主题，或留空浏览热门榜…（来自 VS Code 主题市场）"
                     spellCheck={false}
                     value={query}
                   />
