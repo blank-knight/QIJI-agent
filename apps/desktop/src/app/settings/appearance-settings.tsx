@@ -137,12 +137,8 @@ function MarketplaceThemeResults({
     }
   }
 
-  const header = (
-    <div className="mb-2 mt-4 flex items-center justify-between gap-2">
-      <p className="text-[length:var(--conversation-caption-font-size)] font-medium text-(--ui-text-tertiary)">
-        {debounced ? '市场搜索结果' : '热门主题榜（来自 VS Code 市场，点一下即装）'}
-      </p>
-      <div className="flex items-center gap-1.5">
+  const pager = (
+    <div className="mt-2 flex items-center justify-center gap-1.5">
         <select
           className="rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-quinary) px-1.5 py-0.5 text-[11px] outline-none"
           onChange={e => setPageSize(Number(e.target.value))}
@@ -173,7 +169,12 @@ function MarketplaceThemeResults({
           下一页 ›
         </button>
       </div>
-    </div>
+  )
+
+  const header = (
+    <p className="mb-2 mt-4 text-[length:var(--conversation-caption-font-size)] font-medium text-(--ui-text-tertiary)">
+      {debounced ? '市场搜索结果' : '热门主题榜（来自 VS Code 市场，点一下即装）'}
+    </p>
   )
 
   if (search.isLoading) {
@@ -251,6 +252,7 @@ function MarketplaceThemeResults({
           )
         })}
       </div>
+        {pager}
     </>
   )
 }
@@ -450,11 +452,6 @@ export function AppearanceSettings() {
                       })}
                     </div>
                   )}
-                  <MarketplaceThemeResults
-                    installedExtIds={installedExtIds}
-                    onInstalled={name => setTheme(name)}
-                    query={query}
-                  />
                 </div>
                 {showProfileNote && (
                   <p className="mt-3 text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height) text-(--ui-text-tertiary)">
