@@ -252,7 +252,7 @@ function applyTheme(theme: DesktopTheme, mode: 'light' | 'dark') {
     root.dataset.qijiUserStyle = CL.userStyle ?? 'card'
     root.dataset.qijiAssistantStyle = CL.assistantStyle ?? 'plain'
     root.dataset.qijiComposer = CL.composer ?? 'dock'
-    root.dataset.qijiHome = CL.home ?? 'center'
+    root.dataset.qijiHome = L.home ?? 'center'
   }
 
   // Wallpaper layer (anime/skin themes): paint the image under the shell and

@@ -713,6 +713,7 @@ app.setAboutPanelOptions({
 // handler removes the size cap and gives the <video> element seekable,
 // range-aware playback. Must be registered before the app is ready.
 const MEDIA_PROTOCOL = 'hermes-media'
+const WALLPAPER_PROTOCOL = 'qiji-wallpaper'
 // Only audio/video may be streamed. Without this the handler would read any
 // non-blocklisted local file (no size cap) for any `fetch(hermes-media://…)`.
 const STREAMABLE_MEDIA_EXTS = new Set([
@@ -738,8 +739,28 @@ protocol.registerSchemesAsPrivileged([
       stream: true,
       supportFetchAPI: true
     }
+  },
+  {
+    // 壁纸协议: 渲染层(http dev server或打包file://)都能安全引用本地壁纸,
+    // 绕开 chromium 对 http 页面加载 file:// 资源的阻止。
+    scheme: WALLPAPER_PROTOCOL,
+    privileges: { secure: true, standard: true, supportFetchAPI: true }
   }
 ])
+
+function registerWallpaperProtocol() {
+  protocol.handle(WALLPAPER_PROTOCOL, request => {
+    try {
+      const name = decodeURIComponent(new URL(request.url).hostname + new URL(request.url).pathname).replace(/[\\/]+/g, '')
+      if (!name || /\.\./.test(name)) return new Response('bad name', { status: 400 })
+      const p = path.join(app.getPath('userData'), 'wallpapers', name)
+      if (!fs.existsSync(p)) return new Response('not found', { status: 404 })
+      return net.fetch(pathToFileURL(p).toString())
+    } catch {
+      return new Response('error', { status: 500 })
+    }
+  })
+}
 
 function registerMediaProtocol() {
   protocol.handle(MEDIA_PROTOCOL, async request => {
@@ -7677,7 +7698,7 @@ ipcMain.handle('hermes:wallpaper:pick', async () => {
   const ext = path.extname(srcPath).toLowerCase() || '.png'
   const dest = path.join(dir, `wp-${Date.now()}${ext}`)
   fs.copyFileSync(srcPath, dest)
-  return { file: path.basename(dest), url: 'file://' + dest.replace(/\\/g, '/') }
+  return { file: path.basename(dest), url: `${WALLPAPER_PROTOCOL}://${path.basename(dest)}` }
 })
 
 ipcMain.handle('hermes:wallpaper:resolve', async (_event, file) => {
@@ -7685,7 +7706,7 @@ ipcMain.handle('hermes:wallpaper:resolve', async (_event, file) => {
   if (!name || /[\\/]/.test(name)) return null // 只允许裸文件名,防路径穿越
   const p = path.join(app.getPath('userData'), 'wallpapers', name)
   if (!fs.existsSync(p)) return null
-  return 'file://' + p.replace(/\\/g, '/')
+  return `${WALLPAPER_PROTOCOL}://${name}`
 })
 
 ipcMain.handle('hermes:wallpaper:clear', async () => {
@@ -8078,6 +8099,7 @@ app.whenReady().then(() => {
   }
   installMediaPermissions()
   registerMediaProtocol()
+  registerWallpaperProtocol()
   registerDeepLinkProtocol()
   ensureWslWindowsFonts()
   configureSpellChecker()

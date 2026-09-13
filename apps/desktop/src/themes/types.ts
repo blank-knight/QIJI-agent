@@ -118,10 +118,10 @@ export interface DesktopThemeLayout {
     assistantStyle?: 'plain' | 'card' | 'indent'
     /** 输入框形态: 'dock'=贴底全宽(默认) | 'float'=悬浮圆角居中 */
     composer?: 'dock' | 'float'
-    /** 空会话主页输入框位置: 'center'=上移居中(默认,9月改版后) | 'bottom'=贴底(最早经典布局,标题技能区沉顶) */
-    home?: 'center' | 'bottom'
   }
 
+  /** 空会话主页输入框位置: 'center'=上移居中(默认) | 'bottom'=贴底经典 */
+  home?: 'center' | 'bottom'
   /**
    * B档: 布局预设倾向. Presets clamp to officially-verified arrangements —
    * themes express intent, the shell maps it to safe CSS.

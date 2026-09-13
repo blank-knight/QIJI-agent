@@ -1563,3 +1563,15 @@ html[data-qiji-home='bottom'] .qiji-home-composer {
   top: auto;
   padding-bottom: var(--composer-shell-pad-block-end, 0.75rem);
 }
+
+/* 用户手动选择档(设置页开关)——覆盖主题默认 */
+html[data-qiji-home-user='center'] .qiji-home-composer {
+  top: 42%;
+  bottom: auto;
+  padding-bottom: 0;
+}
+html[data-qiji-home-user='bottom'] .qiji-home-composer {
+  bottom: 0;
+  top: auto;
+  padding-bottom: var(--composer-shell-pad-block-end, 0.75rem);
+}

@@ -260,6 +260,9 @@ function MarketplaceThemeResults({
 export function AppearanceSettings() {
   const [fontPreset, setFontPreset] = useState(() => readStoredFontPref() ?? 'theme-default')
   const [wallpaper, setWallpaper] = useState<UserWallpaperPref | null>(() => readWallpaperPref())
+  const [homePos, setHomePos] = useState<'theme' | 'center' | 'bottom'>(() => {
+    try { return (window.localStorage.getItem('qiji-home-pos') as 'theme' | 'center' | 'bottom') || 'theme' } catch { return 'theme' }
+  })
 
   // 启动时恢复用户字体（应用一打开就生效，不用先访问设置页）
   useEffect(() => {
@@ -279,6 +282,16 @@ export function AppearanceSettings() {
       })
     }
   }, [])
+
+  // 主页输入框位置: 用户选择覆盖主题home档
+  useEffect(() => {
+    if (homePos === 'theme') {
+      delete document.documentElement.dataset.qijiHomeUser
+    } else {
+      document.documentElement.dataset.qijiHomeUser = homePos
+    }
+    try { homePos === 'theme' ? window.localStorage.removeItem('qiji-home-pos') : window.localStorage.setItem('qiji-home-pos', homePos) } catch {}
+  }, [homePos])
 
   const pickWallpaper = async () => {
     const result = await window.hermesDesktop?.themes?.wallpaper?.pick?.()
@@ -566,6 +579,22 @@ export function AppearanceSettings() {
             }
             description={wallpaper ? `已设置：${wallpaper.file}` : '设置一张本地图片作为全局背景'}
             title="背景图片"
+          />
+
+          <ListRow
+            action={
+              <SegmentedControl
+                onChange={id => { setHomePos(id as 'theme' | 'center' | 'bottom'); triggerHaptic('selection') }}
+                options={[
+                  { id: 'theme', label: '跟随主题' },
+                  { id: 'center', label: '居中' },
+                  { id: 'bottom', label: '贴底' }
+                ]}
+                value={homePos}
+              />
+            }
+            description="空会话主页的输入框位置（贴底=经典布局）"
+            title="主页输入框"
           />
 
           <ListRow
