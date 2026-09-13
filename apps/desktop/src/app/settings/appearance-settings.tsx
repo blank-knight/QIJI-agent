@@ -393,6 +393,15 @@ export function AppearanceSettings() {
             wide
           />
 
+          {/* 主题市场:独立区块(不折叠在主题列表滚动容器里,一打开外观页即见) */}
+          <div className="mt-4">
+            <MarketplaceThemeResults
+              installedExtIds={installedExtIds}
+              onInstalled={name => setTheme(name)}
+              query={query}
+            />
+          </div>
+
           <ListRow
             action={
               <select
