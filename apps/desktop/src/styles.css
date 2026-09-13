@@ -310,7 +310,7 @@
     --dt-spacing-mul: 1;
 
     --radius: 0.75rem;
-    --radius-scalar: 0.6;
+    --radius-scalar: var(--dt-radius-scalar, 0.6);
 
     /* Space under last message vs overlay composer — driven by the measured composer height (see composer/index.tsx)
        plus the out-of-flow status stack's measured height (see status-stack/index.tsx) when one is showing. */
@@ -1447,4 +1447,30 @@ canvas {
   [data-slot='aui_assistant-message-content'] .aui-md [data-slot='code-card'][data-streaming='true'] {
     animation: none;
   }
+}
+
+/* ═══ A+B档: 主题布局token消费 ═════════════════════════════════════════
+   变量由 applyTheme 按主题写入(带钳制)。未设置时全部回落壳默认,纯色主题零影响。 */
+
+/* 对话区宽度: chat风居中窄栏, work风全宽 */
+html[data-qiji-vibe='chat'] .conversation-column,
+html[data-qiji-vibe='chat'] [class*='conversation'] {
+  max-width: var(--dt-chat-max-width, 40rem);
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* zen风: 大行距已由turn-gap承担,这里弱化装饰性元素 */
+html[data-qiji-vibe='zen'] .glass-noise,
+html[data-qiji-vibe='zen'] [data-decorative] {
+  opacity: 0.3;
+}
+
+/* ── 气泡风格档(真身: .composer-human-message, Tailwind rounded-xl 直覆) ── */
+/* soft = 壳默认(rounded-xl),不覆盖 */
+html[data-qiji-bubble='sharp'] .composer-human-message {
+  border-radius: 0.25rem;
+}
+html[data-qiji-bubble='pill'] .composer-human-message {
+  border-radius: 1.6rem;
 }

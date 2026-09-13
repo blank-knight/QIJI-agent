@@ -275,6 +275,13 @@ export const slateTheme: DesktopTheme = {
   },
   typography: {
     fontMono: `"JetBrains Mono", ${SYSTEM_MONO}`
+  },
+  layout: {
+    vibe: 'work',
+    bubbleStyle: 'sharp',
+    radiusScalar: 0.15,
+    spacingMul: 0.9,
+    turnGap: 0.25
   }
 }
 
@@ -343,6 +350,14 @@ export const sakuraTheme: DesktopTheme = {
   },
   typography: {
     fontSans: SYSTEM_SANS
+  },
+  layout: {
+    vibe: 'chat',
+    bubbleStyle: 'pill',
+    radiusScalar: 1.3,
+    spacingMul: 1.15,
+    turnGap: 0.55,
+    chatMaxWidth: 42
   }
 }
 
@@ -410,6 +425,13 @@ export const starnightTheme: DesktopTheme = {
   },
   typography: {
     fontSans: SYSTEM_SANS
+  },
+  layout: {
+    vibe: 'chat',
+    bubbleStyle: 'soft',
+    radiusScalar: 1.0,
+    spacingMul: 1.05,
+    turnGap: 0.45
   }
 }
 
@@ -477,6 +499,13 @@ export const matchaTheme: DesktopTheme = {
   },
   typography: {
     fontSans: SYSTEM_SANS
+  },
+  layout: {
+    vibe: 'zen',
+    bubbleStyle: 'soft',
+    radiusScalar: 0.8,
+    spacingMul: 1.2,
+    turnGap: 0.7
   }
 }
 

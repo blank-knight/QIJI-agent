@@ -85,6 +85,34 @@ export interface DesktopTerminalPalette {
   brightWhite?: string
 }
 
+/**
+ * Layout tokens a theme may tune (A档: 布局token化). All optional — omitted
+ * keys fall back to the shell defaults in styles.css, so flat-color themes
+ * are unaffected. Values are validated + clamped in applyTheme.
+ */
+export interface DesktopThemeLayout {
+  /** 0-2, default 0.6. Scales every radius token (rounded↔angular). */
+  radiusScalar?: number
+  /** 0.85-1.3, default 1. Multiplier on spacing scale (compact↔roomy). */
+  spacingMul?: number
+  /** Base font size in rem, 0.75-1.1, default 0.875. */
+  baseSize?: number
+  /** Chat turn gap in rem, 0.2-0.9, default 0.375. Larger = airier transcript. */
+  turnGap?: number
+  /** Conversation column max width in rem, 32-72, default 48. Narrow = 聊天感, wide = 工作台感. */
+  chatMaxWidth?: number
+  /** Chat bubble corner style. 'soft' = 大圆角软气泡, 'sharp' = 直角, 'pill' = 胶囊. */
+  bubbleStyle?: 'soft' | 'sharp' | 'pill'
+  /**
+   * B档: 布局预设倾向. Presets clamp to officially-verified arrangements —
+   * themes express intent, the shell maps it to safe CSS.
+   * - 'chat'    居中窄栏聊天风(收窄对话区, 大留白)
+   * - 'work'    宽幅工作台风(默认, 最大化内容区)
+   * - 'zen'     极简禅意(隐藏次要装饰, 大行距)
+   */
+  vibe?: 'chat' | 'work' | 'zen'
+}
+
 export interface DesktopTheme {
   name: string
   label: string
@@ -98,6 +126,8 @@ export interface DesktopTheme {
   terminal?: DesktopTerminalPalette
   /** Dark-variant terminal ANSI palette. Falls back to `terminal`. */
   darkTerminal?: DesktopTerminalPalette
+  /** A+B档: 布局token(圆角/密度/气泡/对话区宽度/布局预设). 全可选,缺省=壳默认. */
+  layout?: DesktopThemeLayout
   /**
    * Wallpaper — decorative background image layered under the whole app shell
    * (body background-image). Anime/skin themes live here. Optional per-mode:

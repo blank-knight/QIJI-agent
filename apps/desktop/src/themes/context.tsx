@@ -222,6 +222,30 @@ function applyTheme(theme: DesktopTheme, mode: 'light' | 'dark') {
     root.style.setProperty(k, v)
   }
 
+  // ── A+B档: 布局token(圆角/密度/气泡/宽度/预设) ──────────────────────
+  // 全部钳制在安全区间: 主题只能"调气质",不能破坏可用性。
+  {
+    const L = theme.layout ?? {}
+    const clamp = (v: number | undefined, lo: number, hi: number, dflt: number) =>
+      typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : dflt
+    const vibe = L.vibe ?? 'work'
+
+    root.style.setProperty('--dt-radius-scalar', String(clamp(L.radiusScalar, 0, 2, vibe === 'chat' ? 1.1 : vibe === 'zen' ? 0.9 : 0.6)))
+    root.style.setProperty('--dt-spacing-mul', String(clamp(L.spacingMul, 0.85, 1.3, vibe === 'chat' ? 1.12 : vibe === 'zen' ? 1.2 : 1)))
+    root.style.setProperty('--dt-base-size', `${clamp(L.baseSize, 0.75, 1.1, 0.875)}rem`)
+    root.style.setProperty('--conversation-turn-gap', `${clamp(L.turnGap, 0.2, 0.9, vibe === 'zen' ? 0.7 : 0.375)}rem`)
+
+    // 对话区宽度: chat风收窄, work风全宽(用现有--chat-min-width机制的补集——新变量,styles.css消费)
+    const chatW = clamp(L.chatMaxWidth, 32, 72, vibe === 'chat' ? 40 : 72)
+    root.style.setProperty('--dt-chat-max-width', `${chatW}rem`)
+
+    // 气泡风格: data-attr驱动,styles.css按档渲染
+    root.dataset.qijiBubble = L.bubbleStyle ?? (vibe === 'chat' ? 'pill' : 'soft')
+
+    // vibe预设: data-attr供CSS全局微调(隐藏装饰等)
+    root.dataset.qijiVibe = vibe
+  }
+
   // Wallpaper layer (anime/skin themes): paint the image under the shell and
   // raise a readability scrim so glass surfaces keep contrast over busy art.
   const bg = theme.backgroundImage
