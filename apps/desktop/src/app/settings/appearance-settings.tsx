@@ -260,9 +260,6 @@ function MarketplaceThemeResults({
 export function AppearanceSettings() {
   const [fontPreset, setFontPreset] = useState(() => readStoredFontPref() ?? 'theme-default')
   const [wallpaper, setWallpaper] = useState<UserWallpaperPref | null>(() => readWallpaperPref())
-  const [homePos, setHomePos] = useState<'theme' | 'center' | 'bottom'>(() => {
-    try { return (window.localStorage.getItem('qiji-home-pos') as 'theme' | 'center' | 'bottom') || 'theme' } catch { return 'theme' }
-  })
   const [fontScale, setFontScale] = useState<number>(() => {
     try { return Number(window.localStorage.getItem('qiji-font-scale')) || 1 } catch { return 1 }
   })
@@ -286,15 +283,6 @@ export function AppearanceSettings() {
     }
   }, [])
 
-  // 主页输入框位置: 用户选择覆盖主题home档
-  useEffect(() => {
-    if (homePos === 'theme') {
-      delete document.documentElement.dataset.qijiHomeUser
-    } else {
-      document.documentElement.dataset.qijiHomeUser = homePos
-    }
-    try { homePos === 'theme' ? window.localStorage.removeItem('qiji-home-pos') : window.localStorage.setItem('qiji-home-pos', homePos) } catch {}
-  }, [homePos])
 
   // 字号缩放: 用户全局字号(0.85-1.25),覆盖主题baseSize
   useEffect(() => {
@@ -590,21 +578,7 @@ export function AppearanceSettings() {
             title="背景图片"
           />
 
-          <ListRow
-            action={
-              <SegmentedControl
-                onChange={id => { setHomePos(id as 'theme' | 'center' | 'bottom'); triggerHaptic('selection') }}
-                options={[
-                  { id: 'theme', label: '跟随主题' },
-                  { id: 'center', label: '居中' },
-                  { id: 'bottom', label: '贴底' }
-                ]}
-                value={homePos}
-              />
-            }
-            description="空会话主页的输入框位置（贴底=经典布局）"
-            title="主页输入框"
-          />
+
 
           <ListRow
             action={

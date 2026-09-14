@@ -448,6 +448,12 @@
      is painted as an extra layer UNDER the normal chat-surface color, with a
      theme-colored scrim on top for readability. Flat-color themes never set
      --dt-wallpaper, so this block is inert for them — zero risk to defaults. */
+  /* 关键: 壁纸模式下,盖在body上的内容区表面色透明化——否则壁纸永远被罩住不可见 */
+  html[data-hermes-wallpaper='on'] {
+    --ui-chat-surface-background: transparent;
+    --ui-bg-chrome: transparent;
+  }
+
   html[data-hermes-wallpaper='on'] body {
     background-image:
       linear-gradient(var(--theme-background-seed, transparent), var(--theme-background-seed, transparent)),
@@ -1552,44 +1558,4 @@ html[data-qiji-composer='float'] [data-slot='composer-root'] {
   padding-bottom: 0.6rem;
 }
 
-/* ── 空会话主页输入框位置档 ─────────────────────────────────── */
-/* center(默认): 上移居中——9月改版现状 */
-html[data-qiji-home='center'] .qiji-home-composer {
-  top: 42%;
-}
-/* bottom: 经典布局——输入框贴底,标题/技能区回到页面上部 */
-html[data-qiji-home='bottom'] .qiji-home-composer {
-  bottom: 0;
-  top: auto;
-  padding-bottom: var(--composer-shell-pad-block-end, 0.75rem);
-}
 
-/* 用户手动选择档(设置页开关)——覆盖主题默认 */
-html[data-qiji-home-user='center'] .qiji-home-composer {
-  top: 42%;
-  bottom: auto;
-  padding-bottom: 0;
-}
-html[data-qiji-home-user='bottom'] .qiji-home-composer,
-html[data-qiji-home='bottom'] .qiji-home-composer {
-  bottom: 0;
-  top: auto;
-  padding-bottom: var(--composer-shell-pad-block-end, 0.75rem);
-}
-
-/* 贴底档: 标题+技能区回屏幕中央(不再吊在输入框上方) */
-html[data-qiji-home='bottom'] .qiji-home-composer .absolute.bottom-full,
-html[data-qiji-home-user='bottom'] .qiji-home-composer .absolute.bottom-full {
-  /* intro容器原本 bottom-full 相对输入框——改为相对视口居中 */
-  position: fixed;
-  bottom: auto;
-  top: 24%;
-  margin-bottom: 0;
-}
-/* 最佳实践条(输入框下方)同理沉底 */
-html[data-qiji-home='bottom'] .qiji-home-composer .absolute.top-full,
-html[data-qiji-home-user='bottom'] .qiji-home-composer .absolute.top-full {
-  position: fixed;
-  top: auto;
-  bottom: 13rem;
-}

@@ -97,8 +97,7 @@ export const nousTheme: DesktopTheme = {
     fontUrl: 'https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap'
   },
   layout: {
-    vibe: 'work',
-    home: 'bottom'
+    vibe: 'work'
   }
 }
 
