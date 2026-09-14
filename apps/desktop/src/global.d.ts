@@ -136,6 +136,7 @@ declare global {
       // URL-based client update: download the published installer and run it.
       listDir: (relPath: string) => Promise<Array<{ name: string; isDirectory: boolean }>>
   skillMarket: {
+        installGithub: (repo: string, subdir?: string) => Promise<{ ok: boolean; name: string; source: string }>
     install: (url: string, name: string, token: string) => Promise<{ ok: boolean; dir: string }>
   }
   clientUpdate: {

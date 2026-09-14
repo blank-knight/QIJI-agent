@@ -186,6 +186,7 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   },
   // URL-based client update: download the published installer and run it.
   skillMarket: {
+    installGithub: (repo, subdir) => ipcRenderer.invoke('hermes:skillMarket:installGithub', repo, subdir),
     install: (url, name, token) => ipcRenderer.invoke('hermes:skillMarket:install', url, name, token)
   },
   listDir: relPath => ipcRenderer.invoke('hermes:listDir', relPath),

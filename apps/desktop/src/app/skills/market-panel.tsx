@@ -29,7 +29,27 @@ export function MarketPanel(_props: React.ComponentProps<'section'>) {
   const [installed, setInstalled] = useState<Set<string>>(new Set())
   const [msg, setMsg] = useState('')
   const [msgOk, setMsgOk] = useState(true)
+  const [ghRepo, setGhRepo] = useState('')
+  const [ghBusy, setGhBusy] = useState(false)
   const auth = useStore($auth)
+
+  const installGithub = useCallback(async (repo: string, subdir?: string) => {
+    setGhBusy(true)
+    setMsg('')
+    try {
+      const r = await window.hermesDesktop.skillMarket.installGithub(repo, subdir)
+      const names = 'allNames' in r && Array.isArray((r as { allNames?: string[] }).allNames) ? (r as { allNames: string[] }).allNames : [r.name]
+      setInstalled(prev => { const s = new Set(prev); for (const n of names) s.add(n); return s })
+      setMsg(`已安装 ${names.length > 1 ? names.length + ' 个技能(' + names.slice(0, 3).join('、') + (names.length > 3 ? '…' : '') + ')' : '「' + r.name + '」'}(来自 GitHub ${repo})`)
+      setMsgOk(true)
+      setGhRepo('')
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : String(e))
+      setMsgOk(false)
+    } finally {
+      setGhBusy(false)
+    }
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -120,6 +140,54 @@ export function MarketPanel(_props: React.ComponentProps<'section'>) {
           })}
         </div>
       )}
+      {/* ── GitHub 社区技能(直连GitHub安装,官方服务器零参与) ── */}
+      <div className="mt-2 rounded-lg border border-dashed p-3">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold">GitHub 社区技能</span>
+          <span className="text-xs text-muted-foreground">输入 仓库/作者 安装开源技能（如 anthropics/skills）</span>
+        </div>
+        <div className="mt-2 flex gap-2">
+          <input
+            className="flex-1 rounded-md border bg-transparent px-2 py-1.5 text-xs outline-none focus:border-primary/50"
+            onChange={e => setGhRepo(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && ghRepo.trim()) void installGithub(ghRepo.trim()) }}
+            placeholder="owner/repo（支持粘贴 github.com 链接）"
+            value={ghRepo}
+          />
+          <Button
+            disabled={ghBusy || !ghRepo.trim()}
+            onClick={() => void installGithub(ghRepo.trim())}
+            size="sm"
+          >
+            {ghBusy ? <Loader2 className="size-3 animate-spin" /> : null}
+            {ghBusy ? '安装中…' : '安装'}
+          </Button>
+        </div>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {[
+            ['anthropics/skills', '⭐ Anthropic 官方集(20个)'],
+            ['vercel-labs/skills', '🔥 Vercel 热门'],
+            ['vercel-labs/agent-browser', '🌐 浏览器自动化'],
+          ].map(([repo, label]) => (
+            <button
+              className="rounded-md border px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
+              key={repo}
+              onClick={() => {
+                const parts = repo.split('/')
+                if (parts.length > 2) void installGithub(parts.slice(0, 2).join('/'), parts.slice(2).join('/'))
+                else void installGithub(repo)
+              }}
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 text-[11px] text-muted-foreground/70">
+          社区技能由原作者在 GitHub 维护，安装即代表信任该来源；官方不对其内容负责
+        </p>
+      </div>
+
       <p className="text-xs text-muted-foreground/70">
         <Download className="mr-1 inline size-3" />
         安装目录 skills/market,在「技能」页可管理启用状态
