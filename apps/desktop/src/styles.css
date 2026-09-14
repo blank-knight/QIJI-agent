@@ -1570,8 +1570,26 @@ html[data-qiji-home-user='center'] .qiji-home-composer {
   bottom: auto;
   padding-bottom: 0;
 }
-html[data-qiji-home-user='bottom'] .qiji-home-composer {
+html[data-qiji-home-user='bottom'] .qiji-home-composer,
+html[data-qiji-home='bottom'] .qiji-home-composer {
   bottom: 0;
   top: auto;
   padding-bottom: var(--composer-shell-pad-block-end, 0.75rem);
+}
+
+/* 贴底档: 标题+技能区回屏幕中央(不再吊在输入框上方) */
+html[data-qiji-home='bottom'] .qiji-home-composer .absolute.bottom-full,
+html[data-qiji-home-user='bottom'] .qiji-home-composer .absolute.bottom-full {
+  /* intro容器原本 bottom-full 相对输入框——改为相对视口居中 */
+  position: fixed;
+  bottom: auto;
+  top: 24%;
+  margin-bottom: 0;
+}
+/* 最佳实践条(输入框下方)同理沉底 */
+html[data-qiji-home='bottom'] .qiji-home-composer .absolute.top-full,
+html[data-qiji-home-user='bottom'] .qiji-home-composer .absolute.top-full {
+  position: fixed;
+  top: auto;
+  bottom: 13rem;
 }

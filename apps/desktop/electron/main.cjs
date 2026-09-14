@@ -7698,7 +7698,9 @@ ipcMain.handle('hermes:wallpaper:pick', async () => {
   const ext = path.extname(srcPath).toLowerCase() || '.png'
   const dest = path.join(dir, `wp-${Date.now()}${ext}`)
   fs.copyFileSync(srcPath, dest)
-  return { file: path.basename(dest), url: `${WALLPAPER_PROTOCOL}://${path.basename(dest)}` }
+  // data: URL —— 渲染层零限制(协议/CSP全绕开),971KB图≈1.3MB base64,内存可接受
+  const dataUrl = `data:image/${ext === '.jpg' ? 'jpeg' : ext.slice(1)};base64,` + fs.readFileSync(dest).toString('base64')
+  return { file: path.basename(dest), url: dataUrl }
 })
 
 ipcMain.handle('hermes:wallpaper:resolve', async (_event, file) => {
@@ -7706,7 +7708,8 @@ ipcMain.handle('hermes:wallpaper:resolve', async (_event, file) => {
   if (!name || /[\\/]/.test(name)) return null // 只允许裸文件名,防路径穿越
   const p = path.join(app.getPath('userData'), 'wallpapers', name)
   if (!fs.existsSync(p)) return null
-  return `${WALLPAPER_PROTOCOL}://${name}`
+  const ext = path.extname(p).toLowerCase()
+  return `data:image/${ext === '.jpg' ? 'jpeg' : ext.slice(1)};base64,` + fs.readFileSync(p).toString('base64')
 })
 
 ipcMain.handle('hermes:wallpaper:clear', async () => {

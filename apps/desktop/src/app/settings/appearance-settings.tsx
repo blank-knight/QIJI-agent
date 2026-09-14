@@ -263,6 +263,9 @@ export function AppearanceSettings() {
   const [homePos, setHomePos] = useState<'theme' | 'center' | 'bottom'>(() => {
     try { return (window.localStorage.getItem('qiji-home-pos') as 'theme' | 'center' | 'bottom') || 'theme' } catch { return 'theme' }
   })
+  const [fontScale, setFontScale] = useState<number>(() => {
+    try { return Number(window.localStorage.getItem('qiji-font-scale')) || 1 } catch { return 1 }
+  })
 
   // 启动时恢复用户字体（应用一打开就生效，不用先访问设置页）
   useEffect(() => {
@@ -292,6 +295,12 @@ export function AppearanceSettings() {
     }
     try { homePos === 'theme' ? window.localStorage.removeItem('qiji-home-pos') : window.localStorage.setItem('qiji-home-pos', homePos) } catch {}
   }, [homePos])
+
+  // 字号缩放: 用户全局字号(0.85-1.25),覆盖主题baseSize
+  useEffect(() => {
+    document.documentElement.style.setProperty('--dt-base-size', `${(0.875 * fontScale).toFixed(3)}rem`)
+    try { window.localStorage.setItem('qiji-font-scale', String(fontScale)) } catch {}
+  }, [fontScale])
 
   const pickWallpaper = async () => {
     const result = await window.hermesDesktop?.themes?.wallpaper?.pick?.()
@@ -595,6 +604,28 @@ export function AppearanceSettings() {
             }
             description="空会话主页的输入框位置（贴底=经典布局）"
             title="主页输入框"
+          />
+
+          <ListRow
+            action={
+              <div className="flex items-center gap-3">
+                <input
+                  className="h-1 w-40 cursor-pointer appearance-none rounded-full bg-(--ui-stroke-tertiary)"
+                  max={1.25}
+                  min={0.85}
+                  onChange={event => { setFontScale(Number(event.target.value)); triggerHaptic('selection') }}
+                  step={0.05}
+                  style={{ accentColor: 'var(--dt-primary)' }}
+                  type="range"
+                  value={fontScale}
+                />
+                <span className="w-11 text-right text-[length:var(--conversation-caption-font-size)] tabular-nums text-(--ui-text-tertiary)">
+                  {Math.round(fontScale * 100)}%
+                </span>
+              </div>
+            }
+            description="全局界面字号（85%–125%，影响所有文字）"
+            title="字体大小"
           />
 
           <ListRow
