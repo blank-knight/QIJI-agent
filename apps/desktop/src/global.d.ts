@@ -140,9 +140,9 @@ declare global {
     install: (url: string, name: string, token: string) => Promise<{ ok: boolean; dir: string }>
   }
   clientUpdate: {
-        downloadAndRun: (url: string) => Promise<{ ok: boolean; path: string }>
-        download: (url: string) => Promise<{ ok: boolean; path: string }>
-        runInstaller: (filePath: string) => Promise<{ ok: boolean }>
+        downloadAndRun: (url: string, meta?: { sha256?: string; signature?: string; newversion?: string }) => Promise<{ ok: boolean; path: string }>
+        download: (url: string, meta?: { sha256?: string; signature?: string; newversion?: string }) => Promise<{ ok: boolean; path: string }>
+        runInstaller: (filePath: string, meta?: { sha256?: string; signature?: string; newversion?: string }) => Promise<{ ok: boolean }>
         onProgress: (callback: (payload: ClientUpdateProgress) => void) => () => void
       }
       uninstall: {

@@ -72,6 +72,11 @@ export async function checkClientUpdate(options: { manual?: boolean } = {}): Pro
     return
   }
 
+  // dev开发模式豁免: dev实例连的生产后端可能报强制更新,阻断开发——直接跳过
+  if (import.meta.env.DEV) {
+    return
+  }
+
   checking = true
   patch({ status: 'checking', error: undefined })
 
