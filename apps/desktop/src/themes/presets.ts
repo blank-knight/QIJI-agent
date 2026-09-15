@@ -514,7 +514,83 @@ export const matchaTheme: DesktopTheme = {
   }
 }
 
+
+/**
+ * Paper — 纸白极简。黑白灰三色,无彩色干扰,默认主题。
+ * 亮=纸白底黑字;暗=碳黑底灰白字。黑=文字,白=留白,灰=层级。
+ */
+export const paperTheme: DesktopTheme = {
+  name: 'paper',
+  label: '纸白 Paper',
+  description: '黑白极简 · 纸墨无声',
+  colors: {
+    background: '#FAFAF8',
+    foreground: '#1A1A1A',
+    card: '#FFFFFF',
+    cardForeground: '#1A1A1A',
+    muted: '#F0F0EE',
+    mutedForeground: '#8A8A86',
+    popover: '#FFFFFF',
+    popoverForeground: '#1A1A1A',
+    primary: '#1A1A1A',
+    primaryForeground: '#FAFAF8',
+    secondary: '#EAEAE8',
+    secondaryForeground: '#2A2A2A',
+    accent: '#D4D4D0',
+    accentForeground: '#1A1A1A',
+    border: '#E4E4E0',
+    input: '#F5F5F3',
+    ring: '#1A1A1A',
+    midground: '#1A1A1A',
+    composerRing: '#1A1A1A',
+    destructive: '#B91C1C',
+    destructiveForeground: '#FFFFFF',
+    sidebarBackground: '#F4F4F2',
+    sidebarBorder: '#E4E4E0',
+    userBubble: '#1A1A1A',
+    userBubbleBorder: '#1A1A1A'
+  },
+  darkColors: {
+    background: '#111111',
+    foreground: '#E8E8E6',
+    card: '#191919',
+    cardForeground: '#E8E8E6',
+    muted: '#222222',
+    mutedForeground: '#9A9A96',
+    popover: '#1C1C1C',
+    popoverForeground: '#E8E8E6',
+    primary: '#E8E8E6',
+    primaryForeground: '#111111',
+    secondary: '#262626',
+    secondaryForeground: '#D4D4D0',
+    accent: '#3A3A3A',
+    accentForeground: '#E8E8E6',
+    border: '#2E2E2E',
+    input: '#0D0D0D',
+    ring: '#E8E8E6',
+    midground: '#E8E8E6',
+    composerRing: '#E8E8E6',
+    destructive: '#A81818',
+    destructiveForeground: '#F5E8E8',
+    sidebarBackground: '#0C0C0C',
+    sidebarBorder: '#262626',
+    userBubble: '#242424',
+    userBubbleBorder: '#383838'
+  },
+  typography: {
+    fontSans: SYSTEM_SANS
+  },
+  layout: {
+    vibe: 'zen',
+    bubbleStyle: 'soft',
+    radiusScalar: 0.5,
+    spacingMul: 1.05,
+    turnGap: 0.5
+  }
+}
+
 export const BUILTIN_THEMES: Record<string, DesktopTheme> = {
+  paper: paperTheme,
   nous: nousTheme,
   midnight: midnightTheme,
   ember: emberTheme,
@@ -529,4 +605,4 @@ export const BUILTIN_THEMES: Record<string, DesktopTheme> = {
 export const BUILTIN_THEME_LIST = Object.values(BUILTIN_THEMES)
 
 /** Skin used when nothing is persisted or the persisted name is retired. */
-export const DEFAULT_SKIN_NAME = 'nous'
+export const DEFAULT_SKIN_NAME = 'paper'
