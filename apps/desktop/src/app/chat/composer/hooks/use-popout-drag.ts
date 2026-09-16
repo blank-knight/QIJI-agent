@@ -21,7 +21,11 @@ import {
 const LONG_PRESS_MS = 360
 const LONG_PRESS_MOVE_TOLERANCE = 10
 // Upward drag distance from the docked composer that peels it off into a float.
-const PEEL_OUT_PX = 16
+// Raised from 16px: casual drags (text selection, repositioning clicks) must not
+// tear the composer off the dock. 48px of near-vertical intent is required.
+const PEEL_OUT_PX = 48
+// Peel-off must be near-vertical: horizontal drift beyond this cancels the gesture.
+const PEEL_OUT_MAX_DRIFT_PX = 12
 const DOCK_ZONE_BOTTOM_PX = 72
 // How close the composer's center must be to the viewport center (px) to count as
 // "over the dock". Kept tight so the bottom-left/right corners stay free.
@@ -53,7 +57,12 @@ function gestureTargetOk(target: EventTarget | null) {
     return false
   }
 
-  return !target.closest('button, a, input, textarea, select, [role="menuitem"], [data-radix-popper-content-wrapper]')
+  // [role="textbox"] = contentEditable rich input (composer-rich-input): text
+  // selection presses must NEVER arm pop-out gestures — pressing text and
+  // dragging used to peel/drag the composer (0.19.0 field report).
+  return !target.closest(
+    'button, a, input, textarea, select, [role="menuitem"], [role="textbox"], [data-radix-popper-content-wrapper]'
+  )
 }
 
 /** Floating composer's 5px outer frame — grab here to drag without long-press. */
@@ -287,10 +296,10 @@ export function useComposerPopoutGestures({
         const deltaY = event.clientY - state.startY
 
         if (state.mode === 'dock') {
-          // Peel off only on a clear upward drag — not a sideways/down wiggle.
-          if (-deltaY > PEEL_OUT_PX && -deltaY > Math.abs(deltaX)) {
+          // Peel off only on a clear, near-vertical upward drag — not a sideways/down wiggle.
+          if (-deltaY > PEEL_OUT_PX && -deltaY > Math.abs(deltaX) && Math.abs(deltaX) < PEEL_OUT_MAX_DRIFT_PX) {
             peelOffFromDock(state, event.clientX, event.clientY)
-          } else if (Math.abs(deltaX) > PEEL_OUT_PX || deltaY > LONG_PRESS_MOVE_TOLERANCE) {
+          } else if (Math.abs(deltaX) > PEEL_OUT_MAX_DRIFT_PX || deltaY > LONG_PRESS_MOVE_TOLERANCE) {
             resetGesture()
           }
         } else if (Math.abs(deltaX) > LONG_PRESS_MOVE_TOLERANCE || Math.abs(deltaY) > LONG_PRESS_MOVE_TOLERANCE) {

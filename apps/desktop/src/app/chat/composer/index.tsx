@@ -243,11 +243,16 @@ export function ChatBar({
     setComposerPoppedOut(false)
   }, [])
 
-  // Double-click the grab area toggles dock/float. Undocking restores the last
-  // position (the persisted atom is never cleared on dock).
+  // Double-click the grab area docks a floating composer (escape hatch back to
+  // the dock). When docked, double-click does NOT pop out anymore — accidental
+  // double-clicks on the composer's padding were field-reported as "the
+  // composer randomly detaches". Pop-out remains reachable via the explicit
+  // upward peel gesture (48px, near-vertical).
   const handleComposerToggle = useCallback(() => {
-    poppedOut ? handleComposerDock() : handleComposerPopOut()
-  }, [handleComposerDock, handleComposerPopOut, poppedOut])
+    if (poppedOut) {
+      handleComposerDock()
+    }
+  }, [handleComposerDock, poppedOut])
 
   const { dockProximity, dragging, onPointerDown: onComposerGesturePointerDown } =
     useComposerPopoutGestures({
