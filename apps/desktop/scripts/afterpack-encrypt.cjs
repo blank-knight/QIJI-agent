@@ -84,7 +84,42 @@ module.exports.default = async function afterPack(context) {
       const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
       pkg.main = 'electron/bootstrap.cjs';
       fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
-      await asar.createPackage(tmpDir, asarPath0);
+      // 渲染层加密必须在重打包【之前】(2026-09-16 二轮白屏实锤): 在 extractAll 出的 tmpDir 里做 js→enc + loader 注入,
+      // 重打包后 asar 头才会带 .enc 条目 —— 运行时 loader 的 XHR 经 asar 虚拟路径才能解析到物理 .unpacked 文件。
+      // (重打包后再改物理文件 = asar 头条目名(.js)与物理文件名(.enc)脱节 → XHR 404 → 白屏)
+      const tmpAssets = path.join(tmpDir, 'dist', 'assets');
+      if (fs.existsSync(tmpAssets)) {
+        let tEnc = 0;
+        for (const f of fs.readdirSync(tmpAssets)) {
+          if (f.endsWith('.js')) {
+            const p = path.join(tmpAssets, f);
+            fs.writeFileSync(p + '.enc', rc4(fs.readFileSync(p), key));
+            fs.unlinkSync(p);
+            tEnc++;
+          }
+        }
+        const tmpHtml = path.join(tmpDir, 'dist', 'index.html');
+        if (fs.existsSync(tmpHtml)) {
+          let html = fs.readFileSync(tmpHtml, 'utf8');
+          if (!html.includes('boot-decrypt')) {
+            const loader = fs.readFileSync(path.join(__dirname, 'renderer-loader.html'), 'utf8')
+              .replace('__KEY_SEED__', SEED);
+            html = html.replace(
+              /<script type="module" crossorigin src="\.\/assets\/(index-[^"]+\.js)"><\/script>/,
+              `<script data-src="./assets/$1.enc">\n${loader}\n</script>`
+            );
+            fs.writeFileSync(tmpHtml, html);
+          }
+        }
+        console.log(`[afterPack-encrypt] 渲染层(重打包前): 新加密${tEnc} + loader 已注入`);
+      }
+      // unpacked 标记必须在重打包时保留: dist/** 留在 asar.unpacked(渲染层加载走 unpacked 目录),
+      // 否则渲染层大JS被打回 asar 内部 = 明文裸奔(2026-09-16 一轮实锤)。
+      // 实测本版 @electron/asar: unpackDir 是 startsWith 语义的单模式串,'a|b' 不支持 —— 只传 'dist'。
+      await asar.createPackageWithOptions(tmpDir, asarPath0, {
+        unpack: '**/*.enc',
+        unpackDir: 'dist',
+      });
       console.log('[afterPack-encrypt] 主进程加密完成(bootstrap入口)');
       fs.rmSync(tmpDir, { recursive: true, force: true });
     } else {
