@@ -399,6 +399,17 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => applyTheme(activeTheme, resolvedMode), [activeTheme, resolvedMode])
 
+  // 全局字号缩放: 启动即恢复(不依赖设置页挂载)。默认1.25,用户在设置页可调0.85-1.5。
+  // 老用户已存过值(<1.25)保持原选择不动;新用户/无存值用1.25。
+  useEffect(() => {
+    let scale = 1.25
+    try {
+      const stored = Number(window.localStorage.getItem('qiji-font-scale'))
+      if (Number.isFinite(stored) && stored > 0) scale = Math.min(1.5, Math.max(0.85, stored))
+    } catch {}
+    document.documentElement.style.setProperty('--dt-base-size', `${(0.875 * scale).toFixed(3)}rem`)
+  }, [])
+
   // Keep the native window appearance pinned to the app theme (vibrancy
   // material, titlebar, new-window pre-paint background).
   useEffect(() => syncNativeTheme(mode, renderedMode), [mode, renderedMode])

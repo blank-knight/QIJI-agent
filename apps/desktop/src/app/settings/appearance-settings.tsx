@@ -261,7 +261,7 @@ export function AppearanceSettings() {
   const [fontPreset, setFontPreset] = useState(() => readStoredFontPref() ?? 'theme-default')
   const [wallpaper, setWallpaper] = useState<UserWallpaperPref | null>(() => readWallpaperPref())
   const [fontScale, setFontScale] = useState<number>(() => {
-    try { return Number(window.localStorage.getItem('qiji-font-scale')) || 1 } catch { return 1 }
+    try { return Number(window.localStorage.getItem('qiji-font-scale')) || 1.25 } catch { return 1.25 }
   })
 
   // 启动时恢复用户字体（应用一打开就生效，不用先访问设置页）
@@ -585,7 +585,7 @@ export function AppearanceSettings() {
               <div className="flex items-center gap-3">
                 <input
                   className="h-1 w-40 cursor-pointer appearance-none rounded-full bg-(--ui-stroke-tertiary)"
-                  max={1.25}
+                  max={1.5}
                   min={0.85}
                   onChange={event => { setFontScale(Number(event.target.value)); triggerHaptic('selection') }}
                   step={0.05}
@@ -598,7 +598,7 @@ export function AppearanceSettings() {
                 </span>
               </div>
             }
-            description="全局界面字号（85%–125%，影响所有文字）"
+            description="全局界面字号（85%–150%，影响所有文字，默认125%）"
             title="字体大小"
           />
 
