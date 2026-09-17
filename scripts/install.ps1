@@ -2088,13 +2088,14 @@ function Install-Repository {
                     Move-Item $extractedDir.FullName $InstallDir -Force
                     Write-Success "Downloaded and extracted"
 
-                    # Initialize git repo so updates work later
+                    # Initialize git repo (no origin — 0.19.2: the gitee mirror is
+                    # private; an origin remote on end-user machines triggers GCM
+                    # credential popups. Updates ship as signed Setup.exe instead.)
                     Push-Location $InstallDir
                     git -c credential.helper= -c windows.appendAtomically=false init 2>$null
                     git -c credential.helper= -c windows.appendAtomically=false config windows.appendAtomically false 2>$null
-                    git -c credential.helper= remote add origin $RepoUrlHttps 2>$null
                     Pop-Location
-                    Write-Success "Git repo initialized for future updates"
+                    Write-Success "Git repo initialized (no remote — package updates only)"
 
                     $cloneSuccess = $true
                 }
