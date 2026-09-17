@@ -220,6 +220,7 @@ export interface Translations {
       apiKeys: string
       keysTools: string
       keysSettings: string
+      market: string
       mcp: string
       archivedChats: string
       about: string

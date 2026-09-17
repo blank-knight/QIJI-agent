@@ -280,6 +280,7 @@ export const zh: Translations = {
       mcp: 'MCP',
       archivedChats: '已归档对话',
       about: '关于',
+      market: '主题市场',
       notifications: '通知',
       account: '个人中心'
     },

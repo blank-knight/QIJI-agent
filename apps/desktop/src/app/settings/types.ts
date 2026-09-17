@@ -9,6 +9,7 @@ export type SettingsView =
   | 'account'
   | 'gateway'
   | 'keys'
+  | 'market'
   | 'mcp'
   | 'notifications'
   | 'providers'

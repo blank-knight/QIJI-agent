@@ -197,6 +197,7 @@ export const ja = defineLocale({
       mcp: 'MCP',
       archivedChats: 'アーカイブ済みチャット',
       about: '情報',
+      market: 'テーママーケット',
       notifications: '通知'
     },
     notifications: {

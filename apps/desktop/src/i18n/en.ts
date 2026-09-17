@@ -285,6 +285,7 @@ export const en: Translations = {
       mcp: 'MCP',
       archivedChats: 'Archived Chats',
       about: 'About',
+      market: 'Theme Market',
       notifications: 'Notifications',
       account: 'Account'
     },

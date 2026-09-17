@@ -273,12 +273,13 @@ function Stage-VendorFiles {
                 git -c credential.helper= -c windows.appendAtomically=false branch -m main 2>&1 | Out-Null
             }
 
+            # 0.19.2: no origin remote on installed machines. The update check
+            # runs `git ls-remote origin` against a PRIVATE gitee mirror, which
+            # triggers GCM credential popups for end users (no credentials
+            # exist). Client updates ship as signed full Setup.exe packages via
+            # fa_version; the git remote channel is intentionally severed.
             $gitStep = "remote"
-            git -c credential.helper= remote add origin "https://gitee.com/wintao-storm/QIJI-agent.git" 2>&1 | Out-Null
-            # remote add fails if already exists; that's fine
-            if ($LASTEXITCODE -ne 0) {
-                git -c credential.helper= remote set-url origin "https://gitee.com/wintao-storm/QIJI-agent.git" 2>&1 | Out-Null
-            }
+            git -c credential.helper= remote remove origin 2>&1 | Out-Null
 
             $gitStep = "add+commit"
             git -c credential.helper= -c windows.appendAtomically=false add pyproject.toml hermes_cli/__init__.py AGENTS.md README.md 2>&1 | Out-Null

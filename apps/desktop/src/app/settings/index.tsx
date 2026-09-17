@@ -6,7 +6,7 @@ import { Tip } from '@/components/ui/tooltip'
 import { getHermesConfigDefaults, getHermesConfigRecord, saveHermesConfig } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { triggerHaptic } from '@/lib/haptics'
-import { Archive, Bell, Globe, Info, KeyRound, Settings2, Sparkles, Users, Wrench, Zap } from '@/lib/icons'
+import { Archive, Bell, Globe, Info, KeyRound, Palette, Settings2, Sparkles, Users, Wrench, Zap } from '@/lib/icons'
 import { notifyError } from '@/store/notifications'
 import { $auth } from '@/store/auth'
 
@@ -22,6 +22,7 @@ import { ConfigSettings } from './config-settings'
 import { SECTIONS } from './constants'
 import { GatewaySettings } from './gateway-settings'
 import { KEYS_VIEWS, KeysSettings, type KeysView } from './keys-settings'
+import { MarketSettings } from './market-settings'
 import { McpSettings } from './mcp-settings'
 import { NotificationsSettings } from './notifications-settings'
 import { PROVIDER_VIEWS, ProvidersSettings, type ProviderView } from './providers-settings'
@@ -33,6 +34,7 @@ const SETTINGS_VIEWS: readonly SettingsViewId[] = [
   'providers',
   'gateway',
   'keys',
+  'market',
   'mcp',
   'notifications',
   'sessions',
@@ -184,6 +186,12 @@ export function SettingsView({ gateway, onClose, onConfigSaved, onMainModelChang
             </>
           )}
           <OverlayNavItem
+            active={activeView === 'market'}
+            icon={Palette}
+            label={t.settings.nav.market}
+            onClick={() => setActiveView('market')}
+          />
+          <OverlayNavItem
             active={activeView === 'mcp'}
             icon={Wrench}
             label={t.settings.nav.mcp}
@@ -260,6 +268,8 @@ export function SettingsView({ gateway, onClose, onConfigSaved, onMainModelChang
             <ProvidersSettings onClose={onClose} onViewChange={setProviderView} view={providerView} />
           ) : activeView === 'keys' ? (
             <KeysSettings view={keysView} />
+          ) : activeView === 'market' ? (
+            <MarketSettings />
           ) : activeView === 'mcp' ? (
             <McpSettings gateway={gateway} onConfigSaved={onConfigSaved} />
           ) : activeView === 'notifications' ? (

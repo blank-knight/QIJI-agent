@@ -1031,53 +1031,8 @@ canvas {
 }
 
 [data-slot='composer-root'] {
-  /* +10px width compensates the 5px side padding so the visible surface keeps
-     its exact width/position — the inline padding is just transparent grab space
-     for the peel-out drag, matching the floating composer's 5px platform. */
-  width: calc(min(var(--composer-width), calc(100% - 2rem)) + 10px);
-  padding-inline: 5px;
+  width: min(var(--composer-width), calc(100% - 2rem));
   padding-bottom: var(--composer-shell-pad-block-end);
-}
-
-/* Popped-out (floating) composer: compact width + an even 5px transparent grab
-   platform. The higher-specificity selector resets the base rule's padding-bottom
-   so the inset is equal on all four sides (not 5px sides / shell-pad bottom). */
-[data-slot='composer-root'][data-popped-out] {
-  width: var(--composer-popout-width, 24rem);
-  max-width: calc(100vw - 1.5rem);
-  padding: 5px;
-}
-
-/* Dock glow intensity scale — dimmer in light mode (the primary glow reads
-   much stronger over a light backdrop), full strength in dark mode. */
-:root {
-  --dock-glow-scale: 0.55;
-}
-
-.dark {
-  --dock-glow-scale: 1;
-}
-
-/* Drag-region hatch — a diagonal ///// pattern (Photoshop-style) that fades into
-   the transparent grab margin on hover (and stays while dragging) to signal the
-   composer is draggable. Inherits the root radius so it clips to the corners. */
-[data-slot='composer-drag-region'] {
-  /* Hatch frame radius (tuned by hand). */
-  border-radius: 0.4rem;
-  opacity: 0;
-  transition: opacity 150ms ease;
-  background-image: repeating-linear-gradient(
-    -45deg,
-    color-mix(in srgb, var(--ui-text-tertiary) 38%, transparent) 0,
-    color-mix(in srgb, var(--ui-text-tertiary) 38%, transparent) 1px,
-    transparent 1px,
-    transparent 3.5px
-  );
-}
-
-[data-slot='composer-drag-region']:hover,
-[data-slot='composer-drag-region'][data-dragging] {
-  opacity: 0.33;
 }
 
 [data-slot='composer-root'] > .pointer-events-none {

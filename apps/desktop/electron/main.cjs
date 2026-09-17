@@ -1735,6 +1735,23 @@ async function checkUpdates() {
   const updateRoot = resolveUpdateRoot()
   let { branch } = readDesktopUpdateConfig()
 
+  // 0.19.2 (Qiji): git-channel update checks are permanently disabled. The
+  // runtime repo's origin points at a PRIVATE gitee mirror; anonymous
+  // `git ls-remote` triggers GCM credential-GUI popups on end-user machines.
+  // Client updates ship as signed Setup.exe packages via the fa_version
+  // channel ("关于 → 检查更新"). Severe the git path at the source: no git
+  // child process is ever spawned from here, so no popup is possible.
+  rememberLog('[updates] git channel disabled (qiji build); fa_version is the update path')
+  return {
+    supported: false,
+    branch,
+    currentBranch: branch,
+    error: 'git-channel-disabled',
+    message: '客户端更新走完整安装包通道',
+    hermesRoot: updateRoot,
+    fetchedAt: Date.now()
+  }
+
   // Guard: test if git.exe actually works. Security software (360, Huorong,
   // Defender) can inject DLLs that crash git.exe with
   // STATUS_ENTRYPOINT_NOT_FOUND (0xC0000139, exit code -1073741511).
