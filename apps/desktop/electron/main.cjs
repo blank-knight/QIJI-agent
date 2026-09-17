@@ -3059,6 +3059,21 @@ function createActiveBackend(dashboardArgs) {
   }
 }
 
+// qiji 0.19.2: 启动自清——升级用户的装机仓库还挂着私有 gitee 远端(新装机已不设)。
+// 任何 git fetch/ls-remote 对私有仓都要认证 = GCM 弹窗根源。静默移除,幂等,失败无害。
+async function qijiStripLegacyOrigin() {
+  try {
+    const root = resolveUpdateRoot()
+    if (!directoryExists(path.join(root, '.git'))) return
+    const probe = await runGit(['remote', 'get-url', 'origin'], { cwd: root })
+    if (probe.code !== 0 || !/gitee\.com\/wintao-storm/i.test(probe.stdout || '')) return
+    await runGit(['remote', 'remove', 'origin'], { cwd: root })
+    rememberLog('[qiji] removed legacy private-gitee origin from runtime repo (popup fix)')
+  } catch (e) {
+    rememberLog(`[qiji] legacy-origin cleanup skipped: ${e?.message || e}`)
+  }
+}
+
 // qiji: 兜底——从 Windows 用户环境变量(注册表)读 GLM_API_KEY，避免终端继承链断裂。
 // 启动时算一次，所有 dashboard/gateway spawn 共用。
 function qijiRegistryEnvFallback() {
@@ -3074,7 +3089,21 @@ function qijiRegistryEnvFallback() {
     return {}
   }
 }
-const QIJI_ENV_FALLBACK = qijiRegistryEnvFallback()
+const QIJI_ENV_FALLBACK = {
+  ...qijiRegistryEnvFallback(),
+  // Qiji 0.19.2: belt-and-braces — any stray git invocation from the runtime
+  // must fail fast instead of popping a GCM credential GUI on user machines.
+  // GCM's GUI ignores GIT_TERMINAL_PROMPT; only an EMPTY credential.helper
+  // (via GIT_CONFIG_SYSTEM below) plus GCM_INTERACTIVE=never kills the popup.
+  QIJI_NO_UPDATE_CHECK: '1',
+  GIT_TERMINAL_PROMPT: '0',
+  GCM_INTERACTIVE: 'never',
+  GIT_CONFIG_COUNT: '2',
+  GIT_CONFIG_KEY_0: 'credential.helper',
+  GIT_CONFIG_VALUE_0: '',
+  GIT_CONFIG_KEY_1: 'credential.guiPrompt',
+  GIT_CONFIG_VALUE_1: 'false'
+}
 
 function resolveHermesBackend(dashboardArgs) {
   // 1. Explicit override -- HERMES_DESKTOP_HERMES_ROOT points at a developer
@@ -8238,6 +8267,7 @@ app.whenReady().then(() => {
   ensureWslWindowsFonts()
   configureSpellChecker()
   registerPowerResumeListeners()
+  void qijiStripLegacyOrigin()
   createWindow()
 
   // System tray: on Windows/Linux, create a tray icon so the user can

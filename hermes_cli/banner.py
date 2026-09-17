@@ -301,7 +301,16 @@ def check_for_updates() -> Optional[int]:
     Returns the number of commits behind, ``UPDATE_AVAILABLE_NO_COUNT`` (-1)
     if behind but the count is unknown, ``0`` if up-to-date, or ``None`` if
     the check failed or doesn't apply. Cached for 6 hours.
+
+    Qiji builds: this check is permanently disabled. The runtime repo's
+    origin points at a PRIVATE mirror; anonymous ``git fetch``/``ls-remote``
+    triggers GCM credential-GUI popups on end-user machines. Client updates
+    ship as signed Setup.exe packages via the fa_version channel. Returning
+    None renders "no update" everywhere (banner, TUI, dashboard) without
+    spawning any git child process.
     """
+    if os.environ.get("QIJI_NO_UPDATE_CHECK"):
+        return None
     hermes_home = get_hermes_home()
     cache_file = hermes_home / ".update_check"
     embedded_rev = os.environ.get("HERMES_REVISION") or None

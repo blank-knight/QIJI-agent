@@ -1915,6 +1915,9 @@ export function ChatBar({
         <ComposerPrimitive.Root
           className={cn(
             'group/composer z-30 overflow-visible rounded-2xl',
+            state.introCenter
+              ? 'absolute top-[42%] left-1/2 w-[min(var(--composer-width),calc(100%-2rem))] max-w-full -translate-x-1/2 pt-2'
+              : 'absolute bottom-0 left-1/2 w-[min(var(--composer-width),calc(100%-2rem))] max-w-full -translate-x-1/2 pt-2 pb-[var(--composer-shell-pad-block-end)]'
           )}
 
           data-drag-active={dragActive ? '' : undefined}

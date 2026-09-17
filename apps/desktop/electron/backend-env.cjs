@@ -90,6 +90,10 @@ function buildDesktopBackendEnv({
   const key = pathEnvKey(currentEnv, platform)
 
   return {
+    // Qiji 0.19.2: disable the runtime's git update check (banner.py gates on
+    // this env var). The runtime repo's origin is a private mirror; any git
+    // fetch/ls-remote spawns a GCM credential popup on end-user machines.
+    QIJI_NO_UPDATE_CHECK: '1',
     PYTHONPATH: appendUniquePathEntries([...pythonPathEntries, currentPythonPath], { delimiter }),
     [key]: buildDesktopBackendPath({
       hermesHome,
