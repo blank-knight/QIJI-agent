@@ -25,7 +25,7 @@ import {
   touchSecondaryGateways
 } from '@/store/gateway'
 import { notify, notifyError } from '@/store/notifications'
-import { $activeGatewayProfile, normalizeProfileKey, touchActiveGatewayBackend } from '@/store/profile'
+import { $activeGatewayProfile, enforceAccountProfileLock, normalizeProfileKey, touchActiveGatewayBackend } from '@/store/profile'
 import {
   $activeSessionId,
   $attentionSessionIds,
@@ -456,6 +456,10 @@ export function useGatewayBoot({
           message: translateNow('boot.steps.loadingSessions'),
           progress: 99
         })
+        // qiji 账号隔离：boot 收尾兜底——已登录账号强制关掉"所有 profile"
+        // 聚合视图（localStorage 粘性开关可能在锁定前留下），会话列表刷新
+        // 前执行，确保首屏就不拉跨账号数据。
+        enforceAccountProfileLock()
         await callbacksRef.current.refreshSessions()
         completeDesktopBoot()
         bootCompleted = true

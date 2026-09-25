@@ -13,9 +13,15 @@ import { BackendError, backendFetch } from '@/lib/backend'
 import { loadSavedAccounts, removeSavedAccount, saveAccount, type SavedAccount } from '@/lib/saved-accounts'
 import { registerAccountProfile } from '@/lib/account-profile'
 import { applyAgentModelConfig, extractAgentModelConfig } from '@/lib/agent-model-config'
-import { selectProfile } from '@/store/profile'
+import { $activeGatewayProfile, enforceAccountProfileLock, normalizeProfileKey, selectProfile } from '@/store/profile'
 import { notify } from '@/store/notifications'
 import { $auth, devSkipLogin, login, register } from '@/store/auth'
+import {
+  $brandPreview,
+  $oemBrand,
+  brandDisplayName,
+  type OemBrand
+} from '@/store/oem-brand'
 
 import { cn } from '../lib/utils'
 
@@ -30,6 +36,11 @@ export interface LoginOverlayProps {
 export function LoginOverlay({ onLoggedIn }: LoginOverlayProps) {
   const auth = useStore($auth)
   const { t } = useI18n()
+  const persistedBrand = useStore($oemBrand)
+  const previewBrand = useStore($brandPreview)
+  // 登录页生效品牌：预查结果 > 上次登录持久化的品牌 > 官方默认
+  const activeBrand: OemBrand = previewBrand ?? (persistedBrand.name || persistedBrand.logo ? persistedBrand : { name: '', logo: '' })
+  const activeName = brandDisplayName(activeBrand)
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -37,6 +48,17 @@ export function LoginOverlay({ onLoggedIn }: LoginOverlayProps) {
   const [regPassword, setRegPassword] = useState('')
   const [inviteCode, setInviteCode] = useState('')
   const [error, setError] = useState<string | null>(null)
+  // qiji 0.19.3-fix: 因 401（登录过期）被弹回登录页时给出原因，不再"没头没脑"。
+  // 挂载时读取一次性标记，立即清掉（同一会话内二次打开登录页不重复提示）。
+  const [expiredNotice] = useState(() => {
+    try {
+      const hit = window.sessionStorage.getItem('qiji-auth-expired') === '1'
+      if (hit) window.sessionStorage.removeItem('qiji-auth-expired')
+      return hit
+    } catch {
+      return false
+    }
+  })
   const [busy, setBusy] = useState(false)
   const [forgotOpen, setForgotOpen] = useState(false)
   const [forgotTip, setForgotTip] = useState<string | null>(null)
@@ -73,6 +95,32 @@ export function LoginOverlay({ onLoggedIn }: LoginOverlayProps) {
       mobileRef.current?.focus()
     }
   }, [mode])
+
+  // OEM 品牌预查：用户名(手机号)输入停顿/失焦后查贴牌品牌，登录界面即时换肤。
+  // 用户名=手机号（注册时后端以 mobile 作 username）。失败静默——保持当前品牌。
+  useEffect(() => {
+    const m = username.trim()
+    if (!/^1\d{10}$/.test(m)) {
+      $brandPreview.set(null)
+      return
+    }
+    let cancelled = false
+    const timer = setTimeout(() => {
+      backendFetch<{ brand: { name: string; logo: string } }>('/api/client/v1/auth/brand?mobile=' + encodeURIComponent(m))
+        .then(res => {
+          if (cancelled) return
+          const b = res.data?.brand
+          $brandPreview.set(b ? { name: b.name || '', logo: b.logo || '' } : { name: '', logo: '' })
+        })
+        .catch(() => {
+          // 网络失败：不更新预览，沿用持久化品牌/默认
+        })
+    }, 500)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [username])
 
   // 自动填充上次登录的账号（有记住密码则一并填充并勾选）
   useEffect(() => {
@@ -187,7 +235,18 @@ export function LoginOverlay({ onLoggedIn }: LoginOverlayProps) {
       // 切换账号时界面闪烁的根源。$activeGatewayProfile 订阅会自动完成
       // REST 路由切换与缓存失效；主进程按需拉起目标 profile 的后端。
       const accountProfile = registerAccountProfile(u)
-      const currentProfile = await window.hermesDesktop?.profile?.get?.().then(r => r?.profile ?? null).catch(() => null)
+      // qiji 账号隔离：登录即锁定。关掉可能残留的"所有 profile"聚合视图
+      // （localStorage 粘性开关），跨账号会话/产物从此不可见。
+      enforceAccountProfileLock()
+      // 比对对象必须是渲染层的 $activeGatewayProfile（网关实际所在），而不是
+      // 主进程 profile.get()（持久化的启动 profile）。后者在多账号轮流登录
+      // 时会"记住"上上次登录的账号：登录 test_user（热切到它）→ 登录 5555，
+      // profile.get 仍返回 test_user 时代留下的旧值/或注册 5555 时 profile.set
+      // 写入的持久值，误判"已在目标 profile"→ 跳过 selectProfile → 界面、
+      // 会话列表、REST 路由全部滞留上一个账号（日志实证：切 5555 时从未
+      // spawn acc_15923005555 的后端）。$activeGatewayProfile 才是每次切换
+      // 都同步更新的真值；不等才切。
+      const currentProfile = normalizeProfileKey($activeGatewayProfile.get())
 
       if (accountProfile !== currentProfile) {
         selectProfile(accountProfile)
@@ -264,10 +323,13 @@ export function LoginOverlay({ onLoggedIn }: LoginOverlayProps) {
       const data = await register(m, p, inviteCode.trim() || undefined)
 
       // 用户隔离（方案A）：注册即自动登录——切到该账号的专属 profile。
+      // 比对渲染层 $activeGatewayProfile（同登录路径的理由：主进程的
+      // profile.get() 是持久化旧值，会误判跳过切换），走池化热切换。
       const accountProfile = registerAccountProfile(m)
-      const currentProfile = await window.hermesDesktop?.profile?.get?.().then(r => r?.profile ?? null).catch(() => null)
+      const currentProfile = normalizeProfileKey($activeGatewayProfile.get())
       if (accountProfile !== 'default' && accountProfile !== currentProfile) {
-        await window.hermesDesktop?.profile?.set?.(accountProfile).catch(() => undefined)
+        selectProfile(accountProfile)
+        onLoggedIn?.()
         return
       }
 
@@ -318,13 +380,18 @@ export function LoginOverlay({ onLoggedIn }: LoginOverlayProps) {
       )}
     >
       <div className="w-full max-w-sm space-y-8 px-6">
-        {/* Logo + 标题 */}
+        {/* Logo + 标题（OEM：预查/持久化贴牌品牌优先，否则默认硅基Claw） */}
         <div className="flex flex-col items-center gap-4">
-          <BrandMark className="size-20 rounded-lg border border-border/40 shadow-sm p-1" />
-          <h1 className="text-3xl font-bold text-foreground">奇计</h1>
+          <BrandMark className="size-20 rounded-lg border border-border/40 shadow-sm p-1" overrideLogo={activeBrand.logo} />
+          <h1 className="text-3xl font-bold text-foreground">{activeName}</h1>
           <p className="text-base text-(--ui-text-tertiary)">
             {mode === 'login' ? '登录以开始使用' : '注册新账号'}
           </p>
+          {expiredNotice && (
+            <div className="w-full rounded-md bg-(--ui-warning-soft,rgba(234,179,8,0.12)) p-2.5 text-center text-xs leading-5 text-(--ui-text-secondary)">
+              登录已过期（超过 30 天或账号在别处登录），请重新登录
+            </div>
+          )}
         </div>
 
         {mode === 'login' ? (

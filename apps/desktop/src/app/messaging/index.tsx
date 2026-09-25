@@ -27,6 +27,7 @@ import { ListRow } from '../settings/primitives'
 import type { SetStatusbarItemGroup } from '../shell/statusbar-controls'
 
 import { PlatformAvatar, getPlatformDisplayName } from './platform-icon'
+import { brandText } from '@/store/oem-brand'
 
 interface MessagingViewProps extends React.ComponentProps<'section'> {
   setStatusbarItemGroup?: SetStatusbarItemGroup
@@ -546,11 +547,11 @@ const PLATFORM_INTRO: Record<string, string> = {
     'On your Mattermost server, create a bot account or personal access token, then paste the server URL and token here.',
   matrix: 'Sign in to your homeserver with the bot account, then copy the access token, user ID, and homeserver URL.',
   signal:
-    'Run a signal-cli REST bridge somewhere reachable, then point 奇计 at the URL and the registered phone number.',
+    brandText('Run a signal-cli REST bridge somewhere reachable, then point 奇计 at the URL and the registered phone number.'),
   whatsapp:
-    'Start the WhatsApp bridge that ships with 奇计, scan the QR code on first run, then enable the platform.',
+    brandText('Start the WhatsApp bridge that ships with 奇计, scan the QR code on first run, then enable the platform.'),
   bluebubbles:
-    'Run BlueBubbles Server on a Mac with iMessage, expose its API, then point 奇计 at the URL with the server password.',
+    brandText('Run BlueBubbles Server on a Mac with iMessage, expose its API, then point 奇计 at the URL with the server password.'),
   homeassistant:
     'In Home Assistant, open your profile and create a long-lived access token. Paste it here along with your HA URL.',
   email:
@@ -567,7 +568,7 @@ const PLATFORM_INTRO: Record<string, string> = {
     'Run `qiji gateway setup`, select Weixin, then scan and confirm the QR code with a personal WeChat account. 奇计 connects through Tencent\'s iLink Bot API and saves the credentials.',
   qqbot: 'Register an app on the QQ Open Platform (q.qq.com) and copy the App ID and Client Secret.',
   api_server:
-    'Expose 奇计 as an OpenAI-compatible API. Set an auth key, then point Open WebUI / LobeChat / etc. at the host:port.',
+    brandText('Expose 奇计 as an OpenAI-compatible API. Set an auth key, then point Open WebUI / LobeChat / etc. at the host:port.'),
   webhook:
     'Run an HTTP server that other tools (GitHub, GitLab, custom apps) can POST to. Use the secret to verify signatures.'
 }

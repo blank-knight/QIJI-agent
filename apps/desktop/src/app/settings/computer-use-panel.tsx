@@ -8,6 +8,7 @@ import { notify, notifyError } from '@/store/notifications'
 import type { ComputerUseStatus } from '@/types/hermes'
 
 import { Pill } from './primitives'
+import { brandText } from '@/store/oem-brand'
 
 interface ComputerUsePanelProps {
   /** Re-read the parent toolset list after a permission/install change so the
@@ -170,7 +171,7 @@ export function ComputerUsePanel({ onConfiguredChange }: ComputerUsePanelProps) 
         <div className="min-w-0">
           {status.can_grant ? (
             <p className="text-[0.72rem] text-muted-foreground">
-              Grants attach to CuaDriver&apos;s own identity (com.trycua.driver), not 奇计 — so the dialog is
+              Grants attach to CuaDriver&apos;s own identity (com.trycua.driver), not {brandText('奇计')} — so the dialog is
               attributed to the process that drives your Mac.
             </p>
           ) : (

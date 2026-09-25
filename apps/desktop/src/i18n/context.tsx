@@ -1,10 +1,12 @@
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { useStore } from '@nanostores/react'
 
 import { getHermesConfigRecord, type HermesConfigRecord, saveHermesConfig } from '@/hermes'
 
 import { TRANSLATIONS } from './catalog'
 import { DEFAULT_LOCALE, detectSystemLocale, localeConfigValue, normalizeLocale } from './languages'
 import { setRuntimeI18nLocale } from './runtime'
+import { $oemBrand, DEFAULT_BRAND_NAME } from '@/store/oem-brand'
 import type { Locale, Translations } from './types'
 
 export { LOCALE_META } from './languages'
@@ -55,6 +57,41 @@ function toError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error))
 }
 
+/**
+ * OEM 品牌替换后的翻译目录：把每个 locale 的目录按「当前品牌」缓存一份
+ * 深拷贝，字符串/模板函数里的「奇计」/「Qiji」替换为生效品牌名。
+ * 品牌变化（登录贴牌账号/登出）时缓存失效，useMemo 依赖 brandName 触发重渲染。
+ */
+const brandedCatalogCache = new Map<string, Translations>()
+
+function mapTranslationValue(value: unknown, replace: (s: string) => string): unknown {
+  if (typeof value === 'string') return replace(value)
+  if (typeof value === 'function') {
+    return (...args: unknown[]) => replace(String((value as (...a: unknown[]) => string)(...args)))
+  }
+  if (Array.isArray(value)) return value.map(v => mapTranslationValue(v, replace))
+  if (isRecord(value)) {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value)) out[k] = mapTranslationValue(v, replace)
+    return out
+  }
+  return value
+}
+
+function getBrandedTranslations(locale: Locale, brandName: string): Translations {
+  const cacheKey = `${locale}|${brandName}`
+  const cached = brandedCatalogCache.get(cacheKey)
+  if (cached) return cached
+
+  const base = TRANSLATIONS[locale]
+  // 目录文案里的「奇计」是品牌占位符：一律替换为生效品牌名
+  // （官方默认=硅基Claw，贴牌=贴牌名）
+  const replace = (s: string) => s.split('奇计').join(brandName).replace(/\bQiji\b/g, brandName)
+  const branded = mapTranslationValue(base, replace) as Translations
+  brandedCatalogCache.set(cacheKey, branded)
+  return branded
+}
+
 export interface I18nContextValue {
   configLoadError: Error | null
   isLoadingConfig: boolean
@@ -88,6 +125,9 @@ export function I18nProvider({ children, configClient = defaultConfigClient, ini
   const [configLoadError, setConfigLoadError] = useState<Error | null>(null)
   const [saveError, setSaveError] = useState<Error | null>(null)
   const localeRef = useRef(locale)
+  // OEM 品牌：订阅 store，品牌变化 → 翻译目录重映射 → 全界面重渲染
+  const oemBrand = useStore($oemBrand)
+  const brandName = oemBrand.name.trim() || DEFAULT_BRAND_NAME
 
   useEffect(() => {
     localeRef.current = locale
@@ -170,9 +210,9 @@ export function I18nProvider({ children, configClient = defaultConfigClient, ini
       locale,
       saveError,
       setLocale,
-      t: TRANSLATIONS[locale]
+      t: getBrandedTranslations(locale, brandName)
     }),
-    [configLoadError, isLoadingConfig, isSavingLocale, locale, saveError, setLocale]
+    [configLoadError, isLoadingConfig, isSavingLocale, locale, saveError, setLocale, brandName]
   )
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>

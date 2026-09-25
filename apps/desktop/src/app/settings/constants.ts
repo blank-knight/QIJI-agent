@@ -15,6 +15,7 @@ import type { ThemeMode } from '@/themes/context'
 
 import type { DesktopConfigSection } from './types'
 import { defineFieldCopy } from './field-copy'
+import { brandText } from '@/store/oem-brand'
 
 // Provider group definitions used to fold raw env-var names like
 // ``XAI_API_KEY`` into a single "xAI" card with a friendly label, short
@@ -40,8 +41,8 @@ export const CONTROL_TEXT = 'text-xs'
 export const PROVIDER_GROUPS: ProviderPrefix[] = [
   {
     prefix: 'NOUS_',
-    name: '奇计云',
-    description: '奇计托管的 AI 模型服务',
+    name: brandText('奇计云'),
+    description: brandText('奇计托管的 AI 模型服务'),
     docsUrl: 'https://www.aicps.vip/',
     priority: 0
   },

@@ -6,6 +6,7 @@ import { isGatewayReauthRequired, resolveGatewayWsUrl } from '@/lib/gateway-ws-u
 import { $gateway, ensureActiveGatewayOpen, isActivePrimary } from '@/store/gateway'
 import { $activeGatewayProfile } from '@/store/profile'
 import { $gatewayState, setConnection } from '@/store/session'
+import { brandText } from '@/store/oem-brand'
 
 export function useGatewayRequest() {
   const gatewayState = useStore($gatewayState)
@@ -98,7 +99,7 @@ export function useGatewayRequest() {
       const gateway = gatewayRef.current
 
       if (!gateway) {
-        throw new Error('奇计 gateway unavailable')
+        throw new Error(brandText('奇计 gateway unavailable'))
       }
 
       try {

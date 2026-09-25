@@ -1,5 +1,7 @@
 import { type CSSProperties, useState } from 'react'
 
+import { brandText } from '@/store/oem-brand'
+
 import introCopyJsonl from './intro-copy.jsonl?raw'
 
 type IntroCopy = {
@@ -158,7 +160,6 @@ function pickCopy(copies: IntroCopy[], seed = 0): IntroCopy {
 }
 
 const WORDMARK = '奇计'
-
 function resolveCopy(personality?: string, seed?: number): IntroCopy {
   const personalityKey = normalizeKey(personality)
 
@@ -180,10 +181,10 @@ export function Intro({ personality, seed, quickSkills, examples, onPickSkill, o
     >
       <div className="w-full min-w-0">
         <p
-          aria-label={WORDMARK}
+          aria-label={brandText(WORDMARK)}
           className="text-6xl font-bold tracking-[0.08em] text-midground dark:text-foreground/85"
         >
-          {WORDMARK}
+          {brandText(WORDMARK)}
         </p>
 
         <p className="m-0 text-center leading-normal tracking-tight">{copy.body}</p>

@@ -1,3 +1,5 @@
+import { brandText } from '@/store/oem-brand'
+
 /**
  * 技能与工具集中文翻译表
  *
@@ -13,7 +15,7 @@ export const SKILL_ZH: Record<string, { name: string; description: string }> = {
   // autonomous-ai-agents
   'claude-code': { name: 'Claude Code', description: '委派编码任务给 Claude Code（Anthropic CLI 智能体）。用于开发功能、重构、PR 审查和迭代编码。' },
   'codex': { name: 'Codex', description: '委派编码给 OpenAI Codex CLI（功能开发、PR）。' },
-  'hermes-agent': { name: '奇计 Agent 配置', description: '配置、扩展或贡献奇计 Agent。' },
+  'hermes-agent': { name: brandText('奇计 Agent 配置'), description: brandText('配置、扩展或贡献奇计 Agent。') },
   'opencode': { name: 'OpenCode', description: '委派编码给 OpenCode CLI（功能开发、PR 审查）。' },
 
   // creative
@@ -30,6 +32,7 @@ export const SKILL_ZH: Record<string, { name: string; description: string }> = {
   'manim-video': { name: 'Manim 动画', description: 'Manim CE 动画：3Blue1Brown 风格数学/算法视频。' },
   'p5js': { name: 'p5.js', description: 'p5.js 草图：生成艺术、着色器、交互、3D。' },
   'pixel-art': { name: '像素画', description: '像素画，复古调色板（NES、Game Boy、PICO-8）。' },
+  'popular-web-designs': { name: '流行网页设计', description: '54 套真实设计系统（Stripe、Linear、Vercel）的 HTML/CSS 参考实现。' },
   'pretext': { name: 'Pretext', description: '使用 @chenglou/pretext 构建创意浏览器 Demo — 纯文本布局。' },
   'sketch': { name: '草图', description: '一次性 HTML 原型：2-3 个设计变体供对比。' },
   'songwriting-and-ai-music': { name: 'AI 音乐创作', description: '歌曲创作技巧和 Suno AI 音乐提示词。' },
@@ -42,12 +45,12 @@ export const SKILL_ZH: Record<string, { name: string; description: string }> = {
   // devops
   'agent-platform-migration': { name: '智能体平台迁移', description: '在不同 AI 智能体平台之间迁移人格、记忆和上下文。' },
   'cex-arbitrage-scanner': { name: 'CEX 套利扫描', description: '扫描 CEX 资金费率、基差和跨交易所价差，寻找套利机会。' },
-  'hermes-desktop-whitelabel': { name: '桌面端白标', description: '将奇计桌面端重新品牌化为商业产品。涵盖文件修改、主题创建、安装包打包。' },
+  'hermes-desktop-whitelabel': { name: '桌面端白标', description: brandText('将奇计桌面端重新品牌化为商业产品。涵盖文件修改、主题创建、安装包打包。') },
   'hermes-gateway-troubleshooting': { name: '网关故障排查', description: '诊断和修复消息网关问题 — 崩溃、API 限流、多档智能体无响应。' },
-  'multi-agent-telegram-setup': { name: '多智能体 Telegram 配置', description: '在同一台机器上设置多个独立的奇计智能体实例。' },
+  'multi-agent-telegram-setup': { name: '多智能体 Telegram 配置', description: brandText('在同一台机器上设置多个独立的奇计智能体实例。') },
   'webhook-subscriptions': { name: 'Webhook 订阅', description: 'Webhook 订阅：事件驱动的智能体运行。' },
   'kanban-orchestrator': { name: '看板编排者', description: '编排者档位的分解手册和规则，通过看板路由工作。' },
-  'kanban-worker': { name: '看板工作者', description: '奇计看板工作者的注意事项、示例和边缘情况。' },
+  'kanban-worker': { name: '看板工作者', description: brandText('奇计看板工作者的注意事项、示例和边缘情况。') },
 
   // dogfood
   'dogfood': { name: '探索性 QA', description: 'Web 应用探索性 QA：发现 Bug、收集证据、生成报告。' },
@@ -86,7 +89,20 @@ export const SKILL_ZH: Record<string, { name: string; description: string }> = {
   'whisper': { name: 'Whisper 语音', description: 'OpenAI 通用语音识别模型，支持多语言转录。' },
   'clip': { name: 'CLIP', description: 'OpenAI 连接视觉和语言的模型，实现零样本图像分类。' },
   'segment-anything-model': { name: 'SAM 分割', description: 'SAM：通过点、框、掩码进行零样本图像分割。' },
+  'segment-anything': { name: 'SAM 分割', description: 'SAM：通过点、框、掩码进行零样本图像分割。' },
   'stable-diffusion-image-generation': { name: 'Stable Diffusion', description: 'Stable Diffusion 文生图，最新图像生成技术。' },
+  'vllm': { name: 'vLLM 推理', description: 'vLLM：高吞吐 LLM 推理与服务（PagedAttention、连续批处理）。' },
+  'llama-cpp': { name: 'llama.cpp', description: 'llama.cpp：CPU/GPU 本地推理与 GGUF 量化模型运行。' },
+  'lm-evaluation-harness': { name: 'LLM 评测', description: 'lm-eval-harness：跑 LLM 基准测试（MMLU、GSM8K 等）。' },
+  'weights-and-biases': { name: 'Weights & Biases', description: 'W&B：实验追踪、超参扫描与训练指标可视化。' },
+  'audiocraft': { name: 'AudioCraft', description: 'Meta AudioCraft：MusicGen/ AudioGen 音乐与音频生成。' },
+
+  // computer-use / apple（国内 Windows 装机基本用不到，防 fallback 英文）
+  'computer-use': { name: '桌面操控', description: '在后台驱动用户桌面——点击、输入、截屏，自动化 GUI 操作。' },
+  'apple-notes': { name: 'Apple 备忘录', description: '读写 macOS 备忘录（Apple Notes）。' },
+  'apple-reminders': { name: 'Apple 提醒事项', description: '管理 macOS 提醒事项。' },
+  'findmy': { name: '查找', description: '查询 Apple 查找网络中的设备位置。' },
+  'imessage': { name: 'iMessage', description: '通过 macOS 发送 iMessage 消息。' },
 
   // note-taking
   'obsidian': { name: 'Obsidian 笔记', description: '读取、搜索、创建和编辑 Obsidian 知识库中的笔记。' },
@@ -101,15 +117,18 @@ export const SKILL_ZH: Record<string, { name: string; description: string }> = {
   'nano-pdf': { name: 'PDF 编辑', description: '通过 nano-pdf CLI 编辑 PDF 文字/标题（自然语言）。' },
   'notion': { name: 'Notion', description: 'Notion API + ntn CLI：页面、数据库、Markdown、Workers。' },
   'ocr-and-documents': { name: 'OCR 文档', description: '从 PDF/扫描件提取文字（pymupdf、marker-pdf）。' },
-  'teams-meeting-pipeline': { name: 'Teams 会议', description: '通过奇计 CLI 操作 Teams 会议摘要流水线。' },
+  'petdex': { name: '桌面宠物', description: '为智能体安装和选择动画桌面宠物形象。' },
+  'img-toolkit': { name: '图片处理', description: '图片转格式、压缩、加水印等批量处理。' },
+  'pptx-maker': { name: 'PPT 制作', description: '生成和编辑 PowerPoint 演示文稿（python-pptx）。' },
+  'teams-meeting-pipeline': { name: 'Teams 会议', description: brandText('通过奇计 CLI 操作 Teams 会议摘要流水线。') },
 
   // product
   'autonomous-transformer': { name: 'Java 代码转换', description: 'Java 代码转换工具 — 注入无害注解、日志、死代码和结构扩展。' },
   'clawx-administration': { name: 'ClawX 管理', description: '安装、配置、排查和更新 ClawX 桌面端。' },
   'fund-radar': { name: 'FundRadar 基金信号', description: 'FundRadar 基金信号 SaaS — 持仓管理、LLM 分析、博主评分、新闻情绪。' },
   'geo-service': { name: 'GEO 优化服务', description: 'GEO（生成引擎优化）— 监控品牌在 AI 搜索引擎中的可见度。' },
-  'hermes-desktop-rebranding': { name: '桌面端品牌化', description: '将奇计桌面端打包成自有品牌商业产品的完整流程。' },
-  'hermes-desktop-white-label': { name: '桌面端白标', description: '重新品牌化和打包奇计桌面端为商业白标产品。' },
+  'hermes-desktop-rebranding': { name: '桌面端品牌化', description: brandText('将奇计桌面端打包成自有品牌商业产品的完整流程。') },
+  'hermes-desktop-white-label': { name: '桌面端白标', description: brandText('重新品牌化和打包奇计桌面端为商业白标产品。') },
   'videoflow': { name: 'VideoFlow 视频营销', description: 'AI 视频营销工作流引擎 — 商品图片+文案 → 成品短视频。' },
 
   // research
@@ -133,7 +152,7 @@ export const SKILL_ZH: Record<string, { name: string; description: string }> = {
   'ai-coding-governance': { name: 'AI 编码治理', description: '跨项目、跨 AI 工具的代码规则执行体系。' },
   'ai-coding-memory-bank-sdd-workflow': { name: 'Memory Bank 工作流', description: 'AI 编码项目的工作流：Memory Bank + SDD 审查 + G/O/M 提示词演化。' },
   'astro-seo-site': { name: 'Astro SEO 站点', description: '搭建 SEO 优化的静态站点（Astro 5 + Tailwind）。' },
-  'debugging-hermes-tui-commands': { name: 'TUI 命令调试', description: '调试奇计 TUI 斜杠命令：Python、网关、Ink UI。' },
+  'debugging-hermes-tui-commands': { name: 'TUI 命令调试', description: brandText('调试奇计 TUI 斜杠命令：Python、网关、Ink UI。') },
   'hermes-agent-skill-authoring': { name: '技能编写指南', description: '编写 SKILL.md：frontmatter、验证器、文件结构。' },
   'node-inspect-debugger': { name: 'Node.js 调试', description: '通过 --inspect + Chrome DevTools Protocol CLI 调试 Node.js。' },
   'plan': { name: '计划模式', description: '计划模式：编写可执行的 Markdown 计划，不执行代码。' },
@@ -155,11 +174,36 @@ export const SKILL_ZH: Record<string, { name: string; description: string }> = {
   'frontend-real-data-first': { name: '真实数据优先', description: '强制所有代码路径使用真实数据，禁止 Mock/Stub/Demo 数据。' },
 
   // openclaw-imports
-  'memos-memory-guide': { name: 'MemOS 记忆系统', description: '使用 MemOS 本地记忆系统搜索和使用用户的历史对话。' },
+  'memos-memory-guide': { name: 'MemOS 记忆系统', description: '使用 MemOS 本地记忆系统搜索和使用用户的历史对话。brandText(' },
 
   // 奇计预装技能
-  'qiji-geo': { name: 'GEO 平台自动化', description: '用自然语言操作奇计GEO平台：AI可见度诊断、报告查看、关键词管理、爆文复刻。' },
-  'qiji-knowledge-base': { name: '奇计知识库', description: '自动收集品牌资料、产品信息、行业知识。越用越聪明，为GEO诊断和AI写作提供素材。' },
+  ')qiji-geo': { name: 'GEO 平台自动化', description: brandText('用自然语言操作奇计GEO平台：AI可见度诊断、报告查看、关键词管理、爆文复刻。') },
+  'qiji-knowledge-base': { name: brandText('奇计知识库'), description: '自动收集品牌资料、产品信息、行业知识。越用越聪明，为GEO诊断和AI写作提供素材。' },
+
+  // ── GitHub 市场技能(anthropics/skills 等, 0.19.6 补) ──
+  'academy-guide': { name: 'Claude 学院指南', description: '回答 Claude 产品使用问题前先查此技能——从 Claude Academy（Anthropic 官方学习中心）推荐匹配的课程、教程和用例。学习类问题触发；仅强匹配时推荐，不编造课程内容。' },
+  'algorithmic-art': { name: '算法艺术', description: '用 p5.js 创作带种子随机性和参数探索的算法艺术。用户请求创作生成艺术时使用。' },
+  'brand-guidelines': { name: '品牌规范', description: '将 Anthropic 官方品牌色与排版应用到各类产物，赋予 Anthropic 视觉风格。' },
+  'canvas-design': { name: '视觉设计', description: '运用设计哲学创建精美的 .png 图片与 .pdf 文档。用户要求创建视觉作品时使用。' },
+  'claude-api': { name: 'Claude API 参考', description: 'Claude API / Anthropic SDK 参考——模型 ID、定价、参数、流式、工具调用、MCP、缓存、token 计数。' },
+  'discernment-nudge': { name: '判断提醒', description: '在给出实质性回答或草稿后提醒用户核实关键事实，培养批判性使用习惯。' },
+  'doc-coauthoring': { name: '文档共创', description: '引导用户走结构化流程共创文档。写文档、提案、技术方案时使用。' },
+  'docx': { name: 'Word 文档', description: '创建、读取、编辑 .docx Word 文档与模板——目录、表格、图片、样式、页眉页脚。' },
+  'docx-writer': { name: 'Word 生成器', description: 'Word 文档生成与编辑（python-docx）：标题、段落、表格、图片、样式、页眉页脚、目录。' },
+  'frontend-design': { name: '前端设计', description: '构建新 UI 或改造现有 UI 时的独特视觉设计指导——美学方向、排版、配色。' },
+  'internal-comms': { name: '内部通讯', description: '用公司惯用格式写各类内部通讯文档。' },
+  'mcp-builder': { name: 'MCP 构建器', description: '构建高质量 MCP（模型上下文协议）服务器指南——让 LLM 通过设计良好的接口对接外部服务。' },
+  'messaging-setup': { name: '通信渠道配置', description: '一键配置微信/飞书等通信渠道。说“连接微信/连飞书/绑定消息平台”时使用。' },
+  'pdf': { name: 'PDF 文档', description: 'PDF 全套操作：读取、提取文本表格、合并、拆分、页面操作。' },
+  'pptx': { name: 'PPT 演示文稿', description: '创建、读取、编辑 .pptx 演示文稿——母版、布局、图表、表格、演讲备注。' },
+  'skill-creator': { name: '技能创建器', description: '创建新技能、修改改进现有技能、度量技能表现。用户想从零创建技能时使用。' },
+  'slack-gif-creator': { name: 'Slack GIF 创作', description: '创作适配 Slack 的动态 GIF——约束、验证工具、动画概念。' },
+  'template-skill': { name: '技能模板', description: '技能模板——新技能的起点，替换描述后使用。' },
+  'theme-factory': { name: '主题工厂', description: '为幻灯片、文档、报告、HTML 落地页等产物套用主题样式，内置 10 套预设。' },
+  'web-artifacts-builder': { name: 'Web 产物构建器', description: '用 React、Tailwind 等现代前端技术构建复杂的多组件 HTML 产物。' },
+  'webapp-testing': { name: 'Web 应用测试', description: '用 Playwright 交互并测试本地 Web 应用——验证前端功能、调试 UI、端到端测试。' },
+  'xlsx': { name: 'Excel 表格', description: '电子表格为主输入输出的任务：打开、读取、编辑、创建、分析 .xlsx。' },
+  'xlsx-master': { name: 'Excel 高阶', description: '深度 Excel 操作——公式、样式、图表、透视表（openpyxl + pandas）。' },
 }
 
 // ──────────────────────────────────────────────
@@ -201,7 +245,7 @@ export const TOOLSET_ZH: Record<string, { label: string; description: string }> 
   'coding': { label: '💻 编程工具集', description: '编程专用：文件、终端、搜索、文档、技能、委派等' },
   'editor': { label: '📝 编辑器集成', description: '编辑器集成（VS Code、Zed、JetBrains）' },
   'api': { label: '🔌 API 服务器', description: 'OpenAI 兼容的 API 服务器 — 通过 HTTP 访问全部工具' },
-  'hermes-cli': { label: '💻 奇计 CLI', description: '完整交互式 CLI 工具集 — 所有默认工具加定时任务' },
+  'hermes-cli': { label: brandText('💻 奇计 CLI'), description: '完整交互式 CLI 工具集 — 所有默认工具加定时任务' },
   'hermes-cron': { label: '⏰ 定时任务集', description: '默认定时任务工具集' },
   'telegram': { label: '✈️ Telegram 机器人', description: 'Telegram 机器人工具集 — 完整权限（终端有安全检查）' },
   'discord-bot': { label: '🎮 Discord 机器人', description: 'Discord 机器人工具集 — 完整权限（终端有安全检查）' },
@@ -210,7 +254,7 @@ export const TOOLSET_ZH: Record<string, { label: string; description: string }> 
   'signal': { label: '🔒 Signal 机器人', description: 'Signal 机器人工具集 — 加密消息平台' },
   'imessage': { label: '💬 iMessage 机器人', description: 'BlueBubbles iMessage 机器人工具集' },
   'homeassistant-bot': { label: '🏠 HA 机器人', description: 'Home Assistant 机器人工具集 — 智能家居事件监控' },
-  'email': { label: '📧 邮件机器人', description: '邮件机器人工具集 — 通过邮件与奇计交互（IMAP/SMTP）' },
+  'email': { label: '📧 邮件机器人', description: brandText('邮件机器人工具集 — 通过邮件与奇计交互（IMAP/SMTP）') },
   'mattermost': { label: '💬 Mattermost 机器人', description: 'Mattermost 机器人工具集 — 自托管团队消息' },
   'matrix': { label: '🔐 Matrix 机器人', description: 'Matrix 机器人工具集 — 去中心化加密消息' },
   'dingtalk': { label: '🔔 钉钉机器人', description: '钉钉机器人工具集 — 企业消息平台' },
@@ -220,6 +264,7 @@ export const TOOLSET_ZH: Record<string, { label: string; description: string }> 
 // 分类翻译
 // ──────────────────────────────────────────────
 export const CATEGORY_ZH: Record<string, string> = {
+  'market': '市场技能',
   'general': '通用',
   'autonomous-ai-agents': 'AI 智能体',
   'creative': '创意',

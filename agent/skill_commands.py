@@ -242,6 +242,44 @@ def _inject_skill_config(loaded_skill: dict[str, Any], parts: list[str]) -> None
         pass  # Non-critical — skill still loads without config injection
 
 
+def _skill_invocation_language_note() -> str:
+    """Language guard injected into skill-invocation scaffolding.
+
+    Skill bodies are mostly English; without a guard, a bare invocation (no
+    user instruction) gives the model an almost-English context and it
+    replies in English — wrong for zh-first deployments. Driven by
+    ``display.language`` from config.yaml (HERMES_LANGUAGE env overrides).
+    Returns "" for en (no extra tokens, upstream behavior preserved).
+    """
+    try:
+        from agent.i18n import get_language
+        lang = get_language()
+    except Exception:
+        return ""
+    if not lang or lang == "en":
+        return ""
+    names = {
+        "zh": "Simplified Chinese (简体中文)",
+        "zh-hant": "Traditional Chinese (繁體中文)",
+        "ja": "Japanese",
+        "de": "German",
+        "es": "Spanish",
+        "fr": "French",
+        "tr": "Turkish",
+        "uk": "Ukrainian",
+    }
+    lang_name = names.get(lang)
+    if not lang_name:
+        return ""
+    return (
+        f"[Language note: The user's UI language is {lang_name}. Respond to the "
+        f"user in {lang_name}, regardless of the language of this skill's "
+        f"documentation. Do NOT quote, translate, or recite the skill's content "
+        f"back to the user — acknowledge the skill briefly in one short "
+        f"sentence, then ask for the file/URL or details you need to proceed.]"
+    )
+
+
 def _build_skill_message(
     loaded_skill: dict[str, Any],
     skill_dir: Path | None,
@@ -341,6 +379,13 @@ def _build_skill_message(
     if runtime_note:
         parts.append("")
         parts.append(f"[Runtime note: {runtime_note}]")
+
+    # Language guard last: keeps the scaffolding header markers byte-identical
+    # (memory extraction depends on them) while steering the reply language.
+    lang_note = _skill_invocation_language_note()
+    if lang_note:
+        parts.append("")
+        parts.append(lang_note)
 
     return "\n".join(parts)
 

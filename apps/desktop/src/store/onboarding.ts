@@ -15,6 +15,7 @@ import {
 import { evaluateRuntimeReadiness, type RuntimeReadinessResult } from '@/lib/runtime-readiness'
 import { notify, notifyError } from '@/store/notifications'
 import type { ModelOptionProvider, OAuthProvider, OAuthStartResponse } from '@/types/hermes'
+import { brandText } from '@/store/oem-brand'
 
 type PkceStart = Extract<OAuthStartResponse, { flow: 'pkce' }>
 type DeviceStart = Extract<OAuthStartResponse, { flow: 'device_code' }>
@@ -192,7 +193,7 @@ async function checkRuntime(ctx: OnboardingContext): Promise<RuntimeReadinessRes
 }
 
 function notifyReady(provider: string) {
-  notify({ kind: 'success', title: '奇计 is ready', message: `${provider} connected.` })
+  notify({ kind: 'success', title: brandText('奇计 is ready'), message: `${provider} connected.` })
 }
 
 // Human-friendly labels for tools auto-routed through the Nous Tool Gateway,
@@ -363,8 +364,8 @@ function providerResolutionFailure(reason: null | string) {
   const detail = reason?.trim()
 
   return detail
-    ? `Connected, but 奇计 still cannot resolve a usable provider. ${detail}`
-    : 'Connected, but 奇计 still cannot resolve a usable provider.'
+    ? brandText(`Connected, but 奇计 still cannot resolve a usable provider. ${detail}`)
+    : brandText('Connected, but 奇计 still cannot resolve a usable provider.')
 }
 
 async function refreshProviders() {
@@ -726,7 +727,7 @@ export async function recheckExternalSignin(ctx: OnboardingContext) {
       provider,
       message:
         reason?.trim() ||
-        `奇计 still cannot reach ${provider.name}. Run \`${provider.cli_command}\` in a terminal first.`
+        brandText(`奇计 still cannot reach ${provider.name}. Run \`${provider.cli_command}\` in a terminal first.`)
     })
   )
 }
@@ -841,7 +842,7 @@ export async function saveOnboardingLocalEndpoint(baseUrl: string, apiKey: strin
     if (!runtime.ready) {
       const detail = (runtime.reason ?? '').trim()
 
-      return { ok: false, message: detail || `Saved, but 奇计 still cannot reach ${url}.` }
+      return { ok: false, message: detail || brandText(`Saved, but 奇计 still cannot reach ${url}.`) }
     }
 
     notifyReady('Local / custom endpoint')

@@ -2035,6 +2035,7 @@ export const ja = defineLocale({
     regenerateFailed: '再生成に失敗しました',
     editFailed: '編集に失敗しました',
     resumeFailed: '再開に失敗しました',
+    resumeDeniedAccount: 'このセッションは現在のアカウントのものではありません。アクセスをブロックしました。',
     resumeStrandedTitle: 'このセッションを読み込めませんでした',
     resumeStrandedBody: 'このセッションへの接続に失敗し、自動再試行も停止しました。ゲートウェイが実行中か確認してから、もう一度お試しください。',
     resumeRetry: '再試行',

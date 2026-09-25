@@ -70,6 +70,42 @@ def generate_title(
     user_snippet = user_message[:500] if user_message else ""
     assistant_snippet = assistant_response[:500] if assistant_response else ""
 
+    # Slash-skill turns arrive as model-facing scaffolding: the first ~500
+    # chars are the "[IMPORTANT: The user has invoked ...]" header + skill
+    # body, NOT what the user typed. Feeding that to the title LLM leaks the
+    # English scaffolding into session titles (and memory). Strip it back to
+    # the user's actual instruction; bare invocations (no instruction) fall
+    # back to the skill name extracted from the header so the title still
+    # describes the conversation topic.
+    try:
+        from agent.skill_commands import (
+            _SKILL_INVOCATION_PREFIX,
+            extract_user_instruction_from_skill_message,
+        )
+
+        if user_snippet.startswith(_SKILL_INVOCATION_PREFIX):
+            extracted = extract_user_instruction_from_skill_message(user_snippet)
+            if extracted:
+                user_snippet = extracted[:500]
+            else:
+                # Bare invocation — recover the skill name from the header.
+                import re as _re
+
+                m = _re.match(
+                    r'^\[IMPORTANT: The user has invoked the "([^"]+)"', user_snippet
+                )
+                if m:
+                    try:
+                        from agent.i18n import get_language as _gl
+                        prefix = "使用技能 " if _gl().startswith("zh") else "Skill: "
+                    except Exception:
+                        prefix = "使用技能 "
+                    user_snippet = (prefix + m.group(1))[:500]
+                else:
+                    user_snippet = ""
+    except Exception:
+        pass
+
     language = _title_language()
     prompt = _TITLE_PROMPT_PINNED_LANGUAGE.format(language=language) if language else _TITLE_PROMPT
 

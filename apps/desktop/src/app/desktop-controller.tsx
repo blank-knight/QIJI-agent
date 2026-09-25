@@ -760,7 +760,11 @@ export function DesktopController() {
     // already shows the previous profile's model.
     void refreshCurrentModel(true)
     void refreshActiveProfile()
-  }, [activeGatewayProfile, refreshCurrentModel])
+    // qiji 账号切换：$profileScope 跟着 activeGatewayProfile 走，会话列表
+    // 必须立即按新 scope 重拉——否则热切换后（gatewayState 恒为 open，不会
+    // 翻转触发既有 effect）侧栏一直空着，直到下一条消息的广播才更新。
+    void refreshSessions().catch(() => undefined)
+  }, [activeGatewayProfile, refreshCurrentModel, refreshSessions])
 
   const composer = useComposerActions({
     activeSessionId,
@@ -1042,6 +1046,11 @@ export function DesktopController() {
       {!isSecondaryWindow() && needLogin && (
         <LoginOverlay
           onLoggedIn={() => {
+            // qiji 账号隔离：登录可能切换了账号（不同专属 profile）。旧账号
+            // 的会话行绝不能残留——点了会被恢复锁拒（"不属于当前登录账号"），
+            // 重启后还像"会话丢了"。立即清空，待列表按新账号的锁重新拉取。
+            $sessions.set([])
+            setSessionsTotal(0)
             void refreshHermesConfig()
             void refreshCurrentModel()
             void queryClient.invalidateQueries({ queryKey: ['model-options'] })

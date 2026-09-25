@@ -61,6 +61,11 @@ declare global {
         // backend under the new HERMES_HOME (reloads the window). Pass null to
         // clear the preference.
         set: (name: string | null) => Promise<DesktopActiveProfile>
+      },
+      // OEM 贴牌品牌：渲染进程登录/登出后推送当前品牌，
+      // 主进程用于托盘 tooltip / 通知标题 / 窗口标题。
+      oemBrand: {
+        set: (brand: { name: string; logo: string }) => Promise<{ ok: boolean }>
       }
       api: <T>(request: HermesApiRequest) => Promise<T>
       notify: (payload: HermesNotification) => Promise<boolean>
@@ -138,6 +143,7 @@ declare global {
   skillMarket: {
         installGithub: (repo: string, subdir?: string) => Promise<{ ok: boolean; name: string; source: string }>
     install: (url: string, name: string, token: string) => Promise<{ ok: boolean; dir: string }>
+    uninstall: (name: string) => Promise<{ ok: boolean }>
   }
   clientUpdate: {
         downloadAndRun: (url: string, meta?: { sha256?: string; signature?: string; newversion?: string }) => Promise<{ ok: boolean; path: string }>

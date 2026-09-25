@@ -431,7 +431,18 @@ const BOOT_FAKE_STEP_MS = (() => {
   if (!Number.isFinite(raw) || raw <= 0) return 650
   return Math.max(120, raw)
 })()
-const APP_NAME = '奇计'
+const APP_NAME = '硅基Claw'
+// OEM 贴牌品牌：渲染进程登录后推送（hermes:oem-brand:set）。空=官方默认。
+// 托盘 tooltip / 通知标题 / 菜单名等主进程可见文案从这里取。
+const oemBrandState = { name: '', logo: '' }
+function appBrandName() {
+  return oemBrandState.name.trim() || APP_NAME
+}
+/** 把文案里的默认名替换为当前贴牌名（无贴牌=原样） */
+function brandText(text) {
+  const name = appBrandName()
+  return name === APP_NAME ? text : text.split(APP_NAME).join(name)
+}
 const TITLEBAR_HEIGHT = 34
 const MACOS_TRAFFIC_LIGHTS_HEIGHT = 14
 const WINDOW_BUTTON_POSITION = {
@@ -857,7 +868,7 @@ let nativeThemeListenerInstalled = false
 let bootProgressState = {
   error: null,
   fakeMode: BOOT_FAKE_MODE,
-  message: '正在启动奇计后端',
+  message: '正在启动硅基Claw后端',
   phase: 'idle',
   progress: 0,
   running: false,
@@ -1304,7 +1315,7 @@ async function waitForUpdateToFinish() {
   while (marker && Date.now() < deadline) {
     await advanceBootProgress(
       'backend.update-wait',
-      '更新正在进行中 — 奇计将自动启动 when it completes…',
+      '更新正在进行中 — 硅基Claw将自动启动 when it completes…',
       12
     )
     await new Promise(r => setTimeout(r, UPDATE_WAIT_POLL_MS))
@@ -2120,7 +2131,7 @@ async function applyUpdates(opts = {}) {
 
     emitUpdateProgress({
       stage: 'restart',
-      message: '正在更新奇计 — 此窗口将关闭，安装程序将自动打开。请不要手动重新打开奇计；更新完成后会自动重启。',
+      message: '正在更新硅基Claw — 此窗口将关闭，安装程序将自动打开。请不要手动重新打开硅基Claw；更新完成后会自动重启。',
       percent: 100
     })
     repairMacUpdaterHelper(updater)
@@ -2352,7 +2363,7 @@ async function applyUpdatesPosixInApp() {
     if (shaResult.code === 0) preUpdateSha = (shaResult.stdout || '').trim()
   } catch { /* best effort */ }
 
-  emitUpdateProgress({ stage: 'update', message: '正在更新奇计（代码 + 依赖）…', percent: 10 })
+  emitUpdateProgress({ stage: 'update', message: '正在更新硅基Claw（代码 + 依赖）…', percent: 10 })
   const updated = await runStreamedUpdate(hermes, hermesCliArgs(hermes, ['update', '--yes', ...branchArgs]), {
     cwd: updateRoot,
     env,
@@ -2428,9 +2439,9 @@ async function applyUpdatesPosixInApp() {
     try {
       dialog.showMessageBoxSync({
         type: 'info',
-        title: '奇计',
-        message: '更新成功！奇计即将自动重启。',
-        detail: '本次更新仅涉及后端代码，已跳过界面重建。',
+        title: appBrandName(),
+        message: brandText('更新成功！硅基Claw即将自动重启。'),
+        detail: brandText('本次更新仅涉及后端代码，已跳过界面重建。'),
         buttons: ['确定']
       })
     } catch { /* best effort */ }
@@ -2525,15 +2536,15 @@ async function applyUpdatesPosixInApp() {
     if (asarResult.code === 0) {
       emitUpdateProgress({
         stage: 'done',
-        message: '界面更新完成！正在重启奇计…',
+        message: '界面更新完成！正在重启硅基Claw…',
         percent: 100
       })
       try {
         dialog.showMessageBoxSync({
           type: 'info',
-          title: '奇计',
-          message: '更新成功！奇计即将自动重启。',
-          detail: '如果没有自动重启，请手动关闭并重新打开奇计。',
+          title: appBrandName(),
+          message: brandText('更新成功！硅基Claw即将自动重启。'),
+          detail: brandText('如果没有自动重启，请手动关闭并重新打开硅基Claw。'),
           buttons: ['确定']
         })
       } catch { /* best effort */ }
@@ -2566,7 +2577,7 @@ async function applyUpdatesPosixInApp() {
     rememberLog(`[updates] rebuild failed: ${rebuilt.error || 'unknown'}`)
     emitUpdateProgress({
       stage: 'error',
-      message: '后端已更新，但桌面重建失败。请重启奇计以重试。',
+      message: '后端已更新，但桌面重建失败。请重启硅基Claw以重试。',
       error: rebuilt.error || 'rebuild-failed'
     })
     // Show a native dialog so the user knows to restart — the WebSocket-based
@@ -2575,9 +2586,9 @@ async function applyUpdatesPosixInApp() {
     try {
       dialog.showMessageBoxSync({
         type: 'warning',
-        title: '奇计',
-        message: '后端代码已更新成功，但桌面界面重建未完成。',
-        detail: '请关闭奇计并重新打开即可使用新版本。',
+        title: appBrandName(),
+        message: brandText('后端代码已更新成功，但桌面界面重建未完成。'),
+        detail: brandText('请关闭硅基Claw并重新打开即可使用新版本。'),
         buttons: ['知道了']
       })
     } catch { /* best effort */ }
@@ -2622,7 +2633,7 @@ async function applyUpdatesPosixInApp() {
     const outcome = decideRelaunchOutcome({ underUnpacked, sandboxOk })
 
     if (outcome === 'relaunch') {
-      emitUpdateProgress({ stage: 'restart', message: 'Restarting 奇计…', percent: 100 })
+      emitUpdateProgress({ stage: 'restart', message: 'Restarting 硅基Claw…', percent: 100 })
       // Preserve launch context across the re-exec: replay the original args
       // (filtered of Electron internals) and the env/cwd that define which
       // backend/profile/root this instance talks to. Without this the
@@ -2654,14 +2665,14 @@ async function applyUpdatesPosixInApp() {
           backendUpdated: true,
           guiUpdated: false,
           manualRestart: true,
-          message: '后端已更新。请退出并重新打开奇计以加载新版本。'
+          message: '后端已更新。请退出并重新打开硅基Claw以加载新版本。'
         }
       }
     }
 
     if (outcome === 'guiSkew') {
       // On Windows white-label installs, the exe is NOT under
-      // release/win-unpacked (it's in the install dir like D:\奇计Claw\Qiji\).
+      // release/win-unpacked (it's in the install dir like D:\硅基ClawClaw\Qiji\).
       // But `hermes desktop --build-only` DID rebuild the frontend, and the
       // backend code IS updated via git. So this is NOT actually a GUI/backend
       // skew — the user just needs to restart. Show a clean "done" instead of
@@ -2669,7 +2680,7 @@ async function applyUpdatesPosixInApp() {
       if (IS_WINDOWS) {
         emitUpdateProgress({
           stage: 'done',
-          message: '更新成功！正在重启奇计…',
+          message: '更新成功！正在重启硅基Claw…',
           percent: 100
         })
         // Show a native dialog as backup — if app.relaunch() fails silently
@@ -2678,9 +2689,9 @@ async function applyUpdatesPosixInApp() {
         try {
           dialog.showMessageBoxSync({
             type: 'info',
-            title: '奇计',
-            message: '更新成功！奇计即将自动重启。',
-            detail: '如果没有自动重启，请手动关闭并重新打开奇计。',
+            title: appBrandName(),
+            message: brandText('更新成功！硅基Claw即将自动重启。'),
+            detail: brandText('如果没有自动重启，请手动关闭并重新打开硅基Claw。'),
             buttons: ['确定']
           })
         } catch { /* best effort */ }
@@ -2700,7 +2711,7 @@ async function applyUpdatesPosixInApp() {
         stage: 'guiSkew',
         message:
           'Backend updated, but the desktop app package was not changed. ' +
-          '请更新或重新安装奇计桌面版以保持一致。',
+          '请更新或重新安装硅基Claw桌面版以保持一致。',
         percent: 100
       })
       rememberLog(
@@ -2724,7 +2735,7 @@ async function applyUpdatesPosixInApp() {
       sandboxBlocked: true,
       message:
         'Backend updated. The rebuilt app can’t relaunch automatically ' +
-        '(沙箱助手需要 root 权限)。请退出并重新打开奇计以完成。'
+        '(沙箱助手需要 root 权限)。请退出并重新打开硅基Claw以完成。'
     }
   }
 
@@ -2739,7 +2750,7 @@ async function applyUpdatesPosixInApp() {
   if (!rebuiltApp || !targetApp) {
     emitUpdateProgress({
       stage: 'done',
-      message: '后端已更新。请重启奇计以加载新版本。',
+      message: '后端已更新。请重启硅基Claw以加载新版本。',
       percent: 100
     })
     return { ok: true, backendUpdated: true, rebuiltApp: rebuiltApp || null }
@@ -2775,7 +2786,7 @@ fi
   } catch (err) {
     emitUpdateProgress({
       stage: 'done',
-      message: '后端和应用程序已更新。请重启奇计以加载新版本。',
+      message: '后端和应用程序已更新。请重启硅基Claw以加载新版本。',
       percent: 100
     })
     rememberLog(`[updates] could not write swap script: ${err.message}; rebuilt app at ${rebuiltApp}`)
@@ -3016,6 +3027,50 @@ function writeDefaultProjectDir(dir) {
   }
 }
 
+// qiji 0.19.3: 读用户 config.yaml 的 display.language，决定后端 spawn 时是否
+// 注入 HERMES_LANGUAGE。规则（与 agent/i18n.py 的 env > config 优先级对齐）：
+//   - 显式 en → 不注入（用户明确要英文，不能被 env 压住）
+//   - 显式 zh/zh-hant/ja/... → 注入同值
+//   - 无该键（老装机首启从未切过语言）→ 注入 OS 语言归一化值（zh 系 → zh）
+// 老装机 config 里烘焙的是 "en"（旧默认值），走"显式 en"分支不注入——这些用户
+// 想要中文时在客户端切一次语言即可（写入 display.language=zh，下次启动注入生效）。
+const HERMES_LANG_RE = /^[ \t]*language:[ \t]*['"]?([A-Za-z-]+)['"]?[ \t]*(?:#.*)?$/
+let _cachedBackendLocale
+function resolveBackendUiLocale() {
+  if (_cachedBackendLocale !== undefined) return _cachedBackendLocale
+  _cachedBackendLocale = ''
+  try {
+    const configPath = path.join(HERMES_HOME, 'config.yaml')
+    const text = fs.readFileSync(configPath, 'utf8')
+    const lines = text.split(/\r?\n/)
+    let inDisplay = false
+    let value = ''
+    for (const line of lines) {
+      if (/^display:/.test(line)) { inDisplay = true; continue }
+      if (inDisplay && /^[A-Za-z_][\w-]*:/.test(line)) { inDisplay = false }
+      if (!inDisplay) continue
+      const m = line.match(HERMES_LANG_RE)
+      if (m) { value = m[1].toLowerCase(); break }
+    }
+    if (value && value !== 'en') {
+      _cachedBackendLocale = value
+    } else if (!value) {
+      // 无键 → OS 语言兜底（zh-CN/zh-TW/zh-HK → zh；其他非英文系统语言原样透传）
+      const osLang = String(app.getLocale() || '').toLowerCase()
+      if (osLang && !osLang.startsWith('en')) {
+        const supported = ['zh', 'zh-hant', 'ja', 'de', 'es', 'fr', 'tr', 'uk']
+        const base = osLang.split('-')[0]
+        _cachedBackendLocale = supported.includes(osLang) ? osLang
+          : supported.includes(base) ? base
+          : ''
+      }
+    }
+  } catch {
+    // config 不存在/读不了 → 空串（不注入）
+  }
+  return _cachedBackendLocale
+}
+
 function createPythonBackend(root, label, dashboardArgs, options = {}) {
   const python = findPythonForRoot(root)
   if (!python) return null
@@ -3028,7 +3083,8 @@ function createPythonBackend(root, label, dashboardArgs, options = {}) {
     env: buildDesktopBackendEnv({
       hermesHome: HERMES_HOME,
       pythonPathEntries: [root],
-      venvRoot: path.join(root, 'venv')
+      venvRoot: path.join(root, 'venv'),
+      uiLocale: resolveBackendUiLocale()
     }),
     root,
     bootstrap: Boolean(options.bootstrap),
@@ -3045,13 +3101,14 @@ function createActiveBackend(dashboardArgs) {
 
   return {
     kind: 'python',
-    label: `奇计 at ${ACTIVE_HERMES_ROOT}`,
+    label: `硅基Claw at ${ACTIVE_HERMES_ROOT}`,
     command: fileExists(venvPython) ? venvPython : findSystemPython(),
     args: ['-m', 'hermes_cli.main', ...dashboardArgs],
     env: buildDesktopBackendEnv({
       hermesHome: HERMES_HOME,
       pythonPathEntries: [ACTIVE_HERMES_ROOT],
-      venvRoot: VENV_ROOT
+      venvRoot: VENV_ROOT,
+      uiLocale: resolveBackendUiLocale()
     }),
     root: ACTIVE_HERMES_ROOT,
     bootstrap: true,
@@ -3110,7 +3167,7 @@ function resolveHermesBackend(dashboardArgs) {
   //    checkout. Honour it as-is (no bootstrap; the user is driving).
   const overrideRoot = process.env.HERMES_DESKTOP_HERMES_ROOT && path.resolve(process.env.HERMES_DESKTOP_HERMES_ROOT)
   if (overrideRoot && isHermesSourceRoot(overrideRoot)) {
-    const backend = createPythonBackend(overrideRoot, `奇计源码位于 ${overrideRoot}`, dashboardArgs)
+    const backend = createPythonBackend(overrideRoot, `硅基Claw源码位于 ${overrideRoot}`, dashboardArgs)
     if (backend) return backend
   }
 
@@ -3119,7 +3176,7 @@ function resolveHermesBackend(dashboardArgs) {
   //    installed `hermes` on PATH so local Python edits are actually exercised.
   //    (In dev with no checkout, SOURCE_REPO_ROOT won't pass isHermesSourceRoot.)
   if (!IS_PACKAGED && isHermesSourceRoot(SOURCE_REPO_ROOT)) {
-    const backend = createPythonBackend(SOURCE_REPO_ROOT, `奇计源码位于 ${SOURCE_REPO_ROOT}`, dashboardArgs)
+    const backend = createPythonBackend(SOURCE_REPO_ROOT, `硅基Claw源码位于 ${SOURCE_REPO_ROOT}`, dashboardArgs)
     if (backend) return backend
   }
 
@@ -3156,7 +3213,7 @@ function resolveHermesBackend(dashboardArgs) {
       } else if (!isWindowsBinaryPathInWsl(hermesOverride, { isWsl: IS_WSL })) {
         hermesCommand = hermesOverride
       } else {
-        rememberLog(`Ignoring Windows 奇计 override under WSL: ${hermesOverride}`)
+        rememberLog(`Ignoring Windows 硅基Claw override under WSL: ${hermesOverride}`)
       }
     } else {
       hermesCommand = findOnPath('hermes')
@@ -3164,7 +3221,7 @@ function resolveHermesBackend(dashboardArgs) {
 
     if (hermesCommand) {
       if (looksLikeDesktopAppBinary(hermesCommand)) {
-        rememberLog(`Ignoring desktop app executable on PATH while resolving 奇计 CLI: ${hermesCommand}`)
+        rememberLog(`Ignoring desktop app executable on PATH while resolving 硅基Claw CLI: ${hermesCommand}`)
         hermesCommand = null
       }
     }
@@ -3180,7 +3237,7 @@ function resolveHermesBackend(dashboardArgs) {
       const shellForProbe = isCommandScript(hermesCommand)
       if (verifyHermesCli(hermesCommand, { shell: shellForProbe })) {
         return {
-          label: `existing 奇计 CLI at ${hermesCommand}`,
+          label: `existing 硅基Claw CLI at ${hermesCommand}`,
           command: hermesCommand,
           args: dashboardArgs,
           bootstrap: false,
@@ -3190,7 +3247,7 @@ function resolveHermesBackend(dashboardArgs) {
         }
       }
       rememberLog(
-        `Ignoring existing 奇计 CLI at ${hermesCommand}: --version probe failed; falling through to bootstrap.`
+        `Ignoring existing 硅基Claw CLI at ${hermesCommand}: --version probe failed; falling through to bootstrap.`
       )
     }
   }
@@ -3234,7 +3291,7 @@ function resolveHermesBackend(dashboardArgs) {
   //    is a recoverable state the GUI can drive through.
   return {
     kind: 'bootstrap-needed',
-    label: '奇计尚未安装；需要初始化',
+    label: '硅基Claw尚未安装；需要初始化',
     command: null,
     args: dashboardArgs,
     bootstrap: true,
@@ -3264,7 +3321,7 @@ async function ensureRuntime(backend) {
   // will rewire startup to spawn the window first and route bootstrap events
   // to a renderer-side install overlay.
   if (backend.kind === 'bootstrap-needed') {
-    rememberLog('[bootstrap] no 奇计 install found; starting first-launch bootstrap')
+    rememberLog('[bootstrap] no 硅基Claw install found; starting first-launch bootstrap')
 
     // 老目录保险丝：数据目录品牌化（hermes→qiji）后，老用户首次启动新包会走到
     // 这里静默重装。检测到老版数据目录还躺在原地时，留下醒目警告，让排障的人
@@ -3281,7 +3338,7 @@ async function ensureRuntime(backend) {
     }
 
     if (await handOffWindowsBootstrapRecovery('bootstrap-needed')) {
-      const handoffError = new Error('奇计恢复已交给安装程序。桌面将在恢复完成后自动重启。')
+      const handoffError = new Error('硅基Claw恢复已交给安装程序。桌面将在恢复完成后自动重启。')
       handoffError.isBootstrapFailure = true
       handoffError.bootstrapHandedOff = true
       bootstrapFailure = handoffError
@@ -3344,7 +3401,7 @@ async function ensureRuntime(backend) {
     bootstrapAbortController = null
 
     if (bootstrapResult.cancelled) {
-      const cancelledError = new Error('奇计安装已取消。')
+      const cancelledError = new Error('硅基Claw安装已取消。')
       cancelledError.isBootstrapFailure = true
       cancelledError.bootstrapCancelled = true
       bootstrapFailure = cancelledError
@@ -3353,7 +3410,7 @@ async function ensureRuntime(backend) {
 
     if (!bootstrapResult.ok) {
       const bootstrapError = new Error(
-        `奇计初始化失败${bootstrapResult.failedStage ? ` at stage '${bootstrapResult.failedStage}'` : ''}: ` +
+        `硅基Claw初始化失败${bootstrapResult.failedStage ? ` at stage '${bootstrapResult.failedStage}'` : ''}: ` +
           `${bootstrapResult.error || 'unknown error'}. ` +
           `Check ${path.join(HERMES_HOME, 'logs', 'desktop.log')} for the full transcript.`
       )
@@ -3380,7 +3437,7 @@ async function ensureRuntime(backend) {
   // attests they ran successfully).
   if (!isHermesSourceRoot(ACTIVE_HERMES_ROOT)) {
     throw new Error(
-      `奇计 install at ${ACTIVE_HERMES_ROOT} is missing or incomplete. ` +
+      `硅基Claw install at ${ACTIVE_HERMES_ROOT} is missing or incomplete. ` +
         'Reinstall via the desktop installer or scripts/install.ps1.'
     )
   }
@@ -3393,10 +3450,10 @@ async function ensureRuntime(backend) {
   // here via an external `hermes` on PATH, this check still helps.
   if (IS_WINDOWS && !findGitBash()) {
     throw new Error(
-      '奇计在 Windows 上需要 Git for Windows (provides Git Bash, ' +
+      '硅基Claw在 Windows 上需要 Git for Windows (provides Git Bash, ' +
         "which the agent's terminal tool uses). Install it from " +
         'https://git-scm.com/download/win or run `winget install -e --id Git.Git`, ' +
-        'then relaunch 奇计.'
+        'then relaunch 硅基Claw.'
     )
   }
 
@@ -3410,15 +3467,15 @@ async function ensureRuntime(backend) {
     // install.ps1 succeeds. If we hit this, the user (or a deleted venv)
     // broke the invariant; tell them to re-run the install.
     throw new Error(
-      `奇计虚拟环境缺失： ${VENV_ROOT}. Re-run the desktop installer or ` + '`scripts/install.ps1` to rebuild it.'
+      `硅基Claw虚拟环境缺失： ${VENV_ROOT}. Re-run the desktop installer or ` + '`scripts/install.ps1` to rebuild it.'
     )
   }
 
   backend.command = venvPython
-  backend.label = `奇计 at ${ACTIVE_HERMES_ROOT} (venv: ${VENV_ROOT})`
+  backend.label = `硅基Claw at ${ACTIVE_HERMES_ROOT} (venv: ${VENV_ROOT})`
   updateBootProgress({
     phase: 'runtime.ready',
-    message: '奇计运行时已就绪',
+    message: '硅基Claw运行时已就绪',
     progress: 82,
     running: true,
     error: null
@@ -3473,7 +3530,7 @@ function fetchJson(url, token, options = {}) {
             reject(
               new Error(
                 `Expected JSON from ${url} but got HTML (status ${res.statusCode}). ` +
-                  'The endpoint is likely missing on the 奇计 backend.'
+                  'The endpoint is likely missing on the 硅基Claw backend.'
               )
             )
             return
@@ -3489,7 +3546,7 @@ function fetchJson(url, token, options = {}) {
 
     req.on('error', reject)
     req.setTimeout(timeoutMs, () => {
-      req.destroy(new Error(`Timed out connecting to 奇计 backend after ${timeoutMs}ms`))
+      req.destroy(new Error(`Timed out connecting to 硅基Claw backend after ${timeoutMs}ms`))
     })
     if (body) req.write(body)
     req.end()
@@ -3547,7 +3604,7 @@ function fetchPublicJson(url, options = {}) {
             reject(
               new Error(
                 `Expected JSON from ${url} but got HTML (status ${res.statusCode}). ` +
-                  'The endpoint is likely missing on the 奇计 backend.'
+                  'The endpoint is likely missing on the 硅基Claw backend.'
               )
             )
             return
@@ -3563,7 +3620,7 @@ function fetchPublicJson(url, options = {}) {
 
     req.on('error', reject)
     req.setTimeout(timeoutMs, () => {
-      req.destroy(new Error(`Timed out connecting to 奇计 backend after ${timeoutMs}ms`))
+      req.destroy(new Error(`Timed out connecting to 硅基Claw backend after ${timeoutMs}ms`))
     })
     if (body) req.write(body)
     req.end()
@@ -4076,7 +4133,7 @@ async function waitForHermes(baseUrl, token) {
     }
   }
 
-  throw new Error(`奇计 backend did not become ready: ${lastError?.message || 'timeout'}`)
+  throw new Error(`硅基Claw backend did not become ready: ${lastError?.message || 'timeout'}`)
 }
 
 function getWindowButtonPosition() {
@@ -4116,7 +4173,7 @@ function sendClosePreviewRequested() {
 
 // Tell the renderer the machine just woke. Sleep silently drops the
 // renderer's WebSocket to the local backend; the renderer reconnects on this
-// signal so the chat composer doesn't stay stuck on "正在启动奇计...".
+// signal so the chat composer doesn't stay stuck on "正在启动硅基Claw...".
 function sendPowerResume() {
   if (!mainWindow || mainWindow.isDestroyed()) return
   const { webContents } = mainWindow
@@ -4663,7 +4720,7 @@ function openOauthLoginWindow(baseUrl) {
       win = new BrowserWindow({
         width: 520,
         height: 720,
-        title: 'Sign in to 奇计 gateway',
+        title: 'Sign in to 硅基Claw gateway',
         autoHideMenuBar: true,
         webPreferences: {
           contextIsolation: true,
@@ -4741,7 +4798,7 @@ function fetchJsonViaOauthSession(url, options = {}) {
       } catch {
         // already finished
       }
-      reject(new Error(`Timed out connecting to 奇计 backend after ${timeoutMs}ms`))
+      reject(new Error(`Timed out connecting to 硅基Claw backend after ${timeoutMs}ms`))
     }, timeoutMs)
 
     request.on('response', res => {
@@ -5076,7 +5133,7 @@ async function buildRemoteConnection(rawUrl, authMode, token, source) {
     // the authoritative liveness check.
     if (!(await hasLiveOauthSession(baseUrl))) {
       const err = new Error(
-        'Remote 奇计 gateway uses OAuth, but you are not signed in. ' +
+        'Remote 硅基Claw gateway uses OAuth, but you are not signed in. ' +
           'Open Settings → Gateway and click "Sign in", or switch back to Local.'
       )
       err.needsOauthLogin = true
@@ -5108,7 +5165,7 @@ async function buildRemoteConnection(rawUrl, authMode, token, source) {
 
   if (!token) {
     throw new Error(
-      'Remote 奇计 gateway is selected, but no session token is saved. ' +
+      'Remote 硅基Claw gateway is selected, but no session token is saved. ' +
         'Open Settings → Gateway and save a token, or switch back to Local.'
     )
   }
@@ -5149,7 +5206,7 @@ async function resolveRemoteBackend(profile) {
     if (!rawEnvToken) {
       throw new Error(
         'HERMES_DESKTOP_REMOTE_URL is set but HERMES_DESKTOP_REMOTE_TOKEN is not. ' +
-          'Both must be provided to connect to a remote 奇计 backend.'
+          'Both must be provided to connect to a remote 硅基Claw backend.'
       )
     }
     return buildRemoteConnection(rawEnvUrl, 'token', rawEnvToken, 'env')
@@ -5432,6 +5489,27 @@ function ensureNamedProfileDir(name) {
       }
       rememberLog(`Created profile directory skeleton for "${canon}" at ${dir}`)
     }
+
+    // qiji 0.19.3-fix: junction 补挂——ensureNamedProfileDir 旧版只在目录首次创建时挂
+    // market junction，0.18.x 升级上来的存量 profile 永远漏挂（技能广场装完搜不到的
+    // 升级盲区）。每次启动都幂等补挂一次：已存在（含旧 junction）即跳过，代价为零。
+    try {
+      const marketLink = path.join(dir, 'skills', 'market')
+      const marketTarget = path.join(HERMES_HOME, 'skills', 'market')
+      if (!fs.existsSync(marketLink)) {
+        fs.mkdirSync(marketTarget, { recursive: true })
+        if (process.platform === 'win32') {
+          require('child_process').execSync(
+            `mklink /J "${marketLink}" "${marketTarget}"`, { stdio: 'ignore' }
+          )
+        } else {
+          fs.symlinkSync(marketTarget, marketLink, 'dir')
+        }
+        rememberLog(`[skill-market] linked profile market dir: ${marketLink} -> ${marketTarget}`)
+      }
+    } catch (linkError) {
+      rememberLog(`[skill-market] profile market link failed: ${linkError.message}`)
+    }
   } catch (error) {
     // Best-effort: a failure here must not block startup — the backend's own
     // error will surface if the directory truly can't be used.
@@ -5546,7 +5624,7 @@ async function spawnPoolBackend(profile, entry) {
   const hermesCwd = resolveHermesCwd()
   const webDist = resolveWebDist()
 
-  rememberLog(`Starting 奇计 backend for profile "${profile}" via ${backend.label}`)
+  rememberLog(`Starting 硅基Claw backend for profile "${profile}" via ${backend.label}`)
 
   const child = spawn(
     backend.command,
@@ -5586,16 +5664,16 @@ async function spawnPoolBackend(profile, entry) {
     rejectStart = reject
   })
   child.once('error', error => {
-    rememberLog(`奇计 backend for profile "${profile}" failed to start: ${error.message}`)
+    rememberLog(`硅基Claw backend for profile "${profile}" failed to start: ${error.message}`)
     backendPool.delete(profile)
     rejectStart?.(error)
   })
   child.once('exit', (code, signal) => {
-    rememberLog(`奇计 backend for profile "${profile}" exited (${signal || code})`)
+    rememberLog(`硅基Claw backend for profile "${profile}" exited (${signal || code})`)
     backendPool.delete(profile)
     if (!ready) {
       rejectStart?.(
-        new Error(`奇计 backend for profile "${profile}" exited before it became ready (${signal || code}).`)
+        new Error(`硅基Claw backend for profile "${profile}" exited before it became ready (${signal || code}).`)
       )
     }
   })
@@ -5609,7 +5687,7 @@ async function spawnPoolBackend(profile, entry) {
   ready = true
   const authToken = await adoptServedDashboardToken(baseUrl, token, {
     childAlive: () => child.exitCode === null && !child.killed,
-    label: `奇计 backend for profile "${profile}"`,
+    label: `硅基Claw backend for profile "${profile}"`,
     rememberLog
   })
   entry.token = authToken
@@ -5717,16 +5795,16 @@ async function startHermes() {
   if (connectionPromise) return connectionPromise
 
   connectionPromise = (async () => {
-    await advanceBootProgress('backend.resolve', 'Resolving 奇计 backend', 8)
+    await advanceBootProgress('backend.resolve', 'Resolving 硅基Claw backend', 8)
     // Resolve for the desktop's primary profile so a per-profile remote
     // override on the active profile is honored (falls back to env / global).
     const remote = await resolveRemoteBackend(primaryProfileKey())
     if (remote) {
-      await advanceBootProgress('backend.remote', `Connecting to remote 奇计 backend at ${remote.baseUrl}`, 24)
+      await advanceBootProgress('backend.remote', `Connecting to remote 硅基Claw backend at ${remote.baseUrl}`, 24)
       await waitForHermes(remote.baseUrl, remote.token)
       updateBootProgress({
         phase: 'backend.ready',
-        message: 'Remote 奇计 backend is ready',
+        message: 'Remote 硅基Claw backend is ready',
         progress: 94,
         running: true,
         error: null
@@ -5764,13 +5842,13 @@ async function startHermes() {
       dashboardArgs.unshift('--profile', activeProfile)
       ensureNamedProfileDir(activeProfile)
     }
-    await advanceBootProgress('backend.runtime', 'Resolving 奇计 runtime', 28)
+    await advanceBootProgress('backend.runtime', 'Resolving 硅基Claw runtime', 28)
     const backend = await ensureRuntime(resolveHermesBackend(dashboardArgs))
     const hermesCwd = resolveHermesCwd()
     const webDist = resolveWebDist()
 
-    await advanceBootProgress('backend.spawn', `Starting 奇计 backend via ${backend.label}`, 84)
-    rememberLog(`Starting 奇计 backend via ${backend.label}`)
+    await advanceBootProgress('backend.spawn', `Starting 硅基Claw backend via ${backend.label}`, 84)
+    rememberLog(`Starting 硅基Claw backend via ${backend.label}`)
 
     hermesProcess = spawn(
       backend.command,
@@ -5815,11 +5893,11 @@ async function startHermes() {
       rejectBackendStart = reject
     })
     hermesProcess.once('error', error => {
-      rememberLog(`奇计 backend failed to start: ${error.message}`)
+      rememberLog(`硅基Claw backend failed to start: ${error.message}`)
       updateBootProgress(
         {
           error: error.message,
-          message: `奇计 backend failed to start: ${error.message}`,
+          message: `硅基Claw backend failed to start: ${error.message}`,
           phase: 'backend.error',
           running: false
         },
@@ -5831,7 +5909,7 @@ async function startHermes() {
       rejectBackendStart?.(error)
     })
     hermesProcess.once('exit', (code, signal) => {
-      rememberLog(`奇计 backend exited (${signal || code})`)
+      rememberLog(`硅基Claw backend exited (${signal || code})`)
       // Only clear the global slots when they still point at THIS child.
       // A stale teardown may SIGTERM the successor spawn while the global
       // hermesProcess already references it — clearing unconditionally also
@@ -5865,7 +5943,7 @@ async function startHermes() {
       }
       sendBackendExit({ code, signal })
       if (!backendReady) {
-        const message = `奇计 backend exited before it became ready (${signal || code}).`
+        const message = `硅基Claw backend exited before it became ready (${signal || code}).`
         updateBootProgress(
           {
             error: message,
@@ -5877,13 +5955,13 @@ async function startHermes() {
         )
         rejectBackendStart?.(
           new Error(
-            `奇计 backend exited before it became ready (${signal || code}). Log: ${DESKTOP_LOG_PATH}\n${recentHermesLog()}`
+            `硅基Claw backend exited before it became ready (${signal || code}). Log: ${DESKTOP_LOG_PATH}\n${recentHermesLog()}`
           )
         )
       }
     })
 
-    await advanceBootProgress('backend.port', 'Waiting for 奇计 backend to launch', 86)
+    await advanceBootProgress('backend.port', 'Waiting for 硅基Claw backend to launch', 86)
     // qiji 0.17.7: 冷启动(重铺后首启)放宽端口等待到300s,避免健康后端被90s超时误杀
     const qijiColdStart = detectColdStartWindow(readBootstrapMarker())
     if (qijiColdStart) {
@@ -5897,7 +5975,7 @@ async function startHermes() {
     ])
 
     const baseUrl = `http://127.0.0.1:${port}`
-    await advanceBootProgress('backend.wait', 'Waiting for 奇计 backend to become ready', 90)
+    await advanceBootProgress('backend.wait', 'Waiting for 硅基Claw backend to become ready', 90)
     await Promise.race([waitForHermes(baseUrl, token), backendStartFailed])
     backendReady = true
     const authToken = await adoptServedDashboardToken(baseUrl, token, {
@@ -5907,7 +5985,7 @@ async function startHermes() {
     })
     updateBootProgress({
       phase: 'backend.ready',
-      message: '奇计 backend is ready. Finalizing desktop startup',
+      message: '硅基Claw backend is ready. Finalizing desktop startup',
       progress: 94,
       running: true,
       error: null
@@ -5995,7 +6073,7 @@ function spawnSecondaryWindow({ sessionId, watch, newSession } = {}) {
     height: SESSION_WINDOW_MIN_HEIGHT,
     minWidth: SESSION_WINDOW_MIN_WIDTH,
     minHeight: SESSION_WINDOW_MIN_HEIGHT,
-    title: '奇计',
+    title: appBrandName(),
     titleBarStyle: 'hidden',
     titleBarOverlay: getTitleBarOverlayOptions(),
     trafficLightPosition: IS_MAC ? WINDOW_BUTTON_POSITION : undefined,
@@ -6195,7 +6273,7 @@ function createWindow() {
     height: 800,
     minWidth: 400,
     minHeight: 620,
-    title: '奇计',
+    title: appBrandName(),
     // Frameless title bar on every platform so the renderer can paint the
     // "hide sidebar" button (and other left-side titlebar tools) flush with
     // the top edge — matching the macOS layout where the traffic lights sit
@@ -6336,7 +6414,7 @@ ipcMain.handle('hermes:connection', async (_event, profile) => ensureBackend(pro
 // so the 'exit'/'error' handlers that would clear a dead connectionPromise never
 // fire — once the remote becomes unreachable across a sleep/wake the renderer
 // re-dials the same dead descriptor forever and the composer stays stuck on
-// "正在启动奇计…". Before the renderer's backoff loop reconnects, it asks us
+// "正在启动硅基Claw…". Before the renderer's backoff loop reconnects, it asks us
 // to confirm the cached PRIMARY backend is still reachable; if a remote one is
 // not, we drop the cache so the next getConnection() rebuilds it. Local backends
 // self-heal via their child 'exit' handler, so we never touch them here.
@@ -6366,7 +6444,7 @@ ipcMain.handle('hermes:connection:revalidate', async () => {
     // Unreachable remote: drop the stale cache so the renderer's next reconnect
     // tick rebuilds a fresh, reachable descriptor. resetHermesConnection only
     // nulls connectionPromise for a remote (no child to SIGTERM).
-    rememberLog('Cached remote 奇计 backend failed liveness probe; dropping stale connection.')
+    rememberLog('Cached remote 硅基Claw backend failed liveness probe; dropping stale connection.')
     resetHermesConnection()
     return { ok: true, rebuilt: true }
   }
@@ -6602,6 +6680,30 @@ ipcMain.handle('hermes:connection-config:apply', async (_event, payload) => {
 })
 
 ipcMain.handle('hermes:profile:get', async () => ({ profile: readActiveDesktopProfile() }))
+
+// OEM 品牌推送：渲染进程登录/登出后调用。更新托盘 tooltip + 主窗口标题。
+ipcMain.handle('hermes:oem-brand:set', async (_event, brand) => {
+  const name = typeof brand?.name === 'string' ? brand.name : ''
+  const logo = typeof brand?.logo === 'string' ? brand.logo : ''
+  oemBrandState.name = name
+  oemBrandState.logo = logo
+  const display = appBrandName()
+  try {
+    if (appTray && !appTray.isDestroyed()) {
+      appTray.setToolTip(display)
+    }
+  } catch {
+    // ignore
+  }
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setTitle(display)
+    }
+  } catch {
+    // ignore
+  }
+  return { ok: true }
+})
 ipcMain.handle('hermes:profile:set', async (_event, name) => {
   const next = writeActiveDesktopProfile(name)
 
@@ -6808,7 +6910,7 @@ ipcMain.handle('hermes:notify', (_event, payload) => {
   // and the body click still works.
   const actions = Array.isArray(payload?.actions) ? payload.actions : []
   const notification = new Notification({
-    title: payload?.title || '奇计',
+    title: payload?.title || '硅基Claw',
     body: payload?.body || '',
     silent: Boolean(payload?.silent),
     actions: actions.map(action => ({ type: 'button', text: String(action?.text || '') }))
@@ -7372,6 +7474,22 @@ ipcMain.handle('hermes:skillMarket:install', async (_event, rawUrl, rawName, raw
   return { ok: true, dir: destDir }
 })
 
+// qiji 0.19.7: 市场技能卸载——只删 skills/market/<name>/，name 走与 install 相同的
+// 白名单校验，防止路径注入。内置技能不在 market 目录下，天然删不到。
+ipcMain.handle('hermes:skillMarket:uninstall', async (_event, rawName) => {
+  const name = String(rawName || '').trim()
+  if (!/^[a-z0-9][a-z0-9-_]*$/i.test(name)) {
+    throw new Error('无效的技能标识')
+  }
+  const destDir = path.join(HERMES_HOME, 'skills', 'market', name)
+  if (!fs.existsSync(destDir)) {
+    throw new Error('该技能未安装')
+  }
+  fs.rmSync(destDir, { recursive: true, force: true })
+  rememberLog(`[skill-market] uninstalled skill: ${name}`)
+  return { ok: true }
+})
+
 ipcMain.handle('hermes:clientUpdate:downloadAndRun', async (_event, rawUrl) => {
   const url = String(rawUrl || '').trim()
 
@@ -7715,7 +7833,7 @@ ipcMain.handle('hermes:fs:worktrees', async (_event, cwds) => worktreesForIpc(cw
 
 ipcMain.handle('hermes:terminal:start', async (event, payload = {}) => {
   if (!nodePty) {
-    throw new Error('PTY support is unavailable. Reinstall desktop dependencies and restart 奇计.')
+    throw new Error('PTY support is unavailable. Reinstall desktop dependencies and restart 硅基Claw.')
   }
 
   ensureSpawnHelperExecutable()
@@ -7918,7 +8036,7 @@ ipcMain.handle('hermes:diagnostics:export', async () => {
 
   const logDir = path.join(HERMES_HOME, 'logs')
   const sections = []
-  sections.push('==== 奇计诊断快照 ====')
+  sections.push('==== 硅基Claw诊断快照 ====')
   sections.push(`导出时间: ${new Date().toISOString()}`)
   sections.push(`版本: ${resolveHermesVersion()}  Electron: ${process.versions.electron}  Node: ${process.versions.node}`)
   sections.push(`系统: ${process.platform} ${os.release()} ${process.arch}  主机: ${os.hostname()}`)
@@ -8044,7 +8162,7 @@ async function runDesktopUninstall(mode) {
     return {
       ok: false,
       error: 'agent-missing',
-      message: `Can't run the uninstaller: no 奇计 agent venv at ${VENV_ROOT}.`
+      message: `Can't run the uninstaller: no 硅基Claw agent venv at ${VENV_ROOT}.`
     }
   }
 
@@ -8282,7 +8400,7 @@ app.whenReady().then(() => {
       appTray.setToolTip(APP_NAME)
       const contextMenu = Menu.buildFromTemplate([
         {
-          label: '显示奇计',
+          label: '显示硅基Claw',
           click: () => {
             if (mainWindow && !mainWindow.isDestroyed()) {
               mainWindow.show()

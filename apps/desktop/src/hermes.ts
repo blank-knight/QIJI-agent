@@ -1,5 +1,7 @@
 import { JsonRpcGatewayClient } from '@hermes/shared'
 
+import { accountLockedProfile } from '@/lib/account-profile'
+
 import type {
   ActionResponse,
   ActionStatusResponse,
@@ -44,6 +46,8 @@ import type {
   ToolsetConfig,
   ToolsetInfo
 } from '@/types/hermes'
+
+import { brandText } from '@/store/oem-brand'
 
 const DEFAULT_GATEWAY_REQUEST_TIMEOUT_MS = 30_000
 const SESSION_LIST_REQUEST_TIMEOUT_MS = 60_000
@@ -115,10 +119,10 @@ export type {
 export class HermesGateway extends JsonRpcGatewayClient {
   constructor() {
     super({
-      closedErrorMessage: '奇计网关连接已关闭',
-      connectErrorMessage: '无法连接到奇计网关',
+      closedErrorMessage: brandText('奇计网关连接已关闭'),
+      connectErrorMessage: brandText('无法连接到奇计网关'),
       createRequestId: nextId => nextId,
-      notConnectedErrorMessage: '奇计网关未连接',
+      notConnectedErrorMessage: brandText('奇计网关未连接'),
       requestTimeoutMs: DEFAULT_GATEWAY_REQUEST_TIMEOUT_MS
     })
   }
@@ -179,6 +183,12 @@ export async function listAllProfileSessions(
   profile: 'all' | (string & {}) = 'all',
   filter: SessionSourceFilter = {}
 ): Promise<PaginatedSessions> {
+  // qiji 账号隔离：登录账号已锁定专属 profile 时，跨 profile 聚合一律
+  // 强制收敛到该账号。上游的"所有 profile"聚合视图是给一人多身份设计的
+  // （工作号/个人号），奇计的 profile = 付费客户账号，跨账号可见会话/产物
+  // = 数据泄漏。锁不开启（未登录/未登记映射）则保持上游行为。
+  const lockedProfile = accountLockedProfile()
+  const scopedProfile = lockedProfile ?? profile
   const sourceParam = filter.source ? `&source=${encodeURIComponent(filter.source)}` : ''
 
   const excludeParam = filter.excludeSources?.length
@@ -188,7 +198,7 @@ export async function listAllProfileSessions(
   const result = await window.hermesDesktop.api<PaginatedSessions>({
     path:
       `/api/profiles/sessions?limit=${limit}&offset=0&min_messages=${Math.max(0, minMessages)}` +
-      `&archived=${archived}&order=${order}&profile=${encodeURIComponent(profile)}${sourceParam}${excludeParam}`,
+      `&archived=${archived}&order=${order}&profile=${encodeURIComponent(scopedProfile)}${sourceParam}${excludeParam}`,
     timeoutMs: SESSION_LIST_REQUEST_TIMEOUT_MS
   })
 

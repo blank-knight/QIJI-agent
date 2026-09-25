@@ -40,6 +40,7 @@ const PRODUCT_NAME_ZH = '奇计'
 const brand = require(path.join(ROOT, 'electron', 'brand.cjs'))
 const DATA_DIR_NAME = brand.dataDirName
 const USER_DATA_DIR_NAME = brand.userDataDirName
+const BRAND_DISPLAY_NAME = brand.displayName || '硅基Claw'
 
 // Paths
 const winUnpacked = path.join(RELEASE, 'win-unpacked')
@@ -88,6 +89,8 @@ function injectBrandSrc(srcPath, outPath) {
   const injected = src
     .replace(/public const string DataDir = "[^"]*";/, `public const string DataDir = ${JSON.stringify(DATA_DIR_NAME)};`)
     .replace(/public const string UserDataDir = "[^"]*";/, `public const string UserDataDir = ${JSON.stringify(USER_DATA_DIR_NAME)};`)
+    // 0.19.8: 展示名注入——launcher3 的 APP_NAME/快捷方式/卸载面板用（通用名「硅基Claw」）
+    .replace(/const string APP_NAME = "[^"]*";/, `const string APP_NAME = ${JSON.stringify(BRAND_DISPLAY_NAME)};`)
   // UTF-8 BOM：老 csc 无 BOM 时按系统 ANSI(GBK) 解码，中文注释/字符串有乱码风险
   fs.writeFileSync(outPath, '\ufeff' + injected, 'utf8')
   return outPath

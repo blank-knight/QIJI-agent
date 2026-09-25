@@ -45,6 +45,11 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     get: () => ipcRenderer.invoke('hermes:profile:get'),
     set: name => ipcRenderer.invoke('hermes:profile:set', name)
   },
+  oemBrand: {
+    // 渲染进程推送当前 OEM 品牌（贴牌名/logo；空=官方默认「硅基Claw」）。
+    // 主进程据此更新托盘 tooltip、通知标题、窗口标题。
+    set: brand => ipcRenderer.invoke('hermes:oem-brand:set', brand)
+  },
   api: request => ipcRenderer.invoke('hermes:api', request),
   notify: payload => ipcRenderer.invoke('hermes:notify', payload),
   requestMicrophoneAccess: () => ipcRenderer.invoke('hermes:requestMicrophoneAccess'),
@@ -187,7 +192,8 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   // URL-based client update: download the published installer and run it.
   skillMarket: {
     installGithub: (repo, subdir) => ipcRenderer.invoke('hermes:skillMarket:installGithub', repo, subdir),
-    install: (url, name, token) => ipcRenderer.invoke('hermes:skillMarket:install', url, name, token)
+    install: (url, name, token) => ipcRenderer.invoke('hermes:skillMarket:install', url, name, token),
+    uninstall: (name) => ipcRenderer.invoke('hermes:skillMarket:uninstall', name)
   },
   listDir: relPath => ipcRenderer.invoke('hermes:listDir', relPath),
   clientUpdate: {

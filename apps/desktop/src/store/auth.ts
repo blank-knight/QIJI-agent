@@ -12,6 +12,7 @@ import {
   type LoginResponse,
   TOKEN_TTL_MS
 } from '@/lib/backend'
+import { clearOemBrand, setOemBrand } from '@/store/oem-brand'
 
 export interface AuthState {
   token: string | null
@@ -167,6 +168,9 @@ export async function login(username: string, password: string): Promise<LoginRe
   persist(next)
   patch(next)
 
+  // OEM 品牌：登录响应下发（无贴牌=空=默认硅基Claw）
+  setOemBrand(data.brand)
+
   return data
 }
 
@@ -200,12 +204,17 @@ export async function register(mobile: string, password: string, inviteCode?: st
   persist(next)
   patch(next)
 
+  // OEM 品牌：注册即登录，同样下发品牌
+  setOemBrand(data.brand)
+
   return data
 }
 
 /** 登出 / 清空 auth 状态（401 时也调这个） */
 export function clearAuth() {
   patch({ token: null, username: null, isCustomKey: false, allowModelSelect: true, platformModels: [], mode: 'trial', score: 0, loginAt: null, apiKey: null, avatar: null })
+  // OEM 品牌一并清回官方默认
+  clearOemBrand()
 
   if (typeof window !== 'undefined') {
     try {

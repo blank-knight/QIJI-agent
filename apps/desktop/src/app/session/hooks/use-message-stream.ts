@@ -57,6 +57,7 @@ import { recordToolDiff } from '@/store/tool-diffs'
 import type { RpcEvent } from '@/types/hermes'
 
 import type { ClientSessionState } from '../../types'
+import { brandText } from '@/store/oem-brand'
 
 interface MessageStreamOptions {
   activeSessionIdRef: MutableRefObject<string | null>
@@ -673,7 +674,7 @@ export function useMessageStream({
         const streamId = state.streamId ?? `assistant-error-${Date.now()}`
         const groupId = state.pendingBranchGroup ?? undefined
         const prev = state.messages
-        const error = errorMessage.trim() || '奇计报告了一个错误'
+        const error = errorMessage.trim() || brandText('奇计报告了一个错误')
 
         const nextMessages = prev.some(m => m.id === streamId)
           ? prev.map(message =>
@@ -1150,7 +1151,7 @@ export function useMessageStream({
           }))
         }
       } else if (event.type === 'error') {
-        const errorMessage = payload?.message || '奇计报告了一个错误'
+        const errorMessage = payload?.message || brandText('奇计报告了一个错误')
         const looksLikeProviderSetup = isProviderSetupErrorMessage(errorMessage)
 
         // A turn that errors out has also ended — drop any open blocking prompt
@@ -1184,7 +1185,7 @@ export function useMessageStream({
           notify({
             id: `gateway-error:${errorMessage}`,
             kind: 'error',
-            title: '奇计错误',
+            title: brandText('奇计错误'),
             message: errorMessage
           })
         }

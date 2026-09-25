@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { BACKEND_BASE_URL, backendGet } from '@/lib/backend'
 import { $auth } from '@/store/auth'
+import { isZhLocale } from '@/i18n'
+import { translateSkillField } from './translations'
 import { useStore } from '@nanostores/react'
 
 interface MarketSkill {
@@ -29,6 +31,7 @@ export function MarketPanel(_props: React.ComponentProps<'section'>) {
   const [installed, setInstalled] = useState<Set<string>>(new Set())
   const [msg, setMsg] = useState('')
   const [msgOk, setMsgOk] = useState(true)
+  const [uninstalling, setUninstalling] = useState<string | null>(null)
   const [ghRepo, setGhRepo] = useState('')
   const [ghBusy, setGhBusy] = useState(false)
   const auth = useStore($auth)
@@ -72,6 +75,25 @@ export function MarketPanel(_props: React.ComponentProps<'section'>) {
     }
   }, [])
 
+  /** qiji 0.19.8: 卸载市场技能（按用户偏好不加确认弹窗），卸完刷新已装集合 */
+  async function uninstall(sk: MarketSkill) {
+    if (uninstalling) return
+    setUninstalling(sk.name)
+    setMsgOk(false)
+    setMsg('')
+    try {
+      await window.hermesDesktop.skillMarket.uninstall(sk.name)
+      setInstalled(prev => { const s = new Set(prev); s.delete(sk.name); return s })
+      setMsgOk(true)
+      setMsg(`「${sk.title}」已卸载`)
+    } catch (err) {
+      setMsgOk(false)
+      setMsg(`卸载失败: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setUninstalling(null)
+    }
+  }
+
   useEffect(() => { void load() }, [load])
 
   async function install(sk: MarketSkill) {
@@ -113,16 +135,21 @@ export function MarketPanel(_props: React.ComponentProps<'section'>) {
         <div className="grid grid-cols-2 gap-2.5 xl:grid-cols-3">
           {skills.map(sk => {
             const isInstalled = installed.has(sk.name)
+            // qiji 0.19.3-fix: 中文环境下标题/描述走翻译层（后端 SKILL.md 是英文）
+            const titleZh = isZhLocale() ? translateSkillField(sk.name, 'name', sk.title) : sk.title
+            const descZh = isZhLocale()
+              ? translateSkillField(sk.name, 'description', sk.description ?? '')
+              : (sk.description ?? '')
             return (
               <div
                 className="flex flex-col justify-between rounded-xl border border-border/70 bg-muted/20 px-3.5 py-3"
                 key={sk.id}
               >
                 <div>
-                  <p className="text-sm font-medium">{sk.title}</p>
+                  <p className="text-sm font-medium">{titleZh}</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">v{sk.version} · {sk.download_count} 次下载</p>
                   {sk.description ? (
-                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground/80">{sk.description}</p>
+                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground/80">{descZh}</p>
                   ) : null}
                 </div>
                 <Button
@@ -135,6 +162,18 @@ export function MarketPanel(_props: React.ComponentProps<'section'>) {
                   {installing === sk.name ? <Loader2 className="size-3 animate-spin" /> : null}
                   {isInstalled ? '已安装' : installing === sk.name ? '安装中…' : '安装'}
                 </Button>
+                {isInstalled && (
+                  <Button
+                    className="mt-1.5"
+                    disabled={uninstalling !== null}
+                    onClick={() => void uninstall(sk)}
+                    size="sm"
+                    type="button"
+                    variant="ghost"
+                  >
+                    {uninstalling === sk.name ? '卸载中…' : '卸载'}
+                  </Button>
+                )}
               </div>
             )
           })}

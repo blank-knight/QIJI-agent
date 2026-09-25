@@ -1641,7 +1641,12 @@ DEFAULT_CONFIG = {
         # handful of gateway slash-command replies).  Does NOT affect agent
         # responses, log lines, tool outputs, or slash-command descriptions.
         # Supported: en, zh, ja, de, es, fr, tr, uk.  Unknown values fall back to en.
-        "language": "en",
+        # Qiji 0.19.3: zh-first product — default UI language is Simplified
+        # Chinese (upstream Hermes defaults to "en"). Existing installs keep
+        # whatever is baked into their config.yaml (deep-merge preserves it);
+        # the desktop app additionally injects HERMES_LANGUAGE at spawn when
+        # the config predates this change.
+        "language": "zh",
         # TUI busy indicator style: kaomoji (default), emoji, unicode (braille
         # spinner), or ascii.  Live-swappable via `/indicator <style>`.
         "tui_status_indicator": "kaomoji",

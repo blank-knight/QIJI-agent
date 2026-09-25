@@ -1993,6 +1993,7 @@ export const en: Translations = {
     regenerateFailed: 'Regenerate failed',
     editFailed: 'Edit failed',
     resumeFailed: 'Resume failed',
+    resumeDeniedAccount: 'This session belongs to another account. Access blocked.',
     resumeStrandedTitle: "Couldn't load this session",
     resumeStrandedBody: 'The connection to this session failed and automatic retries gave up. Check that the gateway is running, then try again.',
     resumeRetry: 'Retry',

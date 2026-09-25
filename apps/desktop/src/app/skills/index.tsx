@@ -106,6 +106,35 @@ export function SkillsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...p
   const [savingSkill, setSavingSkill] = useState<string | null>(null)
   const [savingToolset, setSavingToolset] = useState<string | null>(null)
   const [expandedToolset, setExpandedToolset] = useState<string | null>(null)
+  // qiji 0.19.7: 市场技能名单（决定技能行是否显示卸载按钮）
+  const [marketSkills, setMarketSkills] = useState<Set<string>>(new Set())
+  const [uninstalling, setUninstalling] = useState<string | null>(null)
+
+  const refreshMarketSkills = useCallback(() => {
+    try {
+      void window.hermesDesktop?.listDir('skills/market').then(items => {
+        setMarketSkills(new Set((items ?? []).filter(i => i.isDirectory).map(i => i.name)))
+      }).catch(() => setMarketSkills(new Set()))
+    } catch {
+      setMarketSkills(new Set())
+    }
+  }, [])
+
+  /** qiji 0.19.7: 卸载市场技能——直接删目录后刷新列表（按用户偏好不加确认弹窗） */
+  async function uninstallMarketSkill(name: string) {
+    if (uninstalling) return
+    setUninstalling(name)
+    try {
+      await window.hermesDesktop?.skillMarket.uninstall(name)
+      notify({ kind: 'success', title: '已卸载', message: `「${name}」已移除` })
+      await refreshCapabilities()
+      refreshMarketSkills()
+    } catch (err) {
+      notifyError(err, '卸载失败')
+    } finally {
+      setUninstalling(null)
+    }
+  }
 
   const refreshCapabilities = useCallback(async () => {
     setRefreshing(true)
@@ -132,6 +161,10 @@ export function SkillsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...p
   useEffect(() => {
     void refreshCapabilities()
   }, [refreshCapabilities])
+
+  useEffect(() => {
+    refreshMarketSkills()
+  }, [refreshMarketSkills])
 
   const categories = useMemo(() => {
     if (!skills) {
@@ -299,6 +332,20 @@ export function SkillsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...p
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
+                          {marketSkills.has(skill.name) && (
+                            <Button
+                              disabled={uninstalling !== null}
+                              onClick={() => void uninstallMarketSkill(skill.name)}
+                              size="sm"
+                              title={isZh ? '卸载此市场技能' : 'Uninstall market skill'}
+                              type="button"
+                              variant="ghost"
+                            >
+                              {uninstalling === skill.name
+                                ? (isZh ? '卸载中…' : 'Removing…')
+                                : (isZh ? '卸载' : 'Uninstall')}
+                            </Button>
+                          )}
                           <Button
                             onClick={() => void useSkillNow(skill)}
                             size="sm"
@@ -334,12 +381,17 @@ export function SkillsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...p
                 {visibleToolsets.map(toolset => {
                   const tools = toolNames(toolset)
                   const label = toolsetDisplayLabel(toolset)
+                  // qiji 0.19.3-fix: 中文环境下工具集名/描述接翻译层（translations.ts 早已建好但未接入渲染）
+                  const labelZh = isZh ? translateToolsetField(toolset.name, 'label', label) : label
+                  const descZh = isZh
+                    ? translateToolsetField(toolset.name, 'description', asText(toolset.description) || t.skills.noDescription)
+                    : (asText(toolset.description) || t.skills.noDescription)
                   const expanded = expandedToolset === toolset.name
 
                   return (
                     <div className="px-0 py-2.5" key={toolset.name}>
                       <div className="flex items-center justify-between gap-2">
-                        <div className="truncate text-sm font-medium">{label}</div>
+                        <div className="truncate text-sm font-medium">{labelZh}</div>
                         <div className="flex shrink-0 items-center gap-1.5">
                           <button
                             aria-expanded={expanded}
@@ -363,7 +415,7 @@ export function SkillsView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...p
                         </div>
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {asText(toolset.description) || t.skills.noDescription}
+                        {descZh}
                       </p>
                       {tools.length > 0 && (
                         <div className="mt-2 flex flex-wrap gap-1">

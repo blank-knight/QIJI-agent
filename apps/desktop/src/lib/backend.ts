@@ -29,6 +29,8 @@ export interface LoginResponse {
   base_url?: string
   /** 代理限定的可用模型（A 方案：非空=只能用这些，第一个为默认） */
   models?: string[]
+  /** 贴牌品牌（沿代理链向上找，无=官方默认硅基Claw） */
+  brand?: { name: string; logo: string }
 }
 
 export interface QuotaResponse {
@@ -121,7 +123,9 @@ export async function backendFetch<T = unknown>(
   const res = await fetch(url, { ...options, headers })
 
   if (res.status === 401) {
-    // token 失效：清状态，弹登录页
+    // token 失效：清状态，弹登录页。记录标记让登录页说明原因（qiji 0.19.3-fix：
+    // 升级/久未登录的用户点个人中心突然被弹回登录页，没头没脑——告知是登录过期）
+    try { window.sessionStorage.setItem('qiji-auth-expired', '1') } catch { /* ignore */ }
     clearAuth()
     unauthorizedHandler?.()
     throw new BackendError('登录已过期，请重新登录', 401)

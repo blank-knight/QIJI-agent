@@ -1,5 +1,6 @@
 import { atom, computed } from 'nanostores'
 
+import { accountLockedProfile } from '@/lib/account-profile'
 import { getProfiles, setApiRequestProfile } from '@/hermes'
 import { queryClient } from '@/lib/query-client'
 import {
@@ -279,9 +280,34 @@ $showAllProfiles.subscribe(value => persistBoolean(SHOW_ALL_PROFILES_STORAGE_KEY
 // gateway so opening/selecting a profile (which swaps the gateway) moves the
 // whole sidebar with it — a real context switch, not a separate filter to keep
 // in sync.
-export const $profileScope = computed([$showAllProfiles, $activeGatewayProfile], (showAll, gateway) =>
-  showAll ? ALL_PROFILES : normalizeProfileKey(gateway)
+//
+// qiji 账号隔离：登录账号锁定专属 profile 时，scope 钉死为锁定 profile。
+// 拉取侧（listAllProfileSessions）同样以锁值为准强制收敛——两侧必须用
+// 同一个真值，否则 boot 竞态下 $activeGatewayProfile 停在初值 'default'
+// 时，渲染过滤条件变成 行profile(acc_xxx) === 'default'，拉回的本人会话
+// 全部被滤掉，侧栏空列表。锁值与拉取收敛同源，不经过可竞态的网关变量。
+export const $profileScope = computed(
+  [$showAllProfiles, $activeGatewayProfile],
+  (showAll, gateway) => {
+    const locked = accountLockedProfile()
+    if (locked) return locked
+
+    return showAll ? ALL_PROFILES : normalizeProfileKey(gateway)
+  }
 )
+
+// qiji 账号隔离：登录账号锁定专属 profile 时，"所有 profile"聚合视图强制
+// 关闭（localStorage 里的旧开关可能是锁定前留下的，粘到登录后就是跨账号
+// 数据泄漏入口）。上游 showAllProfiles 供一人多身份场景使用，奇计不适用。
+export function enforceAccountProfileLock(): void {
+  try {
+    if (accountLockedProfile() && $showAllProfiles.get()) {
+      $showAllProfiles.set(false)
+    }
+  } catch {
+    // account-profile 依赖 localStorage/$auth，异常时宁可不锁也不炸
+  }
+}
 
 // Switch the active context to `name`: leave "All profiles" mode, point new
 // chats at it, and swap the single live gateway onto its backend (which moves

@@ -6,6 +6,7 @@ import { AlertTriangle, Loader2, Trash2 } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 
 import { SectionHeading } from './primitives'
+import { brandText } from '@/store/oem-brand'
 
 interface ModeOption {
   mode: DesktopUninstallMode
@@ -159,7 +160,7 @@ export function UninstallSection() {
           </div>
         ) : (
           <div className="flex flex-col gap-2">
-            <p className="text-sm font-medium">卸载奇计</p>
+            <p className="text-sm font-medium">{brandText('卸载奇计')}</p>
             <p className="text-xs text-muted-foreground">
               选择卸载范围。应用将关闭以完成卸载，随时可以重新安装。
             </p>

@@ -63,6 +63,7 @@ import { useFileDropZone } from './hooks/use-file-drop-zone'
 import { ScrollToBottomButton } from './scroll-to-bottom-button'
 import { SessionActionsMenu } from './sidebar/session-actions-menu'
 import { threadLoadingState } from './thread-loading'
+import { brandText } from '@/store/oem-brand'
 
 // 主页快捷技能（精选常用；点击填入 /技能名 到输入框，用户补内容后发送）
 // 注: powerpoint(Anthropic专有许可)已移除,由市场 pptx-maker(MIT)顶替
@@ -386,7 +387,7 @@ export function ChatView({
       }
 
       if (!gateway) {
-        throw new Error('奇计 gateway unavailable')
+        throw new Error(brandText('奇计 gateway unavailable'))
       }
 
       return gateway.request<ModelOptionsResponse>('model.options', { session_id: activeSessionId })
@@ -408,7 +409,7 @@ export function ChatView({
       },
       introTop: showIntro
         ? {
-            headline: '奇计',
+            headline: brandText('奇计'),
             body: '今天要做点什么？',
             skills: INTRO_QUICK_SKILLS
           }

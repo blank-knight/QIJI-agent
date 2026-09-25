@@ -580,6 +580,21 @@ def _resolve_api_key_provider_secret(
         if has_usable_secret(val):
             return val, env_var
 
+    # qiji fix: config.yaml 内联 model.api_key。桌面端「模型设置」把用户填的 key
+    # 与 provider 一起写进 model 段（provider: zai + api_key: ...），但具名厂商
+    # 此前只认 env/凭证池——UI 存了 key 启动却报 "no API key was found"。
+    # 仅当 model.provider 与目标厂商一致时采用，避免把 custom 端点的 key
+    # 误发给别的厂商（与 #28660 的 host-gate 同一原则）。
+    try:
+        from hermes_cli.config import load_config
+        _mc = (load_config() or {}).get("model") or {}
+        if str(_mc.get("provider") or "").strip().lower() == provider_id:
+            _inline = str(_mc.get("api_key") or "").strip()
+            if has_usable_secret(_inline):
+                return _inline, "config.yaml:model.api_key"
+    except Exception:
+        pass
+
     # Fallback: try credential pool (e.g. zai key stored via auth.json)
     try:
         from agent.credential_pool import load_pool

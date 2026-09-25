@@ -128,7 +128,7 @@ describe('AccountSettings（个人中心）', () => {
     })
     render(<AccountSettings />)
     await waitFor(() => {
-      expect(screen.getByText('未登录，请先登录奇计账号')).toBeTruthy()
+      expect(screen.getByText('未登录，请先登录硅基Claw账号')).toBeTruthy()
     })
     expect(calls.length).toBe(0)
   })

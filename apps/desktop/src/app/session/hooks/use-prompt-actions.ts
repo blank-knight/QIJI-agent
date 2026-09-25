@@ -123,6 +123,42 @@ function isSessionNotFoundError(error: unknown): boolean {
   return /session not found/i.test(message)
 }
 
+// qiji 技能脚手架清洗：slash 技能直发时，提交给后端的文本是展开后的
+// 模型向脚手架（"[IMPORTANT: The user has invoked …]" 头 + 技能正文）。
+// 它作为侧栏乐观 preview / 乐观消息渲染会漏出大段英文内部标记。这里
+// 在「显示用」侧还原成人话：有用户附加指令用指令，裸调用显示
+// 「使用技能 <名>」。与 agent/title_generator.py 的剥离逻辑同语义
+// （渲染层镜像，避免依赖后端版本）。
+const SKILL_SCAFFOLD_RE = /^\[IMPORTANT: The user has invoked the "([^"]+)"[^\]]*\]/
+const SKILL_INSTRUCTION_MARKER = 'The user has provided the following instruction alongside the skill invocation: '
+
+function displayTextFromSubmitted(rawText: string): string {
+  const text = rawText.trim()
+
+  if (!SKILL_SCAFFOLD_RE.test(text)) {
+    return text
+  }
+
+  const markerIdx = text.lastIndexOf(SKILL_INSTRUCTION_MARKER)
+
+  if (markerIdx >= 0) {
+    let instruction = text.slice(markerIdx + SKILL_INSTRUCTION_MARKER.length)
+    const runtimeIdx = instruction.indexOf('[Runtime note:')
+
+    if (runtimeIdx >= 0) {
+      instruction = instruction.slice(0, runtimeIdx)
+    }
+
+    instruction = instruction.trim()
+
+    if (instruction) return instruction
+  }
+
+  const m = SKILL_SCAFFOLD_RE.exec(text)
+
+  return m ? `使用技能 ${m[1]}` : ''
+}
+
 // The gateway refuses prompt.submit while a turn is running (4009 "session
 // busy"). It's a transient concurrency guard, never a user-facing error: a
 // submit racing the settle edge (or a rewind interrupting mid-turn) just waits
@@ -332,6 +368,16 @@ interface PromptActionsOptions {
 interface SubmitTextOptions {
   attachments?: ComposerAttachment[]
   fromQueue?: boolean
+  /**
+   * 复用 slash 链路已建好的会话（技能直发场景）。slash.exec 的 handler
+   * 先经 withSlashOutput 建了会话 #1（并写入 activeSessionIdRef），再把
+   * 展开后的技能脚手架交给 submitPromptText 提交。若不带此提示，本回
+   * 调闭包可能读到被 fresh-draft 清空的 null（技能页 hash 跳转 →
+   * startFreshSessionDraft → ref=null，350ms 芯片注入后 Enter 提交，
+   * 闭包读到的还是清空帧）→ 又建第二个会话，技能消息落 #2、#1 成幽灵
+   * 行（9-22 修首页时只修了 ref 读取，技能页多出的路由清空绕开了它）。
+   */
+  targetSessionId?: string
 }
 
 /** Everything a slash handler needs about the invocation it's serving. */
@@ -569,6 +615,9 @@ export function usePromptActions({
       }
 
       const visibleText = rawText.trim()
+      // 技能直发的 rawText 是展开后的脚手架——乐观消息(聊天气泡)同样
+      // 不能渲染大段英文内部标记，显示层用清洗后的文本。
+      const displayText = displayTextFromSubmitted(rawText)
       const usingComposerAttachments = !options?.attachments
       const attachments = options?.attachments ?? $composerAttachments.get()
 
@@ -609,7 +658,7 @@ export function usePromptActions({
       const buildUserMessage = (): ChatMessage => ({
         id: optimisticId,
         role: 'user',
-        parts: [textPart(visibleText || (attachmentRefs.length ? '' : attachments.map(a => a.label).join(', ')))],
+        parts: [textPart(displayText || (attachmentRefs.length ? '' : attachments.map(a => a.label).join(', ')))],
         attachmentRefs
       })
 
@@ -678,7 +727,16 @@ export function usePromptActions({
       setAwaitingResponse(true)
       clearNotifications()
 
-      let sessionId: null | string = activeSessionId
+      // 技能链路修复：slash 展开（/skill 命令）会先经 ensureSessionId →
+      // createBackendSessionForSend 建好会话并同步写 activeSessionIdRef；
+      // 但本回调闭包里的 activeSessionId 是上次渲染捕获的旧值（setState
+      // 要下一帧才生效），此处仍读到 null → 又建第二个会话，技能消息落进
+      // #2，#1 只剩一条渲染层的 "⚡ loading skill" 幽灵行（不进 DB，重启
+      // 即消失）。读 ref（创建路径同步维护）才是当前真值。
+      // 技能页补充：hash 跳转触发的 startFreshSessionDraft 会把 ref 清空，
+      // 350ms 芯片注入后提交时 ref 可能还是 null——options.targetSessionId
+      // 显式携带 slash 链路刚建好的会话，优先于 ref。
+      let sessionId: null | string = options?.targetSessionId ?? activeSessionIdRef.current
 
       if (sessionId) {
         seedOptimistic(sessionId)
@@ -688,7 +746,7 @@ export function usePromptActions({
 
       if (!sessionId) {
         try {
-          sessionId = await createBackendSessionForSend(visibleText)
+          sessionId = await createBackendSessionForSend(displayTextFromSubmitted(visibleText))
         } catch (err) {
           dropOptimistic(null)
           releaseBusy()
@@ -985,7 +1043,10 @@ export function usePromptActions({
             return
           }
 
-          await submitPromptText(message)
+          // targetSessionId：把 withSlashOutput 刚建好的会话显式传下去，
+          // 技能页 hash 跳转清空 ref 的竞态下也不会二次建会话（见
+          // SubmitTextOptions.targetSessionId 注释）。
+          await submitPromptText(message, { targetSessionId: sessionId })
         }
 
         try {

@@ -11,6 +11,7 @@ import { setSessionYolo } from '@/lib/yolo-session'
 import { clearQueuedPrompts } from '@/store/composer-queue'
 import { $pinnedSessionIds } from '@/store/layout'
 import { clearNotifications, notify, notifyError } from '@/store/notifications'
+import { accountLockedProfile } from '@/lib/account-profile'
 import { requestDesktopOnboarding } from '@/store/onboarding'
 import { $activeGatewayProfile, $newChatProfile, $profiles, ensureGatewayProfile, normalizeProfileKey } from '@/store/profile'
 import {
@@ -185,7 +186,12 @@ function upsertOptimisticSession(
   // Stamp the profile the session was just created on (= the live gateway's
   // profile) so the scoped sidebar shows the new row immediately instead of
   // filtering it out as "default" until the aggregator re-fetches.
-  const profileKey = normalizeProfileKey($activeGatewayProfile.get())
+  // qiji 账号隔离兜底：boot 深处（progress 97）$activeGatewayProfile 才被
+  // desktop.profile.get() 校正，此前 atom 初值是 'default'——这个窗口里
+  // 创建的会话会被错盖 default 戳，恢复时被账号锁误拦。登录账号锁定的
+  // profile 就是创建路径真正落库的 profile，锁值优先。
+  const lockedProfile = accountLockedProfile()
+  const profileKey = lockedProfile ?? normalizeProfileKey($activeGatewayProfile.get())
 
   const session: SessionInfo = {
     cwd: created.info?.cwd ?? null,
@@ -243,11 +249,19 @@ async function resolveStoredSession(storedSessionId: string): Promise<SessionInf
     return cached
   }
 
+  // qiji 账号隔离：锁定/激活非 default profile 时，按 id 直查必须显式带
+  // profile——不带的话请求路由到 primary(default) backend，在 default 的
+  // state.db 里查不到本账号会话 → 404 → 返回 undefined → 上游锁检查把
+  // sessionProfile 空值当 default，本人会话被误判"不属于当前登录账号"。
+  const lockedProfile = accountLockedProfile()
+  const probeProfile = lockedProfile ?? normalizeProfileKey($activeGatewayProfile.get())
+  const directProfile = probeProfile && probeProfile !== 'default' ? probeProfile : undefined
+
   // Direct by-id on the live backend — one row lookup, no list scan. Covers
   // single-profile users and any id on the active profile (e.g. an old session
   // past the sidebar's recent window). 404 just means it's not on this profile.
   try {
-    const session = await getSession(storedSessionId)
+    const session = await getSession(storedSessionId, directProfile)
 
     upsertResolvedSession(session, storedSessionId)
 
@@ -259,6 +273,12 @@ async function resolveStoredSession(storedSessionId: string): Promise<SessionInf
   // Multi-profile only: probe each other profile by id (still one cheap lookup
   // each) rather than pulling every profile's recent sessions. The first hit
   // carries its owning `profile`, which routes the resume to the right backend.
+  // qiji 账号隔离：登录账号锁定时跳过跨 profile 探测——那是别人家的会话，
+  // 探到了也只会被 resume 拒绝，白耗一轮请求。
+  if (lockedProfile) {
+    return undefined
+  }
+
   const activeKey = normalizeProfileKey($activeGatewayProfile.get())
 
   const otherProfiles = $profiles
@@ -394,6 +414,10 @@ export function useSessionActions({
 
   const startFreshSessionDraft = useCallback(
     (replaceRoute = false) => {
+      // qiji 账号切换/新建会话：作废所有在途 resume。切账号后旧会话的
+      // resume 可能还在等后端冷启动（数秒），晚到了就撞账号锁弹
+      // "不属于当前登录账号"——代际递增让它在下一个检查点静默退出。
+      resumeRequestRef.current += 1
       busyRef.current = false
       setBusy(false)
       setAwaitingResponse(false)
@@ -604,9 +628,45 @@ export function useSessionActions({
       // resolveStoredSession finds the row by id (cheap), so an uncached pasted
       // id loads as fast as a sidebar click instead of hanging on a list scan.
       const storedForProfile = await resolveStoredSession(storedSessionId)
+      //（sessionProfile 变量保留：652 行锁检查与 670 行 ensureGatewayProfile
+      // 共用；行查不到时为 undefined，ensureGatewayProfile(null) = 保持当前
+      // 网关，符合"查不到就放行"的语义。）
       const sessionProfile = storedForProfile?.profile
 
       if (resumeRequestRef.current !== requestId) {
+        return
+      }
+
+      // qiji 账号隔离：登录账号锁定专属 profile 时，其他 profile 的会话
+      // 一律拒绝恢复（含跨 profile 探测命中的"别人家的会话"）——否则点击
+      // 会把 gateway 热切换到那个账号的 backend，等于带着全套配置登进别
+      // 人的账号。
+      //
+      // 判定采用"确认是他人的才拒"：只有 resolveStoredSession 明确带回
+      // 一行、且其归属 ≠ 锁定 profile 时才拦。查不到行（backend 冷启动
+      // 404/超时）一律放行——本人会话的数据落库始终在登录账号自己的
+      // backend（创建路径 ensureGatewayProfile 先执行），放行最多多等一
+      // 次冷启动；误拦却会把本人会话锁在门外（切窗口回来就"恢复失败/
+      // 不属于当前登录账号"）。注意：行查得到但 profile 是 default 且
+      // 锁定≠default，说明它是"认领 default 的那个账号"的会话，仍拒——
+      // 配合 upsertOptimisticSession 的锁值优先盖戳，本人新会话永远带
+      // 正确的归属戳，不会掉进这个分支。
+      const lockedProfile = accountLockedProfile()
+      const sessionProfileKey = storedForProfile
+        ? normalizeProfileKey(storedForProfile.profile || 'default')
+        : null
+      if (lockedProfile && sessionProfileKey !== null && sessionProfileKey !== normalizeProfileKey(lockedProfile)) {
+        if (resumeRequestRef.current !== requestId) {
+          return
+        }
+        setActiveSessionId(null)
+        activeSessionIdRef.current = null
+        setMessages([])
+        notify({
+          kind: 'error',
+          title: copy.resumeFailed,
+          message: copy.resumeDeniedAccount
+        })
         return
       }
 

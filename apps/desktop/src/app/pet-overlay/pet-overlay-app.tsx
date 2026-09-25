@@ -6,6 +6,7 @@ import { PetSprite } from '@/components/pet/pet-sprite'
 import { Mail } from '@/lib/icons'
 import { $petActivity, $petInfo, setPetInfo } from '@/store/pet'
 import { setAwaitingResponse, setBusy } from '@/store/session'
+import { brandText } from '@/store/oem-brand'
 
 /**
  * The pop-out overlay's only view: a transparent, draggable mascot with a mini
@@ -311,7 +312,7 @@ export function PetOverlayApp() {
               stopPropagation keeps a click from starting a window drag. */}
           {unread && (
             <button
-              aria-label="在奇计中打开"
+              aria-label={brandText("在奇计中打开")}
               onClick={openApp}
               onPointerDown={e => e.stopPropagation()}
               onPointerUp={e => e.stopPropagation()}
@@ -332,7 +333,7 @@ export function PetOverlayApp() {
                 top: 0,
                 width: 24
               }}
-              title="在奇计中打开"
+              title={brandText("在奇计中打开")}
               type="button"
             >
               <Mail style={{ height: 13, width: 13 }} />

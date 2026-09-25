@@ -47,6 +47,7 @@ import {
   submitOnboardingCode
 } from '@/store/onboarding'
 import type { ModelOptionProvider, OAuthProvider } from '@/types/hermes'
+import { brandText } from '@/store/oem-brand'
 
 interface DesktopOnboardingOverlayProps {
   enabled: boolean
@@ -56,10 +57,14 @@ interface DesktopOnboardingOverlayProps {
 
 export interface ApiKeyOption {
   description?: string
-  docsUrl: string
+  docsUrl?: string
   envKey: string
   id: string
   name: string
+  /** Preset base URL for domestic direct-connect providers (DeepSeek, Doubao,
+   * Hunyuan, Qianwen, Qianfan). Selecting the option pre-fills the endpoint
+   * URL field; the user only pastes an API key. Still editable. */
+  baseUrl?: string
   placeholder?: string
   short?: string
 }
@@ -67,12 +72,57 @@ export interface ApiKeyOption {
 const API_KEY_OPTIONS: ApiKeyOption[] = [
   {
     id: 'qiji-relay',
-    name: '奇计中转站（推荐）',
-    description: '使用奇计官方中转站，开箱即用，无需翻墙',
+    name: brandText('奇计中转站（推荐）'),
+    description: brandText('使用奇计官方中转站，开箱即用，无需翻墙'),
     envKey: 'OPENAI_API_KEY',
     docsUrl: 'https://www.aicps.vip',
     placeholder: 'sk-...',
-    short: '奇计中转站'
+    short: brandText('奇计中转站')
+  },
+  {
+    id: 'cn-deepseek',
+    name: 'DeepSeek',
+    description: '粘贴 DeepSeek API Key 即可，地址已自动填好',
+    envKey: 'OPENAI_BASE_URL',
+    docsUrl: 'https://platform.deepseek.com/api_keys',
+    baseUrl: 'https://api.deepseek.com',
+    short: '国内直连'
+  },
+  {
+    id: 'cn-doubao',
+    name: '豆包（火山方舟）',
+    description: '粘贴火山方舟 API Key 即可，地址已自动填好',
+    envKey: 'OPENAI_BASE_URL',
+    docsUrl: 'https://console.volcengine.com/ark',
+    baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+    short: '国内直连'
+  },
+  {
+    id: 'cn-hunyuan',
+    name: '腾讯元宝（混元）',
+    description: '粘贴混元 API Key 即可，地址已自动填好',
+    envKey: 'OPENAI_BASE_URL',
+    docsUrl: 'https://console.cloud.tencent.com/hunyuan',
+    baseUrl: 'https://api.hunyuan.cloud.tencent.com/v1',
+    short: '国内直连'
+  },
+  {
+    id: 'cn-qianwen',
+    name: '阿里千问',
+    description: '粘贴百炼 DashScope API Key 即可，地址已自动填好',
+    envKey: 'OPENAI_BASE_URL',
+    docsUrl: 'https://bailian.console.aliyun.com',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    short: '国内直连'
+  },
+  {
+    id: 'cn-qianfan',
+    name: '百度千帆',
+    description: '粘贴千帆 API Key 即可，地址已自动填好',
+    envKey: 'OPENAI_BASE_URL',
+    docsUrl: 'https://console.bce.baidu.com/iam',
+    baseUrl: 'https://qianfan.baidubce.com/v2',
+    short: '国内直连'
   },
   {
     id: 'openrouter',
@@ -176,7 +226,7 @@ function useApiKeyCatalog(): ApiKeyOption[] {
 }
 
 const PROVIDER_DISPLAY: Record<string, { order: number; title: string }> = {
-  nous: { order: 0, title: '奇计云' },
+  nous: { order: 0, title: brandText('奇计云') },
   'openai-codex': { order: 1, title: 'OpenAI OAuth (ChatGPT)' },
   'minimax-oauth': { order: 2, title: 'MiniMax' },
   'qwen-oauth': { order: 3, title: 'Qwen Code' },
@@ -572,7 +622,7 @@ function RelayInlineForm({ ctx }: { ctx: OnboardingContext }) {
     setSaving(true)
     setError(null)
     const url = baseUrl.trim() || 'https://www.aicps.vip/v1'
-    const result = await saveOnboardingApiKey('OPENAI_BASE_URL', url, '奇计中转站', ctx, apiKey.trim())
+    const result = await saveOnboardingApiKey('OPENAI_BASE_URL', url, brandText('奇计中转站'), ctx, apiKey.trim())
     if (!result.ok) {
       setError(result.message ?? '配置失败')
     }
@@ -798,19 +848,29 @@ export function ApiKeyForm({
 
   const isLocal = option.envKey === 'OPENAI_BASE_URL'
   const isQijiRelay = option.id === 'qiji-relay'
+  // Domestic direct-connect providers (DeepSeek / Doubao / Hunyuan / Qianwen /
+  // Qianfan) ship a preset baseUrl — selecting the card pre-fills the endpoint
+  // URL so the user only pastes a key. The URL stays editable.
+  const isPreset = Boolean(option.baseUrl)
   // Qiji relay also needs a visible, editable base URL field (defaults to
   // aicps.vip). We reuse the `localKey` slot for the API key and the `value`
   // slot for the base URL so the existing isLocal-style two-field rendering
   // kicks in.
-  const showsBaseUrl = isLocal || isQijiRelay
+  const showsBaseUrl = isLocal || isQijiRelay || isPreset
   const [relayBaseUrl, setRelayBaseUrl] = useState('https://www.aicps.vip/v1')
+  // Preset provider URL state — seeded from the option's baseUrl on pick.
+  const [presetBaseUrl, setPresetBaseUrl] = useState(option.baseUrl ?? '')
+  useEffect(() => {
+    setPresetBaseUrl(option.baseUrl ?? '')
+  }, [option.baseUrl])
   const alreadySet = isSet?.(option.envKey) ?? false
   // When set, surface the backend's redacted value (e.g. "sk-12…wxyz") as the
   // placeholder so users can eyeball that the right key is in place.
   const currentRedacted = alreadySet ? (redactedValue?.(option.envKey) ?? null) : null
   // Only require a non-empty value — no length/format validation, so a short
-  // or unusual key can't block the user from continuing.
-  const canSave = value.trim().length >= 1
+  // or unusual key can't block the user from continuing. For preset providers
+  // the key lives in `localKey` (the URL field holds the preset base URL).
+  const canSave = (isPreset ? localKey : value).trim().length >= 1
   const optionCopy = t.onboarding.apiKeyOptions[option.id]
   const optionDescription = optionCopy?.description ?? option.description
 
@@ -829,6 +889,25 @@ export function ApiKeyForm({
       const result = await onSave('OPENAI_BASE_URL', baseUrl, option.name, value)
       if (!result.ok) {
         setError(result.message ?? '配置失败')
+      }
+      setSaving(false)
+      return
+    }
+    // Preset domestic provider: URL comes pre-filled from the option (user can
+    // still edit); the API key is the main input. Same save path as local
+    // endpoints — probe + model discovery + config wiring all reuse it.
+    if (isPreset) {
+      const baseUrl = presetBaseUrl.trim() || option.baseUrl || ''
+      if (!baseUrl) {
+        setError('端点地址不能为空')
+        setSaving(false)
+        return
+      }
+      const result = await onSave('OPENAI_BASE_URL', baseUrl, option.name, localKey)
+      if (result.ok) {
+        setLocalKey('')
+      } else {
+        setError(result.message ?? t.onboarding.couldNotSave)
       }
       setSaving(false)
       return
@@ -889,23 +968,31 @@ export function ApiKeyForm({
         </div>
         {showsBaseUrl ? (
           <label className="text-xs text-muted-foreground">
-            {isQijiRelay ? '中转站地址' : '端点地址'}
+            {isQijiRelay ? '中转站地址' : isPreset ? '接口地址（已自动填好，可修改）' : '端点地址'}
           </label>
         ) : null}
         <Input
           autoComplete="off"
-          autoFocus={!isQijiRelay}
+          autoFocus={!isQijiRelay && !isPreset}
           className="font-mono"
-          onChange={e => (isQijiRelay ? setRelayBaseUrl(e.target.value) : setValue(e.target.value))}
+          onChange={e =>
+            isQijiRelay
+              ? setRelayBaseUrl(e.target.value)
+              : isPreset
+                ? setPresetBaseUrl(e.target.value)
+                : setValue(e.target.value)
+          }
           onKeyDown={e => e.key === 'Enter' && void submit()}
           placeholder={
             isQijiRelay
               ? 'https://www.aicps.vip/v1'
-              : currentRedacted ??
-                (alreadySet ? t.onboarding.replaceCurrent : option.placeholder || t.onboarding.pasteApiKey)
+              : isPreset
+                ? (option.baseUrl ?? 'https://api.example.com/v1')
+                : currentRedacted ??
+                  (alreadySet ? t.onboarding.replaceCurrent : option.placeholder || t.onboarding.pasteApiKey)
           }
           type={showsBaseUrl ? 'text' : 'password'}
-          value={isQijiRelay ? relayBaseUrl : value}
+          value={isQijiRelay ? relayBaseUrl : isPreset ? presetBaseUrl : value}
         />
         {showsBaseUrl ? (
           <>
@@ -920,7 +1007,9 @@ export function ApiKeyForm({
               placeholder={
                 isQijiRelay
                   ? 'sk-...（中转站 API 密钥）'
-                  : t.onboarding.localApiKeyPlaceholder
+                  : isPreset
+                    ? 'sk-...（只需粘贴密钥）'
+                    : t.onboarding.localApiKeyPlaceholder
               }
               type="password"
               value={isQijiRelay ? value : localKey}
