@@ -5888,6 +5888,8 @@ async function startHermes() {
     const childGeneration = primaryBackendGeneration
     const self = hermesProcess
     let backendReady = false
+    // qiji 0.19.3: 本 child 绑定的端口（exit 兜底判断缓存归属用）
+    let readyPort = null
     let rejectBackendStart = null
     const backendStartFailed = new Promise((_resolve, reject) => {
       rejectBackendStart = reject
@@ -5917,6 +5919,22 @@ async function startHermes() {
       if (hermesProcess === self) {
         hermesProcess = null
         connectionPromise = null
+      }
+      // qiji 0.19.3 exit 兜底：primary 后端死亡但全局槽位已被 successor 占用
+      // （bootstrap 与 desktop 双 spawn 竞态——首启 8328/8329 双后端的场景）时，
+      // 上面 self 检查不清缓存。若 connectionPromise 解析出的描述符仍指向本
+      // child 的端口，渲染层 reconnect 就永远拿到死端口（"与此会话的连接失败，
+      // 自动重试已停止"的根源）。清空缓存让下一次 getConnection() 重建：
+      // successor 活着则被复用，否则重拉。readyPort 在端口发现处记录（见下）。
+      if (connectionPromise && hermesProcess !== self) {
+        void connectionPromise
+          .then(conn => {
+            if (conn?.baseUrl && readyPort !== null && new URL(conn.baseUrl).port === String(readyPort)) {
+              connectionPromise = null
+              rememberLog(`[qiji] exit 兜底：清除了指向死端口 ${readyPort} 的 primary 连接缓存`)
+            }
+          })
+          .catch(() => undefined)
       }
       // A teardown from an OLDER generation aimed at a predecessor child, not
       // at this one. If this child died right after such a stale SIGTERM (the
@@ -5975,6 +5993,7 @@ async function startHermes() {
     ])
 
     const baseUrl = `http://127.0.0.1:${port}`
+    readyPort = port
     await advanceBootProgress('backend.wait', 'Waiting for 硅基Claw backend to become ready', 90)
     await Promise.race([waitForHermes(baseUrl, token), backendStartFailed])
     backendReady = true

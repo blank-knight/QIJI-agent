@@ -253,12 +253,17 @@ function Stage-VendorFiles {
         # a terminating error, aborting git init before remote add + commit.
         $prevEAP = $ErrorActionPreference
         $ErrorActionPreference = "Continue"
-        # Block credential GUI prompts (CredentialHelperSelector popup)
+        # Block credential GUI prompts (CredentialHelperSelector popup).
+        # qiji 0.19.3: 四层压制——③④杀 helper-selector GUI(它读 credential.guiPrompt
+        # 和 helperselector.selected; system 层预选 none 后永不再问)
         $env:GIT_TERMINAL_PROMPT = "0"
         $env:GCM_INTERACTIVE = "never"
+        $env:GCM_GUI_PROMPT = "never"
+        git -c credential.helper= -c windows.appendAtomically=false config --system credential.guiPrompt false 2>&1 | Out-Null
+        git -c credential.helper= -c windows.appendAtomically=false config --system credential.helperselector.selected none 2>&1 | Out-Null
         try {
             $gitStep = "init"
-            git -c credential.helper= -c windows.appendAtomically=false init 2>&1 | Out-Null
+            git -c credential.helper= -c credential.guiPrompt=false -c windows.appendAtomically=false init 2>&1 | Out-Null
             if ($LASTEXITCODE -ne 0) { throw "git init failed (exit $LASTEXITCODE)" }
 
             git -c credential.helper= -c windows.appendAtomically=false config windows.appendAtomically false 2>&1 | Out-Null
@@ -2132,13 +2137,17 @@ function Install-Repository {
         # global EAP=Stop otherwise.  We check $LASTEXITCODE for real errors.
         $prevEAP = $ErrorActionPreference
         $ErrorActionPreference = "Continue"
-        # Block credential GUI prompts (CredentialHelperSelector popup)
+        # Block credential GUI prompts (CredentialHelperSelector popup).
+        # qiji 0.19.3: 同 vendor 段的四层压制(fetch 是唯一真正触发凭据解析的命令)
         $env:GIT_TERMINAL_PROMPT = "0"
         $env:GCM_INTERACTIVE = "never"
+        $env:GCM_GUI_PROMPT = "never"
+        git -c credential.helper= -c windows.appendAtomically=false config --system credential.guiPrompt false 2>&1 | Out-Null
+        git -c credential.helper= -c windows.appendAtomically=false config --system credential.helperselector.selected none 2>&1 | Out-Null
         try {
             if ($Commit) {
                 Write-Info "Pinning to commit $Commit..."
-                git -c credential.helper= -c windows.appendAtomically=false fetch origin $Commit
+                git -c credential.helper= -c credential.guiPrompt=false -c windows.appendAtomically=false fetch origin $Commit
                 git -c credential.helper= -c windows.appendAtomically=false checkout --detach $Commit
                 if ($LASTEXITCODE -ne 0) {
                     throw "git checkout $Commit failed (exit $LASTEXITCODE)"
